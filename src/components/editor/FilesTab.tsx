@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAppStore } from "../../stores/appStore";
+import { RulesEditor } from "./RulesEditor";
+import { YamlFormEditor } from "./YamlFormEditor";
 import type { FileInfo } from "../../types";
 
 function RoleBadge({ role }: { role: string }) {
@@ -127,8 +129,14 @@ export function FilesTab() {
         ))}
       </div>
 
-      {/* Editor + Preview */}
-      {selectedFile && (
+      {/* RULES.md: structured editor */}
+      {selectedFile?.name === "RULES.md" && <RulesEditor />}
+
+      {/* agent.yaml: form editor */}
+      {selectedFile?.name === "agent.yaml" && <YamlFormEditor />}
+
+      {/* Other files: Editor + Preview */}
+      {selectedFile && selectedFile.name !== "RULES.md" && selectedFile.name !== "agent.yaml" && (
         <div className="flex-1 flex flex-col">
           {/* Toolbar */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-cc-border bg-cc-sidebar/30">

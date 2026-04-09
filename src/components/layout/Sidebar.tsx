@@ -1,4 +1,5 @@
 import { useAppStore } from "../../stores/appStore";
+import { SearchBar } from "../system/SearchBar";
 import type { BarrackInfo } from "../../types";
 
 function BarrackCard({ barrack }: { barrack: BarrackInfo }) {
@@ -58,6 +59,8 @@ export function Sidebar() {
           AI Barracks {cliVersion && `v${cliVersion}`}
         </p>
       </button>
+
+      <SearchBar />
 
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
         {barracks.map((b) => (

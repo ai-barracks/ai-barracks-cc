@@ -1,6 +1,7 @@
 mod commands;
+mod watcher;
 
-use commands::{barracks, files, sessions, sync, wiki};
+use commands::{barracks, files, search, sessions, sync, wiki};
 
 /// Find the `aib` binary path — GUI apps don't inherit shell PATH
 pub fn aib_bin() -> String {
@@ -27,6 +28,8 @@ pub fn run() {
             files::get_barrack_files,
             files::read_file,
             files::write_file,
+            files::get_rules,
+            files::save_rules,
             sessions::get_sessions,
             sessions::get_session_detail,
             wiki::get_wiki_index,
@@ -37,7 +40,12 @@ pub fn run() {
             sync::launch_session,
             sync::continue_session,
             sync::refresh_barracks,
+            search::search_all,
         ])
+        .setup(|app| {
+            watcher::start_watcher(app.handle().clone());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

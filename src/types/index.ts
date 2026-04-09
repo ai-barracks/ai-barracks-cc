@@ -71,4 +71,18 @@ export interface SyncResult {
   output: string;
 }
 
+export interface RulesData {
+  must_always: string[];
+  must_never: string[];
+  learned: string[];
+}
+
+export interface SearchResult {
+  barrack: string;
+  source: string;
+  title: string;
+  snippet: string;
+  file_path: string;
+}
+
 export type TabType = "overview" | "files" | "sessions" | "wiki";

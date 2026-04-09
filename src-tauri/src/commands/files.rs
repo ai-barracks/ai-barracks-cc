@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub struct FileInfo {
@@ -62,4 +62,66 @@ pub fn read_file(file_path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_file(file_path: String, content: String) -> Result<(), String> {
     fs::write(&file_path, &content).map_err(|e| format!("파일 쓰기 실패: {}", e))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RulesData {
+    pub must_always: Vec<String>,
+    pub must_never: Vec<String>,
+    pub learned: Vec<String>,
+}
+
+#[tauri::command]
+pub fn get_rules(barrack_path: String) -> Result<RulesData, String> {
+    let path = PathBuf::from(&barrack_path).join("RULES.md");
+    let content = fs::read_to_string(&path).unwrap_or_default();
+
+    let mut data = RulesData {
+        must_always: Vec::new(),
+        must_never: Vec::new(),
+        learned: Vec::new(),
+    };
+    let mut current = "";
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("## Must Always") {
+            current = "must_always";
+        } else if trimmed.starts_with("## Must Never") {
+            current = "must_never";
+        } else if trimmed.starts_with("## Learned") {
+            current = "learned";
+        } else if trimmed.starts_with("## ") {
+            current = "";
+        } else if let Some(item) = trimmed.strip_prefix("- ") {
+            match current {
+                "must_always" => data.must_always.push(item.to_string()),
+                "must_never" => data.must_never.push(item.to_string()),
+                "learned" => data.learned.push(item.to_string()),
+                _ => {}
+            }
+        }
+    }
+
+    Ok(data)
+}
+
+#[tauri::command]
+pub fn save_rules(barrack_path: String, rules: RulesData) -> Result<(), String> {
+    let path = PathBuf::from(&barrack_path).join("RULES.md");
+
+    let mut content = String::from("# Rules\n\n## Must Always\n");
+    for rule in &rules.must_always {
+        content.push_str(&format!("- {}\n", rule));
+    }
+    content.push_str("\n## Must Never\n");
+    for rule in &rules.must_never {
+        content.push_str(&format!("- {}\n", rule));
+    }
+    content.push_str("\n## Learned\n");
+    for rule in &rules.learned {
+        content.push_str(&format!("- {}\n", rule));
+    }
+
+    fs::write(&path, &content).map_err(|e| format!("RULES.md 저장 실패: {}", e))
 }
