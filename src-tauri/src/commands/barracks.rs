@@ -181,16 +181,32 @@ fn parse_soul_summary(barrack_path: &str) -> SoulSummary {
     summary
 }
 
-fn parse_aib_version(barrack_path: &str) -> String {
+#[derive(Debug, Default)]
+struct AgentYaml {
+    name: String,
+    description: String,
+    aib_version: String,
+}
+
+fn parse_agent_yaml(barrack_path: &str) -> AgentYaml {
     let yaml_path = PathBuf::from(barrack_path).join("agent.yaml");
     let content = fs::read_to_string(yaml_path).unwrap_or_default();
 
+    let mut result = AgentYaml::default();
     for line in content.lines() {
-        if let Some(ver) = line.strip_prefix("aib_version:") {
-            return ver.trim().to_string();
+        // Only match top-level keys (no leading whitespace)
+        if let Some(val) = line.strip_prefix("name:") {
+            result.name = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("description:") {
+            result.description = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("aib_version:") {
+            result.aib_version = val.trim().to_string();
         }
     }
-    "unknown".to_string()
+    if result.aib_version.is_empty() {
+        result.aib_version = "unknown".to_string();
+    }
+    result
 }
 
 #[tauri::command]
@@ -210,15 +226,19 @@ pub fn get_barracks() -> Result<Vec<BarrackInfo>, String> {
             let wiki_topic_count = count_wiki_topics(&e.path);
             let rules_count = parse_rules_count(&e.path);
             let soul_summary = parse_soul_summary(&e.path);
-            let aib_version = parse_aib_version(&e.path);
+            let yaml = parse_agent_yaml(&e.path);
+
+            // agent.yaml values take priority over stale barracks.json
+            let name = if yaml.name.is_empty() { e.name } else { yaml.name };
+            let description = if yaml.description.is_empty() { e.description } else { yaml.description };
 
             BarrackInfo {
                 path: e.path,
-                name: e.name,
-                description: e.description,
+                name,
+                description,
                 expertise: e.expertise,
                 topics: e.topics,
-                aib_version,
+                aib_version: yaml.aib_version,
                 session_count,
                 active_sessions,
                 wiki_topic_count,
