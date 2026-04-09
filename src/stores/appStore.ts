@@ -17,6 +17,10 @@ interface AppState {
   fetchCliVersion: () => Promise<void>;
   selectBarrack: (barrack: BarrackInfo) => void;
   setActiveTab: (tab: TabType) => void;
+  pendingConfigFile: string | null;
+  showSystemView: () => void;
+  openConfigFile: (filename: string) => void;
+  clearPendingConfigFile: () => void;
   clearError: () => void;
   toggleTheme: () => void;
 }
@@ -39,6 +43,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loading: false,
   error: null,
   theme: getInitialTheme(),
+  pendingConfigFile: null,
 
   fetchBarracks: async () => {
     set({ loading: true, error: null });
@@ -63,7 +68,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  selectBarrack: (barrack) => set({ selectedBarrack: barrack, activeTab: "overview" }),
+  selectBarrack: (barrack) => set({ selectedBarrack: barrack, activeTab: "overview", pendingConfigFile: null }),
+  showSystemView: () => set({ selectedBarrack: null, pendingConfigFile: null }),
+  openConfigFile: (filename: string) => set({ activeTab: "files", pendingConfigFile: filename }),
+  clearPendingConfigFile: () => set({ pendingConfigFile: null }),
   setActiveTab: (tab) => set({ activeTab: tab }),
   clearError: () => set({ error: null }),
   toggleTheme: () => {

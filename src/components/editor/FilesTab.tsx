@@ -21,7 +21,7 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 export function FilesTab() {
-  const { selectedBarrack, fetchBarracks } = useAppStore();
+  const { selectedBarrack, fetchBarracks, pendingConfigFile, clearPendingConfigFile } = useAppStore();
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -48,6 +48,18 @@ export function FilesTab() {
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
+
+  useEffect(() => {
+    if (pendingConfigFile && files.length > 0) {
+      const target = files.find((f) => f.name === pendingConfigFile);
+      if (target) {
+        setSelectedFile(target);
+        setEditContent(target.content);
+        setHasChanges(false);
+      }
+      clearPendingConfigFile();
+    }
+  }, [pendingConfigFile, files, clearPendingConfigFile]);
 
   const handleSelectFile = (file: FileInfo) => {
     if (hasChanges) {

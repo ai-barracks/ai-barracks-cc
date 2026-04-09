@@ -36,7 +36,7 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 export function BarrackOverview() {
-  const { selectedBarrack, cliVersion, fetchBarracks } = useAppStore();
+  const { selectedBarrack, cliVersion, fetchBarracks, openConfigFile } = useAppStore();
   const [syncing, setSyncing] = useState(false);
   const [syncOutput, setSyncOutput] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
@@ -159,11 +159,15 @@ export function BarrackOverview() {
               { file: "SOUL.md", role: "직접 편집", desc: "에이전트 이름, 전문성, 성격" },
               { file: "agent.yaml", role: "aib 관리", desc: "메타데이터, 모델, 버전" },
             ].map((f) => (
-              <div key={f.file} className="flex items-center gap-2 py-1">
-                <span className="text-cc-text-dim w-24">{f.file}</span>
+              <button
+                key={f.file}
+                onClick={() => openConfigFile(f.file)}
+                className="flex items-center gap-2 py-1 text-left hover:bg-cc-card-hover rounded px-1 -mx-1 transition-colors"
+              >
+                <span className="text-cc-text-dim w-24 hover:text-cc-accent transition-colors">{f.file}</span>
                 <RoleBadge role={f.role} />
                 <span className="text-cc-text-muted">{f.desc}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>

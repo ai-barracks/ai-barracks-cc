@@ -4,6 +4,7 @@ import { BarrackOverview } from "../barrack/BarrackOverview";
 import { FilesTab } from "../editor/FilesTab";
 import { SessionsTab } from "../session/SessionsTab";
 import { WikiTab } from "../wiki/WikiTab";
+import { SystemView } from "../system/SystemView";
 import type { TabType } from "../../types";
 
 const TABS: { key: TabType; label: string }[] = [
@@ -13,17 +14,7 @@ const TABS: { key: TabType; label: string }[] = [
   { key: "wiki", label: "Wiki" },
 ];
 
-function EmptyState() {
-  return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center">
-        <p className="text-cc-text-muted text-sm">
-          좌측에서 배럭을 선택하세요
-        </p>
-      </div>
-    </div>
-  );
-}
+// Empty state removed — SystemView is shown when no barrack is selected
 
 export function MainContent() {
   const { selectedBarrack, activeTab, setActiveTab, fetchBarracks } = useAppStore();
@@ -36,7 +27,7 @@ export function MainContent() {
   }, [activeTab, selectedBarrack?.path, fetchBarracks]);
 
   if (!selectedBarrack) {
-    return <EmptyState />;
+    return <SystemView />;
   }
 
   return (
