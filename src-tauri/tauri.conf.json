@@ -39,9 +39,6 @@
   "plugins": {
     "shell": {
       "open": true
-    },
-    "notification": {
-      "enabled": true
     }
   }
 }
