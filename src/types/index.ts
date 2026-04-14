@@ -85,4 +85,24 @@ export interface SearchResult {
   file_path: string;
 }
 
-export type TabType = "overview" | "files" | "sessions" | "wiki";
+export interface GitStatus {
+  is_repo: boolean;
+  branch: string;
+  changed_files: number;
+  untracked_files: number;
+  staged_files: number;
+  ahead: number;
+  behind: number;
+  remote_url: string;
+  last_commit: string;
+  last_commit_time: string;
+}
+
+export interface GitLogEntry {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+}
+
+export type TabType = "overview" | "files" | "sessions" | "wiki" | "git";

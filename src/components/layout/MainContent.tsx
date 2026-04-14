@@ -4,6 +4,7 @@ import { BarrackOverview } from "../barrack/BarrackOverview";
 import { FilesTab } from "../editor/FilesTab";
 import { SessionsTab } from "../session/SessionsTab";
 import { WikiTab } from "../wiki/WikiTab";
+import { GitTab } from "../git/GitTab";
 import { SystemView } from "../system/SystemView";
 import type { TabType } from "../../types";
 
@@ -12,6 +13,7 @@ const TABS: { key: TabType; label: string }[] = [
   { key: "files", label: "Config" },
   { key: "sessions", label: "Agents" },
   { key: "wiki", label: "Wiki" },
+  { key: "git", label: "Git" },
 ];
 
 // Empty state removed — SystemView is shown when no barrack is selected
@@ -59,6 +61,7 @@ export function MainContent() {
         {activeTab === "files" && <FilesTab />}
         {activeTab === "sessions" && <SessionsTab />}
         {activeTab === "wiki" && <WikiTab />}
+        {activeTab === "git" && <GitTab />}
       </div>
     </div>
   );

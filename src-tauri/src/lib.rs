@@ -1,7 +1,7 @@
 mod commands;
 mod watcher;
 
-use commands::{barracks, files, search, sessions, sync, wiki};
+use commands::{barracks, files, git, search, sessions, sync, wiki};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
@@ -43,6 +43,10 @@ pub fn run() {
             sync::continue_session,
             sync::refresh_barracks,
             search::search_all,
+            git::get_git_status,
+            git::get_git_log,
+            git::git_commit,
+            git::git_push,
         ])
         .setup(|app| {
             // --- System Tray ---
