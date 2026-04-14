@@ -111,6 +111,14 @@ export function GitTab() {
 
   return (
     <div className="p-5 max-w-4xl">
+      {/* Sub-path notice */}
+      {status.is_sub_path && (
+        <div className="mb-4 px-3 py-2 bg-cc-warning/10 border border-cc-warning/20 rounded-lg text-[12px] text-cc-warning">
+          이 배럭은 상위 저장소의 일부입니다. 아래 정보는 이 배럭 하위 파일만 표시합니다.
+          <span className="text-cc-text-muted ml-2">root: {status.git_root}</span>
+        </div>
+      )}
+
       {/* Status overview */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-cc-panel border border-cc-border rounded-lg p-4 shadow-cc">

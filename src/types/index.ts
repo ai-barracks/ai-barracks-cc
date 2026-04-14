@@ -87,6 +87,8 @@ export interface SearchResult {
 
 export interface GitStatus {
   is_repo: boolean;
+  git_root: string;
+  is_sub_path: boolean;
   branch: string;
   changed_files: number;
   untracked_files: number;
