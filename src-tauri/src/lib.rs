@@ -38,6 +38,7 @@ pub fn run() {
             wiki::get_wiki_topic,
             sync::sync_barrack,
             sync::sync_all_barracks,
+            sync::remove_barrack,
             sync::create_barrack,
             sync::launch_session,
             sync::continue_session,

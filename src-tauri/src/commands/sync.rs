@@ -56,6 +56,25 @@ pub struct SyncResult {
 }
 
 #[tauri::command]
+pub fn remove_barrack(path: String) -> Result<String, String> {
+    let output = aib()
+        .arg("barracks")
+        .arg("remove")
+        .arg(&path)
+        .output()
+        .map_err(|e| format!("aib barracks remove 실행 실패: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(format!("{}\n{}", stdout, stderr))
+    } else {
+        Err(format!("배럭 제거 실패:\n{}\n{}", stdout, stderr))
+    }
+}
+
+#[tauri::command]
 pub fn create_barrack(path: String) -> Result<String, String> {
     let output = aib()
         .arg("init")

@@ -142,6 +142,7 @@ export function SystemView() {
                   <th className="px-3 py-2">Barrack</th>
                   <th className="px-3 py-2 w-24">Version</th>
                   <th className="px-3 py-2 w-24">Status</th>
+                  <th className="px-3 py-2 w-16"></th>
                 </tr>
               </thead>
               <tbody>
@@ -179,6 +180,22 @@ export function SystemView() {
                         >
                           {isOutdated ? "Outdated" : "Up to date"}
                         </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`"${b.name}" 배럭을 레지스트리에서 제거할까요?\n(파일은 삭제되지 않습니다. aib init으로 다시 등록 가능)`)) return;
+                            try {
+                              await invoke<string>("remove_barrack", { path: b.path });
+                              await fetchBarracks();
+                            } catch (e) {
+                              alert(`제거 실패: ${e}`);
+                            }
+                          }}
+                          className="text-[11px] text-cc-text-muted hover:text-cc-danger transition-colors"
+                        >
+                          Remove
+                        </button>
                       </td>
                     </tr>
                   );
