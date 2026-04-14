@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
+import { OwnershipBanner } from "./OwnershipBanner";
 
 interface AgentConfig {
   name: string;
@@ -150,12 +151,10 @@ export function YamlFormEditor() {
 
   return (
     <div className="flex-1 flex flex-col">
+      <OwnershipBanner ownership="aib 관리" />
       <div className="flex items-center justify-between px-4 py-2 border-b border-cc-border">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium">agent.yaml</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-purple-500/20 text-purple-400">
-            aib 관리
-          </span>
           {hasChanges && (
             <span className="text-[11px] text-cc-warning">수정됨</span>
           )}

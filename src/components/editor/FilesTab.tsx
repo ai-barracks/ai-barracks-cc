@@ -5,6 +5,8 @@ import remarkGfm from "remark-gfm";
 import { useAppStore } from "../../stores/appStore";
 import { RulesEditor } from "./RulesEditor";
 import { YamlFormEditor } from "./YamlFormEditor";
+import { SoulFormEditor } from "./SoulFormEditor";
+import { GrowthFormEditor } from "./GrowthFormEditor";
 import type { FileInfo } from "../../types";
 
 function RoleBadge({ role }: { role: string }) {
@@ -129,14 +131,14 @@ export function FilesTab() {
         ))}
       </div>
 
-      {/* RULES.md: structured editor */}
+      {/* Structured editors for specific files */}
+      {selectedFile?.name === "SOUL.md" && <SoulFormEditor />}
+      {selectedFile?.name === "GROWTH.md" && <GrowthFormEditor />}
       {selectedFile?.name === "RULES.md" && <RulesEditor />}
-
-      {/* agent.yaml: form editor */}
       {selectedFile?.name === "agent.yaml" && <YamlFormEditor />}
 
-      {/* Other files: Editor + Preview */}
-      {selectedFile && selectedFile.name !== "RULES.md" && selectedFile.name !== "agent.yaml" && (
+      {/* Fallback: raw markdown editor for unknown files */}
+      {selectedFile && !["SOUL.md", "GROWTH.md", "RULES.md", "agent.yaml"].includes(selectedFile.name) && (
         <div className="flex-1 flex flex-col">
           {/* Toolbar */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-cc-border bg-cc-sidebar/30">

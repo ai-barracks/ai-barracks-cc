@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
+import { OwnershipBanner } from "./OwnershipBanner";
 import type { RulesData } from "../../types";
 
 function RuleSection({
@@ -128,12 +129,10 @@ export function RulesEditor() {
 
   return (
     <div className="flex-1 flex flex-col">
+      <OwnershipBanner ownership="자동 축적" />
       <div className="flex items-center justify-between px-4 py-2 border-b border-cc-border">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium">RULES.md</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-green-500/20 text-green-400">
-            자동 축적
-          </span>
           {hasChanges && (
             <span className="text-[11px] text-cc-warning">수정됨</span>
           )}
