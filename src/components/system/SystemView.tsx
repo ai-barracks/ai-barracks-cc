@@ -10,6 +10,7 @@ export function SystemView() {
   const [dryRun, setDryRun] = useState(false);
   const [results, setResults] = useState<SyncResult[] | null>(null);
   const [creating, setCreating] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [newPath, setNewPath] = useState("");
   const [createOutput, setCreateOutput] = useState<string | null>(null);
 
@@ -182,20 +183,38 @@ export function SystemView() {
                         </span>
                       </td>
                       <td className="px-3 py-2.5">
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`"${b.name}" 배럭을 레지스트리에서 제거할까요?\n(파일은 삭제되지 않습니다. aib init으로 다시 등록 가능)`)) return;
-                            try {
-                              await invoke<string>("remove_barrack", { path: b.path });
-                              await fetchBarracks();
-                            } catch (e) {
-                              alert(`제거 실패: ${e}`);
-                            }
-                          }}
-                          className="text-[11px] text-cc-text-muted hover:text-cc-danger transition-colors"
-                        >
-                          Remove
-                        </button>
+                        {confirmRemove === b.path ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await invoke<string>("remove_barrack", { path: b.path });
+                                  setConfirmRemove(null);
+                                  await fetchBarracks();
+                                } catch (e) {
+                                  setResults([{ path: b.path, success: false, output: String(e) }]);
+                                  setConfirmRemove(null);
+                                }
+                              }}
+                              className="text-[11px] text-cc-danger font-medium"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setConfirmRemove(null)}
+                              className="text-[11px] text-cc-text-muted"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmRemove(b.path)}
+                            className="text-[11px] text-cc-text-muted hover:text-cc-danger transition-colors"
+                          >
+                            Remove
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
