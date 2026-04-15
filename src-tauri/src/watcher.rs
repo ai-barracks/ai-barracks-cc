@@ -1,8 +1,9 @@
 use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
 
@@ -76,8 +77,10 @@ pub fn start_periodic_checks(app: AppHandle) {
         // Wait 10 seconds before first check to let app initialize
         thread::sleep(Duration::from_secs(10));
 
+        let mut notified_sessions: HashMap<String, Instant> = HashMap::new();
+
         loop {
-            check_stale_sessions(&app);
+            check_stale_sessions(&app, &mut notified_sessions);
             check_sync_needed(&app);
 
             thread::sleep(Duration::from_secs(30));
@@ -85,13 +88,15 @@ pub fn start_periodic_checks(app: AppHandle) {
     });
 }
 
-fn check_stale_sessions(app: &AppHandle) {
+fn check_stale_sessions(app: &AppHandle, notified: &mut HashMap<String, Instant>) {
     let registry_path = dirs::home_dir()
         .unwrap_or_default()
         .join(".aib")
         .join("barracks.json");
 
     let paths = read_barrack_paths(&registry_path);
+    let mut seen_keys = HashSet::new();
+    let suppress_duration = Duration::from_secs(3600); // 1 hour
 
     for barrack_path in &paths {
         let sessions_md = PathBuf::from(barrack_path).join("SESSIONS.md");
@@ -99,6 +104,11 @@ fn check_stale_sessions(app: &AppHandle) {
             Ok(c) => c,
             Err(_) => continue,
         };
+
+        let barrack_name = PathBuf::from(barrack_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
 
         // Parse active sessions from SESSIONS.md table
         for line in content.lines() {
@@ -115,6 +125,14 @@ fn check_stale_sessions(app: &AppHandle) {
                 continue;
             }
 
+            let client = cols.get(2).map(|c| c.trim()).unwrap_or("Unknown");
+            let task_raw = cols.get(5).map(|c| c.trim()).unwrap_or("");
+            let task = if task_raw.is_empty() || task_raw == "(starting)" {
+                "(no task recorded)"
+            } else {
+                task_raw
+            };
+
             // Check session file modification time
             let session_file = PathBuf::from(barrack_path)
                 .join("sessions")
@@ -124,26 +142,35 @@ fn check_stale_sessions(app: &AppHandle) {
                     let elapsed = modified.elapsed().unwrap_or_default();
                     if elapsed > Duration::from_secs(7200) {
                         // 2 hours
-                        let barrack_name = PathBuf::from(barrack_path)
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_default();
+                        let key = format!("{}:{}", barrack_path, session_id);
+                        seen_keys.insert(key.clone());
+
+                        // Suppress if already notified within the last hour
+                        if let Some(last) = notified.get(&key) {
+                            if last.elapsed() < suppress_duration {
+                                continue;
+                            }
+                        }
+
                         let hours = elapsed.as_secs() / 3600;
                         let _ = app
                             .notification()
                             .builder()
-                            .title("Stale Agent Detected")
+                            .title(&format!("Stale: {}", barrack_name))
                             .body(format!(
-                                "{} in {} — {}h inactive",
-                                session_id, barrack_name, hours
+                                "{} idle {}h — {}",
+                                client, hours, task
                             ))
                             .show();
-                        break; // One notification per barrack per cycle
+                        notified.insert(key, Instant::now());
                     }
                 }
             }
         }
     }
+
+    // Clean up entries for sessions that are no longer stale
+    notified.retain(|k, _| seen_keys.contains(k));
 }
 
 fn check_sync_needed(app: &AppHandle) {
