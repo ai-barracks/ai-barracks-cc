@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAppStore } from "../../stores/appStore";
+import { useTerminalStore } from "../../stores/terminalStore";
 import type { WikiIndex } from "../../types";
 
 export function WikiTab() {
@@ -49,9 +50,26 @@ export function WikiTab() {
     <div className="flex h-full">
       {/* Topic list */}
       <div className="w-64 min-w-[256px] border-r border-cc-border p-4">
-        <h3 className="text-xs font-medium text-cc-text-muted mb-3 uppercase tracking-wider">
-          Topics ({wikiIndex.topics.length})
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-medium text-cc-text-muted uppercase tracking-wider">
+            Topics ({wikiIndex.topics.length})
+          </h3>
+          <button
+            onClick={() => {
+              if (selectedBarrack) {
+                useTerminalStore.getState().addSession({
+                  id: crypto.randomUUID(),
+                  title: `Wiki Lint - ${selectedBarrack.name}`,
+                  cwd: selectedBarrack.path,
+                  initialCommand: "/opt/homebrew/bin/aib wiki lint",
+                });
+              }
+            }}
+            className="text-[10px] px-2 py-0.5 text-cc-accent border border-cc-accent/30 rounded hover:bg-cc-accent/10 transition-colors"
+          >
+            Lint
+          </button>
+        </div>
 
         {wikiIndex.topics.length > 0 ? (
           <div className="space-y-2">

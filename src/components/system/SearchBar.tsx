@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useAppStore } from "../../stores/appStore";
+import { useTerminalStore } from "../../stores/terminalStore";
 import type { SearchResult } from "../../types";
 
 const SOURCE_STYLES: Record<string, string> = {
@@ -70,9 +72,26 @@ export function SearchBar() {
       {isOpen && (
         <div className="absolute left-3 right-3 top-full mt-1 bg-cc-panel border border-cc-border rounded-lg shadow-cc max-h-80 overflow-y-auto z-50">
           {results.map((r, i) => (
-            <div
+            <button
               key={i}
-              className="px-3 py-2 border-b border-cc-border last:border-0 hover:bg-cc-card-hover transition-colors"
+              onClick={() => {
+                // Select the matching barrack
+                const barracks = useAppStore.getState().barracks;
+                const match = barracks.find((b) => b.name === r.barrack || b.path.endsWith(r.barrack));
+                if (match) {
+                  useAppStore.getState().selectBarrack(match);
+                }
+                // Open file in terminal
+                useTerminalStore.getState().addSession({
+                  id: crypto.randomUUID(),
+                  title: `${r.source}: ${r.title}`,
+                  cwd: r.file_path.substring(0, r.file_path.lastIndexOf("/")),
+                  initialCommand: `cat '${r.file_path}' | grep -n -C 2 '${query.replace(/'/g, "'\\''")}'`,
+                });
+                setIsOpen(false);
+                setQuery("");
+              }}
+              className="w-full text-left px-3 py-2 border-b border-cc-border last:border-0 hover:bg-cc-card-hover transition-colors"
             >
               <div className="flex items-center gap-2 mb-0.5">
                 <span
@@ -90,7 +109,7 @@ export function SearchBar() {
               <p className="text-[11px] text-cc-text-dim truncate">
                 {r.snippet}
               </p>
-            </div>
+            </button>
           ))}
         </div>
       )}

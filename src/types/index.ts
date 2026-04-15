@@ -108,3 +108,31 @@ export interface GitLogEntry {
 }
 
 export type TabType = "overview" | "files" | "sessions" | "wiki" | "git";
+
+export interface TerminalSession {
+  id: string;
+  title: string;
+  barrackPath?: string;
+  client?: string;
+  cwd?: string;
+  initialCommand?: string;
+}
+
+export interface TerminalSettings {
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  cursorStyle: "block" | "underline" | "bar";
+}
+
+export interface LaunchCommand {
+  cwd: string;
+  command: string;
+}
+
+export interface QuickCommand {
+  id: string;
+  label: string;
+  command: string;
+  cwd?: string;
+}

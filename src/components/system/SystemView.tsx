@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
+import { useTerminalStore } from "../../stores/terminalStore";
 import type { SyncResult } from "../../types";
 
 export function SystemView() {
@@ -107,6 +108,26 @@ export function SystemView() {
               {syncing
                 ? "Syncing..."
                 : `Sync ${selected.size > 0 ? `(${selected.size})` : ""}`}
+            </button>
+            <button
+              onClick={() => {
+                if (selected.size === 0) return;
+                const aib = "/opt/homebrew/bin/aib";
+                const paths = Array.from(selected);
+                const syncCmd = paths.map((p) => {
+                  const name = p.split("/").pop();
+                  return `echo '\\n=== ${name} ===' && ${aib} sync '${p}'`;
+                }).join(" && ");
+                useTerminalStore.getState().addSession({
+                  id: crypto.randomUUID(),
+                  title: `Sync ${paths.length} barracks`,
+                  initialCommand: syncCmd,
+                });
+              }}
+              disabled={selected.size === 0}
+              className="text-[12px] px-3 py-1.5 bg-cc-panel border border-cc-border rounded-md hover:border-cc-accent/40 transition-colors text-cc-text-dim disabled:opacity-40"
+            >
+              Sync in Terminal
             </button>
             {outdated.length > 0 && (
               <button

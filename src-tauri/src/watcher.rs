@@ -153,6 +153,18 @@ fn check_stale_sessions(app: &AppHandle, notified: &mut HashMap<String, Instant>
                         }
 
                         let hours = elapsed.as_secs() / 3600;
+
+                        // Emit in-app event with actionable data
+                        let _ = app.emit("stale-session", serde_json::json!({
+                            "barrack_path": barrack_path,
+                            "barrack_name": barrack_name,
+                            "session_id": session_id,
+                            "client": client,
+                            "task": task,
+                            "hours": hours,
+                        }));
+
+                        // Also show system notification
                         let _ = app
                             .notification()
                             .builder()
@@ -210,6 +222,12 @@ fn check_sync_needed(app: &AppHandle) {
     }
 
     if outdated_count > 0 {
+        // Emit in-app event with actionable data
+        let _ = app.emit("sync-needed", serde_json::json!({
+            "outdated_count": outdated_count,
+            "cli_version": cli_version,
+        }));
+
         let _ = app
             .notification()
             .builder()

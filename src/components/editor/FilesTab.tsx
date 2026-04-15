@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAppStore } from "../../stores/appStore";
+import { useTerminalStore } from "../../stores/terminalStore";
 import { RulesEditor } from "./RulesEditor";
 import { YamlFormEditor } from "./YamlFormEditor";
 import { SoulFormEditor } from "./SoulFormEditor";
@@ -86,6 +87,13 @@ export function FilesTab() {
       });
       setHasChanges(false);
       setSaveMessage("저장 완료");
+      // Auto-validate with aib sync --dry-run
+      useTerminalStore.getState().addSession({
+        id: crypto.randomUUID(),
+        title: `Validate - ${selectedFile.name}`,
+        cwd: selectedBarrack!.path,
+        initialCommand: `/opt/homebrew/bin/aib sync --dry-run '${selectedBarrack!.path}'`,
+      });
       // Refresh file list + barrack data (Overview reflects changes)
       const result = await invoke<FileInfo[]>("get_barrack_files", {
         barrackPath: selectedBarrack!.path,

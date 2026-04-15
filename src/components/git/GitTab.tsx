@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
+import { useTerminalStore } from "../../stores/terminalStore";
 import type { GitStatus, GitLogEntry } from "../../types";
 
 function RemoteLink({ url }: { url: string }) {
@@ -25,6 +26,7 @@ function RemoteLink({ url }: { url: string }) {
 
 export function GitTab() {
   const { selectedBarrack } = useAppStore();
+  const addTerminal = useTerminalStore((s) => s.addSession);
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [log, setLog] = useState<GitLogEntry[]>([]);
   const [commitMsg, setCommitMsg] = useState("");
@@ -142,7 +144,20 @@ export function GitTab() {
           )}
         </div>
 
-        <div className="bg-cc-panel border border-cc-border rounded-lg p-4 shadow-cc">
+        <button
+          onClick={() => {
+            if (totalChanges > 0 && selectedBarrack) {
+              addTerminal({
+                id: crypto.randomUUID(),
+                title: `diff - ${selectedBarrack.name}`,
+                cwd: status.git_root || selectedBarrack.path,
+                initialCommand: "git diff --stat && echo '---' && git diff",
+              });
+            }
+          }}
+          disabled={totalChanges === 0}
+          className="bg-cc-panel border border-cc-border rounded-lg p-4 shadow-cc text-left hover:border-cc-accent/40 transition-colors disabled:cursor-default"
+        >
           <div className="text-[11px] text-cc-text-muted uppercase tracking-wider mb-1">
             Changes
           </div>
@@ -170,9 +185,10 @@ export function GitTab() {
                   {status.untracked_files} untracked
                 </span>
               )}
+              <div className="text-[10px] text-cc-accent mt-1">Click to view diff</div>
             </div>
           )}
-        </div>
+        </button>
 
         <div className="bg-cc-panel border border-cc-border rounded-lg p-4 shadow-cc">
           <div className="text-[11px] text-cc-text-muted uppercase tracking-wider mb-1">
@@ -253,6 +269,77 @@ export function GitTab() {
         </div>
       )}
 
+      {/* Interactive Git Actions */}
+      <div className="mb-6">
+        <h3 className="text-[11px] text-cc-text-muted uppercase tracking-wider mb-2 font-medium">
+          Terminal Actions
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              if (selectedBarrack) {
+                addTerminal({
+                  id: crypto.randomUUID(),
+                  title: `git status - ${selectedBarrack.name}`,
+                  cwd: status.git_root || selectedBarrack.path,
+                  initialCommand: "git status",
+                });
+              }
+            }}
+            className="text-[11px] px-2.5 py-1 bg-cc-panel border border-cc-border rounded hover:border-cc-accent/40 transition-colors text-cc-text-dim"
+          >
+            git status
+          </button>
+          {totalChanges > 0 && (
+            <button
+              onClick={() => {
+                if (selectedBarrack) {
+                  addTerminal({
+                    id: crypto.randomUUID(),
+                    title: `git add -p`,
+                    cwd: status.git_root || selectedBarrack.path,
+                    initialCommand: "git add -p",
+                  });
+                }
+              }}
+              className="text-[11px] px-2.5 py-1 bg-cc-panel border border-cc-border rounded hover:border-cc-accent/40 transition-colors text-cc-text-dim"
+            >
+              git add -p
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (selectedBarrack) {
+                addTerminal({
+                  id: crypto.randomUUID(),
+                  title: `git graph`,
+                  cwd: status.git_root || selectedBarrack.path,
+                  initialCommand: "git log --graph --oneline --all -20",
+                });
+              }
+            }}
+            className="text-[11px] px-2.5 py-1 bg-cc-panel border border-cc-border rounded hover:border-cc-accent/40 transition-colors text-cc-text-dim"
+          >
+            git graph
+          </button>
+          <button
+            onClick={() => {
+              if (selectedBarrack) {
+                addTerminal({
+                  id: crypto.randomUUID(),
+                  title: `git stash`,
+                  cwd: status.git_root || selectedBarrack.path,
+                  initialCommand: "git stash list",
+                });
+              }
+            }}
+            className="text-[11px] px-2.5 py-1 bg-cc-panel border border-cc-border rounded hover:border-cc-accent/40 transition-colors text-cc-text-dim"
+          >
+            git stash
+          </button>
+        </div>
+      </div>
+
       {/* Log */}
       <div>
         <h3 className="text-[11px] text-cc-text-muted uppercase tracking-wider mb-2 font-medium">
@@ -260,9 +347,19 @@ export function GitTab() {
         </h3>
         <div className="border border-cc-border rounded-lg overflow-hidden shadow-cc">
           {log.map((entry) => (
-            <div
+            <button
               key={entry.hash}
-              className="flex items-center gap-3 px-4 py-2 border-b border-cc-border last:border-0 hover:bg-cc-card-hover transition-colors"
+              onClick={() => {
+                if (selectedBarrack) {
+                  addTerminal({
+                    id: crypto.randomUUID(),
+                    title: `${entry.hash} - ${entry.message.slice(0, 20)}`,
+                    cwd: status.git_root || selectedBarrack.path,
+                    initialCommand: `git show ${entry.hash}`,
+                  });
+                }
+              }}
+              className="flex items-center gap-3 px-4 py-2 border-b border-cc-border last:border-0 hover:bg-cc-card-hover transition-colors w-full text-left"
             >
               <span className="text-[11px] font-mono text-cc-accent w-14 shrink-0">
                 {entry.hash}
@@ -273,7 +370,7 @@ export function GitTab() {
               <span className="text-[11px] text-cc-text-muted shrink-0">
                 {entry.date}
               </span>
-            </div>
+            </button>
           ))}
           {log.length === 0 && (
             <div className="px-4 py-6 text-center text-[12px] text-cc-text-muted">

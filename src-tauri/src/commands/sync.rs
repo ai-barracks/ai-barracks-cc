@@ -114,6 +114,41 @@ pub fn refresh_barracks() -> Result<String, String> {
     }
 }
 
+#[derive(serde::Serialize)]
+pub struct LaunchCommand {
+    pub cwd: String,
+    pub command: String,
+}
+
+#[tauri::command]
+pub fn get_launch_command(
+    barrack_path: String,
+    client: String,
+    skip_permissions: bool,
+) -> Result<LaunchCommand, String> {
+    let aib = aib_path();
+    let skip_flag = if skip_permissions { " --skip-permissions" } else { "" };
+    let command = format!("{} start {}{}", aib, client, skip_flag);
+    Ok(LaunchCommand { cwd: barrack_path, command })
+}
+
+#[tauri::command]
+pub fn get_continue_command(
+    barrack_path: String,
+    client: String,
+    session_id: String,
+    skip_permissions: bool,
+) -> Result<LaunchCommand, String> {
+    let aib = aib_path();
+    let skip_flag = if skip_permissions { " --skip-permissions" } else { "" };
+    let continue_prompt = format!(
+        "이전 세션 {}의 작업을 이어서 진행해주세요. sessions/{}.md 파일을 읽고 작업을 계속하세요.",
+        session_id, session_id
+    );
+    let command = format!("{} start {}{} '{}'", aib, client, skip_flag, continue_prompt);
+    Ok(LaunchCommand { cwd: barrack_path, command })
+}
+
 #[tauri::command]
 pub fn launch_session(barrack_path: String, client: String, skip_permissions: bool) -> Result<(), String> {
     let aib = aib_path();

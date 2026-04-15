@@ -33,7 +33,7 @@ export function MainContent() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-cc-bg">
+    <div className="flex-1 flex flex-col overflow-hidden bg-cc-bg min-w-0">
       {/* Tab bar */}
       <div className="flex items-center gap-1 border-b border-cc-border px-4 h-10 shrink-0">
         {TABS.map((tab) => (

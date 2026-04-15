@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "../../stores/appStore";
-import type { SessionInfo, SessionDetail } from "../../types";
+import { useTerminalStore } from "../../stores/terminalStore";
+import type { SessionInfo, SessionDetail, LaunchCommand } from "../../types";
 
 const CLIENT_BADGES: Record<string, string> = {
   "Claude Code": "bg-orange-500/15 text-orange-400 border-orange-500/20",
@@ -26,15 +28,20 @@ function SessionCard({
   isExpanded,
   onToggle,
   onContinue,
+  onViewInTerminal,
+  onMonitor,
   detail,
 }: {
   session: SessionInfo;
   isExpanded: boolean;
   onToggle: () => void;
   onContinue: () => void;
+  onViewInTerminal: () => void;
+  onMonitor: () => void;
   detail: SessionDetail | null;
 }) {
   const canContinue = session.status === "completed" || session.status === "interrupted";
+  const isActive = session.status === "active";
 
   return (
     <div className="rounded-lg overflow-hidden border border-cc-border shadow-cc">
@@ -61,6 +68,22 @@ function SessionCard({
           <div className="flex items-center gap-1.5 mt-1 text-[11px] text-cc-text-muted">
             <span>{session.started}</span>
           </div>
+        </button>
+        {isActive && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onMonitor(); }}
+            className="px-2 border-l border-cc-border text-[11px] text-cc-success hover:bg-cc-success/10 transition-colors shrink-0 font-medium"
+            title="실시간 세션 모니터링"
+          >
+            Monitor
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onViewInTerminal(); }}
+          className="px-2 border-l border-cc-border text-[11px] text-cc-text-muted hover:text-cc-text hover:bg-cc-card-hover transition-colors shrink-0"
+          title="터미널에서 세션 파일 보기"
+        >
+          View
         </button>
         {canContinue && (
           <button
@@ -173,6 +196,11 @@ export function SessionsTab() {
 
   useEffect(() => {
     loadSessions();
+    // Auto-refresh when session files change
+    const unlisten = listen("file-changed", () => {
+      loadSessions();
+    });
+    return () => { unlisten.then((fn) => fn()); };
   }, [loadSessions]);
 
   const handleToggle = async (id: string) => {
@@ -196,14 +224,22 @@ export function SessionsTab() {
 
   const handleContinue = async (session: SessionInfo) => {
     if (!selectedBarrack) return;
-    // Detect client key from display name
     const clientKey = session.client.toLowerCase().split(" ")[0]; // "Claude Code" → "claude"
     try {
-      await invoke("continue_session", {
+      const cmd = await invoke<LaunchCommand>("get_continue_command", {
         barrackPath: selectedBarrack.path,
         client: clientKey,
         sessionId: session.id,
         skipPermissions: false,
+      });
+      const termStore = useTerminalStore.getState();
+      termStore.addSession({
+        id: crypto.randomUUID(),
+        title: `${session.client.split(" ")[0]} - Continue ${session.id}`,
+        barrackPath: selectedBarrack.path,
+        client: clientKey,
+        cwd: cmd.cwd,
+        initialCommand: cmd.command,
       });
     } catch (e) {
       alert(`Continue 실패: ${e}`);
@@ -268,6 +304,27 @@ export function SessionsTab() {
             isExpanded={expandedId === session.id}
             onToggle={() => handleToggle(session.id)}
             onContinue={() => handleContinue(session)}
+            onViewInTerminal={() => {
+              if (!selectedBarrack) return;
+              const sessionFile = `${selectedBarrack.path}/sessions/${session.id}.md`;
+              const violationFile = `${selectedBarrack.path}/sessions/${session.id}.violations`;
+              useTerminalStore.getState().addSession({
+                id: crypto.randomUUID(),
+                title: `Session - ${session.id}`,
+                cwd: selectedBarrack.path,
+                initialCommand: `cat '${sessionFile}' && [ -f '${violationFile}' ] && echo '\\n=== VIOLATIONS ===' && cat '${violationFile}' || true`,
+              });
+            }}
+            onMonitor={() => {
+              if (!selectedBarrack) return;
+              const sessionFile = `${selectedBarrack.path}/sessions/${session.id}.md`;
+              useTerminalStore.getState().addSession({
+                id: crypto.randomUUID(),
+                title: `Monitor - ${session.id}`,
+                cwd: selectedBarrack.path,
+                initialCommand: `echo '=== Monitoring ${session.id} ===' && echo 'Refreshes every 3s. Ctrl+C to stop.' && echo '' && while true; do clear; echo '=== ${session.id} ===' && tail -30 '${sessionFile}'; sleep 3; done`,
+              });
+            }}
             detail={details[session.id] ?? null}
           />
         ))}

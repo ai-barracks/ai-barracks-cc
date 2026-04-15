@@ -1,32 +1,79 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "./stores/appStore";
+import { useNotificationStore } from "./stores/notificationStore";
 import { Sidebar } from "./components/layout/Sidebar";
 import { MainContent } from "./components/layout/MainContent";
+import { TerminalPanel } from "./components/terminal/TerminalPanel";
+import { NotificationToast } from "./components/system/NotificationToast";
+import { CommandPalette } from "./components/system/CommandPalette";
+
+interface StaleSessionPayload {
+  barrack_path: string;
+  barrack_name: string;
+  session_id: string;
+  client: string;
+  task: string;
+  hours: number;
+}
+
+interface SyncNeededPayload {
+  outdated_count: number;
+  cli_version: string;
+}
 
 function App() {
   const { fetchBarracks, fetchCliVersion } = useAppStore();
+  const addNotification = useNotificationStore((s) => s.addNotification);
 
   useEffect(() => {
+    // Clean up orphaned PTY sessions from previous webview (e.g. reload)
+    invoke("terminal_close_all").catch(() => {});
+
     fetchBarracks();
     fetchCliVersion();
     const saved = localStorage.getItem("cc-theme") ?? "dark";
     document.documentElement.setAttribute("data-theme", saved);
 
-    // Listen for file changes from Rust watcher
-    const unlisten = listen("file-changed", () => {
+    const unlistenFile = listen("file-changed", () => {
       fetchBarracks();
     });
 
+    const unlistenStale = listen<StaleSessionPayload>("stale-session", (event) => {
+      const d = event.payload;
+      addNotification({
+        type: "stale-session",
+        title: `Stale: ${d.barrack_name}`,
+        body: `${d.client} idle ${d.hours}h — ${d.task}`,
+        data: d as unknown as Record<string, unknown>,
+      });
+    });
+
+    const unlistenSync = listen<SyncNeededPayload>("sync-needed", (event) => {
+      const d = event.payload;
+      addNotification({
+        type: "sync-needed",
+        title: "Sync Required",
+        body: `${d.outdated_count} barrack(s) need sync to v${d.cli_version}`,
+        data: d as unknown as Record<string, unknown>,
+      });
+    });
+
     return () => {
-      unlisten.then((fn) => fn());
+      unlistenFile.then((fn) => fn());
+      unlistenStale.then((fn) => fn());
+      unlistenSync.then((fn) => fn());
     };
-  }, [fetchBarracks, fetchCliVersion]);
+  }, [fetchBarracks, fetchCliVersion, addNotification]);
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <MainContent />
+      <TerminalPanel />
+      <NotificationToast />
+      <CommandPalette />
     </div>
   );
 }

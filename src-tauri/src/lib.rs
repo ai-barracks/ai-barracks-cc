@@ -1,7 +1,7 @@
 mod commands;
 mod watcher;
 
-use commands::{barracks, files, git, search, sessions, sync, wiki};
+use commands::{barracks, files, git, search, sessions, sync, terminal, wiki};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
@@ -24,6 +24,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .manage(terminal::TerminalManager::new())
         .invoke_handler(tauri::generate_handler![
             barracks::get_barracks,
             barracks::get_cli_version,
@@ -48,6 +49,13 @@ pub fn run() {
             git::get_git_log,
             git::git_commit,
             git::git_push,
+            sync::get_launch_command,
+            sync::get_continue_command,
+            terminal::terminal_create,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_close,
+            terminal::terminal_close_all,
         ])
         .setup(|app| {
             // --- System Tray ---
@@ -69,6 +77,8 @@ pub fn run() {
                         }
                     }
                     "quit" => {
+                        let manager = app.state::<terminal::TerminalManager>();
+                        manager.close_all_sync();
                         app.exit(0);
                     }
                     _ => {}

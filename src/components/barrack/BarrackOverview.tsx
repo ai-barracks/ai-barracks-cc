@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
+import { useTerminalStore } from "../../stores/terminalStore";
+import type { LaunchCommand } from "../../types";
 
 function StatCard({
   label,
@@ -36,9 +38,7 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 export function BarrackOverview() {
-  const { selectedBarrack, cliVersion, fetchBarracks, openConfigFile } = useAppStore();
-  const [syncing, setSyncing] = useState(false);
-  const [syncOutput, setSyncOutput] = useState<string | null>(null);
+  const { selectedBarrack, cliVersion, openConfigFile } = useAppStore();
   const [launching, setLaunching] = useState(false);
   const [skipPermissions, setSkipPermissions] = useState(false);
 
@@ -49,30 +49,32 @@ export function BarrackOverview() {
   const totalRules =
     b.rules_count.must_always + b.rules_count.must_never + b.rules_count.learned;
 
-  const handleSync = async () => {
-    setSyncing(true);
-    setSyncOutput(null);
-    try {
-      const output = await invoke<string>("sync_barrack", {
-        barrackPath: b.path,
-        dryRun: false,
-      });
-      setSyncOutput(output);
-      await fetchBarracks();
-    } catch (e) {
-      setSyncOutput(`Error: ${e}`);
-    } finally {
-      setSyncing(false);
-    }
+  const handleSync = () => {
+    const aib = "/opt/homebrew/bin/aib";
+    useTerminalStore.getState().addSession({
+      id: crypto.randomUUID(),
+      title: `Sync - ${b.name}`,
+      cwd: b.path,
+      initialCommand: `${aib} sync --dry-run '${b.path}' && echo '\\n--- Press enter to apply ---' && read && ${aib} sync '${b.path}'`,
+    });
   };
 
   const handleLaunch = async (client: string) => {
     setLaunching(true);
     try {
-      await invoke("launch_session", {
+      const cmd = await invoke<LaunchCommand>("get_launch_command", {
         barrackPath: b.path,
         client,
         skipPermissions,
+      });
+      const termStore = useTerminalStore.getState();
+      termStore.addSession({
+        id: crypto.randomUUID(),
+        title: `${client.charAt(0).toUpperCase() + client.slice(1)} - ${b.name}`,
+        barrackPath: b.path,
+        client,
+        cwd: cmd.cwd,
+        initialCommand: cmd.command,
       });
     } catch (e) {
       alert(`세션 실행 실패: ${e}`);
@@ -99,10 +101,9 @@ export function BarrackOverview() {
           {isOutdated && (
             <button
               onClick={handleSync}
-              disabled={syncing}
-              className="text-xs px-3 py-1 bg-cc-accent hover:bg-cc-accent-dim text-white rounded transition-colors disabled:opacity-50"
+              className="text-xs px-3 py-1 bg-cc-accent hover:bg-cc-accent-dim text-white rounded transition-colors"
             >
-              {syncing ? "Syncing..." : `Sync to v${cliVersion}`}
+              Sync to v{cliVersion}
             </button>
           )}
         </div>
@@ -203,17 +204,46 @@ export function BarrackOverview() {
         </div>
       </div>
 
-      {/* Sync output */}
-      {syncOutput && (
-        <div className="bg-cc-panel border border-cc-border rounded-lg p-4">
-          <h3 className="text-xs font-medium text-cc-text-muted mb-2">
-            Sync Output
-          </h3>
-          <pre className="text-xs text-cc-text-dim whitespace-pre-wrap font-mono">
-            {syncOutput}
-          </pre>
+      {/* Barrack Terminal + Council */}
+      <div className="mb-6">
+        <h3 className="text-xs font-medium text-cc-text-muted mb-2 uppercase tracking-wider">
+          Terminal
+        </h3>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              useTerminalStore.getState().addSession({
+                id: crypto.randomUUID(),
+                title: b.name,
+                barrackPath: b.path,
+                cwd: b.path,
+                initialCommand: "/opt/homebrew/bin/aib status",
+              });
+            }}
+            className="px-4 py-2 text-sm bg-cc-panel border border-cc-border rounded-lg hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors"
+          >
+            Open Terminal
+          </button>
+          <button
+            onClick={() => {
+              const topic = prompt("Council 토론 주제를 입력하세요:");
+              if (topic) {
+                useTerminalStore.getState().addSession({
+                  id: crypto.randomUUID(),
+                  title: `Council - ${topic.slice(0, 20)}`,
+                  barrackPath: b.path,
+                  cwd: b.path,
+                  initialCommand: `/opt/homebrew/bin/aib council "${topic}"`,
+                });
+              }
+            }}
+            className="px-4 py-2 text-sm bg-cc-panel border border-cc-border rounded-lg hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors"
+          >
+            Council
+          </button>
         </div>
-      )}
+      </div>
+
     </div>
   );
 }
