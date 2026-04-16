@@ -38,6 +38,9 @@ function App() {
       fetchBarracks();
     });
 
+    // Polling fallback: sidebar barrack counts (active sessions, etc.)
+    const poll = setInterval(fetchBarracks, 10000);
+
     const unlistenStale = listen<StaleSessionPayload>("stale-session", (event) => {
       const d = event.payload;
       addNotification({
@@ -62,6 +65,7 @@ function App() {
       unlistenFile.then((fn) => fn());
       unlistenStale.then((fn) => fn());
       unlistenSync.then((fn) => fn());
+      clearInterval(poll);
     };
   }, [fetchBarracks, fetchCliVersion, addNotification]);
 

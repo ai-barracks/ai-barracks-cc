@@ -35,7 +35,12 @@ export function SessionsTab() {
   useEffect(() => {
     loadSessions();
     const unlisten = listen("file-changed", () => loadSessions());
-    return () => { unlisten.then((fn) => fn()); };
+    // Polling fallback: FSEvents on macOS can miss file creation events
+    const poll = setInterval(loadSessions, 5000);
+    return () => {
+      unlisten.then((fn) => fn());
+      clearInterval(poll);
+    };
   }, [loadSessions]);
 
   const handleToggle = async (id: string) => {
@@ -139,7 +144,7 @@ export function SessionsTab() {
   const filtered = sessions.filter((s) => {
     if (clientFilter !== "all" && s.client !== clientFilter) return false;
     if (statusFilter !== "all" && s.status !== statusFilter) return false;
-    if (hidePending && (!s.task || s.task === "(pending)")) return false;
+    if (hidePending && s.status !== "active" && (!s.task || s.task === "(pending)")) return false;
     return true;
   });
 
