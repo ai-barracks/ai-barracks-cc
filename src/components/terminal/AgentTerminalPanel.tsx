@@ -94,49 +94,47 @@ export function AgentTerminalPanel() {
   // Panel visible only when on Agents tab AND current barrack has terminals
   const showPanel = isVisible && hasTerminals;
 
-  return (
-    <>
-      {/* Terminal panel — only when there are active terminals */}
-      {showPanel && (
-        <div className="flex flex-row flex-shrink-0" style={{ width: panelWidth }}>
-          {/* Resize handle */}
-          <div
-            onMouseDown={handleMouseDown}
-            className="w-1 cursor-col-resize bg-cc-border hover:bg-cc-accent transition-colors flex-shrink-0"
-          />
+  // No sessions at all → nothing to keep alive
+  if (sessions.length === 0) return null;
 
-          {/* Terminal container */}
-          <div className="flex flex-col flex-1 overflow-hidden bg-cc-bg border-l border-cc-border">
-            <TerminalTabBar
-              barrackPath={bp}
-              sessions={barrackSessions}
-              activeTerminalId={activeTerminalId}
-            />
-            <div className="flex-1 relative overflow-hidden">
-              {sessions.map((s) => (
-                <XTermInstance
-                  key={s.id}
-                  session={s}
-                  visible={s.id === activeTerminalId && s.barrackPath === bp}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
+  // Single render tree: XTermInstances never unmount/remount when showPanel toggles.
+  // When hidden, the wrapper moves off-screen; when visible, it joins the flex layout.
+  return (
+    <div
+      className={showPanel ? "flex flex-row flex-shrink-0" : undefined}
+      style={
+        showPanel
+          ? { width: panelWidth }
+          : { position: "fixed", left: -9999, top: -9999, width: 1, height: 1, overflow: "hidden" }
+      }
+    >
+      {/* Resize handle — only when panel is visible */}
+      {showPanel && (
+        <div
+          onMouseDown={handleMouseDown}
+          className="w-1 cursor-col-resize bg-cc-border hover:bg-cc-accent transition-colors flex-shrink-0"
+        />
       )}
 
-      {/* Hidden XTerm instances for PTY persistence when panel is not shown */}
-      {!showPanel && sessions.length > 0 && (
-        <div style={{ position: "fixed", left: -9999, top: -9999, width: 1, height: 1, overflow: "hidden" }}>
+      {/* Terminal container */}
+      <div className={showPanel ? "flex flex-col flex-1 overflow-hidden bg-cc-bg border-l border-cc-border" : undefined}>
+        {showPanel && (
+          <TerminalTabBar
+            barrackPath={bp}
+            sessions={barrackSessions}
+            activeTerminalId={activeTerminalId}
+          />
+        )}
+        <div className={showPanel ? "flex-1 relative overflow-hidden" : undefined}>
           {sessions.map((s) => (
             <XTermInstance
               key={s.id}
               session={s}
-              visible={false}
+              visible={showPanel && s.id === activeTerminalId && s.barrackPath === bp}
             />
           ))}
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }
