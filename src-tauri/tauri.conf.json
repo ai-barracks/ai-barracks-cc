@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicegui/nicegui/tauri-v2/tauri.conf.json",
   "productName": "AI Barracks CommandCenter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.aibarracks.commandcenter",
   "build": {
     "frontendDist": "../dist",
