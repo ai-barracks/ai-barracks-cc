@@ -79,9 +79,11 @@ interface UseTerminalOptions {
   initialCommand?: string;
   visible?: boolean;
   onExit?: (code?: number | null) => void;
+  /** If set, reconnect to existing PTY instead of creating a new one */
+  reconnectTerminalId?: string;
 }
 
-export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visible, onExit }: UseTerminalOptions) {
+export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visible, onExit, reconnectTerminalId }: UseTerminalOptions) {
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalIdRef = useRef<string | null>(null);
@@ -133,9 +135,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     fitAddonRef.current = fitAddon;
     isDisposedRef.current = false;
 
-    // Fit after DOM is ready, THEN create PTY with correct initial size.
-    // This ensures the PTY never starts at the default 80x24 — it gets the
-    // real terminal dimensions from the very first frame.
+    // Fit after DOM is ready, THEN create or reconnect PTY.
     requestAnimationFrame(() => {
       if (isDisposedRef.current) return;
 
@@ -153,19 +153,34 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
         }
       };
 
-      invoke<string>("terminal_create", {
-        onOutput: channel,
-        cwd: cwd ?? null,
-        initialCommand: initialCommand ?? null,
-        cols: term.cols,
-        rows: term.rows,
-      }).then((id) => {
-        if (isDisposedRef.current) {
-          invoke("terminal_close", { terminalId: id });
-          return;
-        }
-        terminalIdRef.current = id;
-      });
+      if (reconnectTerminalId) {
+        // Reconnect to existing PTY
+        invoke<string>("terminal_reconnect", {
+          terminalId: reconnectTerminalId,
+          onOutput: channel,
+        }).then((id) => {
+          if (isDisposedRef.current) return;
+          terminalIdRef.current = id;
+        }).catch(() => {
+          // PTY no longer exists — show message
+          term.write("\r\n\x1b[90m[PTY disconnected — session expired]\x1b[0m\r\n");
+        });
+      } else {
+        // Create new PTY
+        invoke<string>("terminal_create", {
+          onOutput: channel,
+          cwd: cwd ?? null,
+          initialCommand: initialCommand ?? null,
+          cols: term.cols,
+          rows: term.rows,
+        }).then((id) => {
+          if (isDisposedRef.current) {
+            invoke("terminal_close", { terminalId: id });
+            return;
+          }
+          terminalIdRef.current = id;
+        });
+      }
     });
 
     // Handle input
@@ -187,11 +202,9 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     const observer = new ResizeObserver(() => {
       if (isDisposedRef.current) return;
       if (fitTimeout) clearTimeout(fitTimeout);
-      // Wait until drag ends before fitting
       const check = () => {
         if (isDisposedRef.current) return;
         if (useTerminalStore.getState().isResizing) {
-          // Still dragging — retry after a short delay
           fitTimeout = setTimeout(check, 200);
         } else {
           fitAddon.fit();
@@ -221,7 +234,6 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
   // Re-fit when tab becomes visible (display:none → block skips ResizeObserver)
   useEffect(() => {
     if (!visible || !fitAddonRef.current || isDisposedRef.current) return;
-    // setTimeout(0) ensures display:block has been applied before measuring
     const t = setTimeout(() => {
       if (!isDisposedRef.current) fitAddonRef.current?.fit();
     }, 0);

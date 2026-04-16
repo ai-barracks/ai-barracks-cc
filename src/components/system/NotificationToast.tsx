@@ -47,10 +47,13 @@ function NotificationItem({ notification }: { notification: AppNotification }) {
   };
 
   const handleSync = () => {
+    const bp = (notification.data as { barrack_path?: string })?.barrack_path ?? "";
     addSession({
       id: crypto.randomUUID(),
       title: "Sync All",
+      barrackPath: bp,
       initialCommand: `${getAibPath()} barracks list`,
+      source: "terminal",
     });
     dismiss(notification.id);
   };

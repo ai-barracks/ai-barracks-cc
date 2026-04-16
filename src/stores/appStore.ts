@@ -8,6 +8,7 @@ interface AppState {
   barracks: BarrackInfo[];
   selectedBarrack: BarrackInfo | null;
   activeTab: TabType;
+  lastTabPerBarrack: Record<string, TabType>;
   cliVersion: string;
   loading: boolean;
   error: string | null;
@@ -39,6 +40,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   barracks: [],
   selectedBarrack: null,
   activeTab: "overview",
+  lastTabPerBarrack: {},
   cliVersion: "",
   loading: false,
   error: null,
@@ -68,11 +70,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  selectBarrack: (barrack) => set({ selectedBarrack: barrack, activeTab: "overview", pendingConfigFile: null }),
+  selectBarrack: (barrack) => {
+    const lastTab = get().lastTabPerBarrack[barrack.path] ?? "overview";
+    set({ selectedBarrack: barrack, activeTab: lastTab, pendingConfigFile: null });
+  },
   showSystemView: () => set({ selectedBarrack: null, pendingConfigFile: null }),
   openConfigFile: (filename: string) => set({ activeTab: "files", pendingConfigFile: filename }),
   clearPendingConfigFile: () => set({ pendingConfigFile: null }),
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setActiveTab: (tab) => {
+    const bp = get().selectedBarrack?.path;
+    set({
+      activeTab: tab,
+      lastTabPerBarrack: bp
+        ? { ...get().lastTabPerBarrack, [bp]: tab }
+        : get().lastTabPerBarrack,
+    });
+  },
   clearError: () => set({ error: null }),
   toggleTheme: () => {
     const next = get().theme === "dark" ? "light" : "dark";

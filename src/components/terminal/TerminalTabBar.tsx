@@ -2,16 +2,25 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTerminalStore, getBuffer } from "../../stores/terminalStore";
 import { TerminalSettingsPanel } from "./TerminalSettings";
+import type { TerminalSession } from "../../types";
 
-export function TerminalTabBar() {
-  const { sessions, activeTerminalId, setActiveTerminal, removeSession, hidePanel, addSession, addQuickCommand } =
-    useTerminalStore();
+interface TerminalTabBarProps {
+  barrackPath: string;
+  sessions: TerminalSession[];
+  activeTerminalId: string | null;
+}
+
+export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: TerminalTabBarProps) {
+  const { setActiveTerminal, removeSession, addSession, addQuickCommand } = useTerminalStore();
   const [showSettings, setShowSettings] = useState(false);
 
   const handleNewTerminal = () => {
     addSession({
       id: crypto.randomUUID(),
       title: "zsh",
+      barrackPath,
+      cwd: barrackPath,
+      source: "terminal",
     });
   };
 
@@ -28,10 +37,7 @@ export function TerminalTabBar() {
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const filename = `terminal-${session.title.replace(/[^a-zA-Z0-9가-힣_-]/g, "_")}-${timestamp}.txt`;
-
-    const dir = session.barrackPath
-      ? `${session.barrackPath}/sessions`
-      : "/tmp";
+    const dir = `${session.barrackPath}/sessions`;
     const filePath = `${dir}/${filename}`;
 
     try {
@@ -68,13 +74,16 @@ export function TerminalTabBar() {
         {sessions.map((s) => (
           <button
             key={s.id}
-            onClick={() => setActiveTerminal(s.id)}
+            onClick={() => setActiveTerminal(barrackPath, s.id)}
             className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors whitespace-nowrap ${
               activeTerminalId === s.id
                 ? "bg-cc-panel text-cc-text"
                 : "text-cc-text-dim hover:text-cc-text hover:bg-cc-card-hover"
             }`}
           >
+            {s.source && s.source !== "terminal" && (
+              <span className="w-1.5 h-1.5 rounded-full bg-cc-accent inline-block flex-shrink-0" />
+            )}
             <span className="truncate max-w-[100px]">{s.title}</span>
             <span
               onClick={(e) => {
@@ -125,17 +134,9 @@ export function TerminalTabBar() {
         >
           Settings
         </button>
-        <button
-          onClick={hidePanel}
-          className="px-1.5 py-1 text-xs text-cc-text-muted hover:text-cc-text transition-colors"
-          title="Hide Terminal"
-        >
-          Hide
-        </button>
 
         {showSettings && <TerminalSettingsPanel onClose={() => setShowSettings(false)} />}
       </div>
     </div>
   );
 }
-

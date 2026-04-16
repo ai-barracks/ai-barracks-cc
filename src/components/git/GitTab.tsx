@@ -150,8 +150,11 @@ export function GitTab() {
               addTerminal({
                 id: crypto.randomUUID(),
                 title: `diff - ${selectedBarrack.name}`,
+                barrackPath: selectedBarrack.path,
                 cwd: status.git_root || selectedBarrack.path,
                 initialCommand: "git diff --stat && echo '---' && git diff",
+                source: "terminal",
+                autoCloseOnExit: true,
               });
             }
           }}
@@ -281,8 +284,11 @@ export function GitTab() {
                 addTerminal({
                   id: crypto.randomUUID(),
                   title: `git status - ${selectedBarrack.name}`,
+                  barrackPath: selectedBarrack.path,
                   cwd: status.git_root || selectedBarrack.path,
                   initialCommand: "git status",
+                  source: "terminal",
+                  autoCloseOnExit: true,
                 });
               }
             }}
@@ -297,8 +303,10 @@ export function GitTab() {
                   addTerminal({
                     id: crypto.randomUUID(),
                     title: `git add -p`,
+                    barrackPath: selectedBarrack.path,
                     cwd: status.git_root || selectedBarrack.path,
                     initialCommand: "git add -p",
+                    source: "terminal",
                   });
                 }
               }}
@@ -313,8 +321,11 @@ export function GitTab() {
                 addTerminal({
                   id: crypto.randomUUID(),
                   title: `git graph`,
+                  barrackPath: selectedBarrack.path,
                   cwd: status.git_root || selectedBarrack.path,
                   initialCommand: "git log --graph --oneline --all -20",
+                  source: "terminal",
+                  autoCloseOnExit: true,
                 });
               }
             }}
@@ -328,8 +339,11 @@ export function GitTab() {
                 addTerminal({
                   id: crypto.randomUUID(),
                   title: `git stash`,
+                  barrackPath: selectedBarrack.path,
                   cwd: status.git_root || selectedBarrack.path,
                   initialCommand: "git stash list",
+                  source: "terminal",
+                  autoCloseOnExit: true,
                 });
               }
             }}
@@ -354,8 +368,11 @@ export function GitTab() {
                   addTerminal({
                     id: crypto.randomUUID(),
                     title: `${entry.hash} - ${entry.message.slice(0, 20)}`,
+                    barrackPath: selectedBarrack.path,
                     cwd: status.git_root || selectedBarrack.path,
                     initialCommand: `git show ${entry.hash}`,
+                    source: "view",
+                    autoCloseOnExit: true,
                   });
                 }
               }}

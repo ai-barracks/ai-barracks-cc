@@ -1,8 +1,5 @@
-import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { useTerminalStore } from "../../stores/terminalStore";
-import type { LaunchCommand } from "../../types";
 
 function StatCard({
   label,
@@ -38,9 +35,7 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 export function BarrackOverview() {
-  const { selectedBarrack, cliVersion, openConfigFile } = useAppStore();
-  const [launching, setLaunching] = useState(false);
-  const [skipPermissions, setSkipPermissions] = useState(false);
+  const { selectedBarrack, cliVersion, openConfigFile, setActiveTab } = useAppStore();
 
   if (!selectedBarrack) return null;
 
@@ -54,33 +49,12 @@ export function BarrackOverview() {
     useTerminalStore.getState().addSession({
       id: crypto.randomUUID(),
       title: `Sync - ${b.name}`,
+      barrackPath: b.path,
       cwd: b.path,
       initialCommand: `${aib} sync --dry-run '${b.path}' && echo '\\n--- Press enter to apply ---' && read && ${aib} sync '${b.path}'`,
+      source: "terminal",
     });
-  };
-
-  const handleLaunch = async (client: string) => {
-    setLaunching(true);
-    try {
-      const cmd = await invoke<LaunchCommand>("get_launch_command", {
-        barrackPath: b.path,
-        client,
-        skipPermissions,
-      });
-      const termStore = useTerminalStore.getState();
-      termStore.addSession({
-        id: crypto.randomUUID(),
-        title: `${client.charAt(0).toUpperCase() + client.slice(1)} - ${b.name}`,
-        barrackPath: b.path,
-        client,
-        cwd: cmd.cwd,
-        initialCommand: cmd.command,
-      });
-    } catch (e) {
-      alert(`세션 실행 실패: ${e}`);
-    } finally {
-      setLaunching(false);
-    }
+    setActiveTab("sessions");
   };
 
   return (
@@ -174,74 +148,17 @@ export function BarrackOverview() {
         </div>
       </div>
 
-      {/* Quick actions */}
+      {/* Quick actions — redirect to Agents tab */}
       <div className="mb-6">
         <h3 className="text-xs font-medium text-cc-text-muted mb-2 uppercase tracking-wider">
-          New Agent
+          Agents
         </h3>
-        <div className="flex items-center gap-3">
-          <div className="flex gap-2">
-            {["claude", "gemini", "codex"].map((client) => (
-              <button
-                key={client}
-                onClick={() => handleLaunch(client)}
-                disabled={launching}
-                className="px-4 py-2 text-sm bg-cc-panel border border-cc-border rounded-lg hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors disabled:opacity-50"
-              >
-                {client.charAt(0).toUpperCase() + client.slice(1)}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-1.5 text-xs text-cc-text-dim cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={skipPermissions}
-              onChange={(e) => setSkipPermissions(e.target.checked)}
-              className="rounded border-cc-border bg-cc-panel text-cc-accent w-3.5 h-3.5 accent-cc-accent"
-            />
-            skip-permissions
-          </label>
-        </div>
-      </div>
-
-      {/* Barrack Terminal + Council */}
-      <div className="mb-6">
-        <h3 className="text-xs font-medium text-cc-text-muted mb-2 uppercase tracking-wider">
-          Terminal
-        </h3>
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              useTerminalStore.getState().addSession({
-                id: crypto.randomUUID(),
-                title: b.name,
-                barrackPath: b.path,
-                cwd: b.path,
-                initialCommand: "/opt/homebrew/bin/aib status",
-              });
-            }}
-            className="px-4 py-2 text-sm bg-cc-panel border border-cc-border rounded-lg hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors"
-          >
-            Open Terminal
-          </button>
-          <button
-            onClick={() => {
-              const topic = prompt("Council 토론 주제를 입력하세요:");
-              if (topic) {
-                useTerminalStore.getState().addSession({
-                  id: crypto.randomUUID(),
-                  title: `Council - ${topic.slice(0, 20)}`,
-                  barrackPath: b.path,
-                  cwd: b.path,
-                  initialCommand: `/opt/homebrew/bin/aib council "${topic}"`,
-                });
-              }
-            }}
-            className="px-4 py-2 text-sm bg-cc-panel border border-cc-border rounded-lg hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors"
-          >
-            Council
-          </button>
-        </div>
+        <button
+          onClick={() => setActiveTab("sessions")}
+          className="px-4 py-2 text-sm bg-cc-panel border border-cc-border rounded-lg hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors"
+        >
+          Launch Agent / Open Terminal →
+        </button>
       </div>
 
     </div>

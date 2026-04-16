@@ -112,10 +112,12 @@ export type TabType = "overview" | "files" | "sessions" | "wiki" | "git";
 export interface TerminalSession {
   id: string;
   title: string;
-  barrackPath?: string;
+  barrackPath: string;
   client?: string;
   cwd?: string;
   initialCommand?: string;
+  source?: "launch" | "continue" | "monitor" | "view" | "terminal" | "council";
+  autoCloseOnExit?: boolean;
 }
 
 export interface TerminalSettings {

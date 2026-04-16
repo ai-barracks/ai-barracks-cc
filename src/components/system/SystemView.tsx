@@ -121,7 +121,9 @@ export function SystemView() {
                 useTerminalStore.getState().addSession({
                   id: crypto.randomUUID(),
                   title: `Sync ${paths.length} barracks`,
+                  barrackPath: paths[0],
                   initialCommand: syncCmd,
+                  source: "terminal",
                 });
               }}
               disabled={selected.size === 0}

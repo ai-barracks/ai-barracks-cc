@@ -16,7 +16,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { selectedBarrack, barracks } = useAppStore();
+  const { selectedBarrack, barracks, setActiveTab } = useAppStore();
   const addTerminal = useTerminalStore((s) => s.addSession);
   const quickCommands = useTerminalStore((s) => s.quickCommands);
   const removeQuickCommand = useTerminalStore((s) => s.removeQuickCommand);
@@ -27,89 +27,118 @@ export function CommandPalette() {
   const commands = useMemo<Command[]>(() => {
     const cmds: Command[] = [];
 
+    if (!b) return cmds;
+
     // Terminal
     cmds.push({
       label: "New Terminal",
       description: "새 셸 터미널 열기",
       category: "terminal",
-      action: () => addTerminal({ id: crypto.randomUUID(), title: "zsh", cwd: b?.path }),
+      action: () => {
+        addTerminal({ id: crypto.randomUUID(), title: "zsh", barrackPath: b.path, cwd: b.path, source: "terminal" });
+        setActiveTab("sessions");
+      },
     });
 
-    if (b) {
-      // Agent
-      for (const client of ["claude", "gemini", "codex"]) {
-        cmds.push({
-          label: `Start ${client.charAt(0).toUpperCase() + client.slice(1)}`,
-          description: `${b.name}에서 ${client} 세션 시작`,
-          category: "agent",
-          action: async () => {
-            const cmd = await invoke<LaunchCommand>("get_launch_command", {
-              barrackPath: b.path, client, skipPermissions: false,
-            });
-            addTerminal({
-              id: crypto.randomUUID(),
-              title: `${client.charAt(0).toUpperCase() + client.slice(1)} - ${b.name}`,
-              barrackPath: b.path, client, cwd: cmd.cwd, initialCommand: cmd.command,
-            });
-          },
-        });
-      }
-
-      // AIB
+    // Agent
+    for (const client of ["claude", "gemini", "codex"]) {
       cmds.push({
-        label: "aib status",
-        description: "현재 배럭 상태 확인",
-        category: "aib",
-        action: () => addTerminal({ id: crypto.randomUUID(), title: `status - ${b.name}`, cwd: b.path, initialCommand: `${aib} status` }),
-      });
-      cmds.push({
-        label: "aib sync",
-        description: "배럭 동기화 (dry-run 후 실행)",
-        category: "aib",
-        action: () => addTerminal({ id: crypto.randomUUID(), title: `Sync - ${b.name}`, cwd: b.path, initialCommand: `${aib} sync --dry-run '${b.path}'` }),
-      });
-      cmds.push({
-        label: "aib wiki lint",
-        description: "위키 검증 (stale, 크기, 인덱스)",
-        category: "aib",
-        action: () => addTerminal({ id: crypto.randomUUID(), title: `Wiki Lint - ${b.name}`, cwd: b.path, initialCommand: `${aib} wiki lint` }),
-      });
-      cmds.push({
-        label: "aib council",
-        description: "멀티-LLM 토론 시작",
-        category: "aib",
-        action: () => {
-          const topic = prompt("Council 토론 주제:");
-          if (topic) addTerminal({ id: crypto.randomUUID(), title: `Council`, cwd: b.path, initialCommand: `${aib} council "${topic}"` });
+        label: `Start ${client.charAt(0).toUpperCase() + client.slice(1)}`,
+        description: `${b.name}에서 ${client} 세션 시작`,
+        category: "agent",
+        action: async () => {
+          const cmd = await invoke<LaunchCommand>("get_launch_command", {
+            barrackPath: b.path, client, skipPermissions: false,
+          });
+          addTerminal({
+            id: crypto.randomUUID(),
+            title: `${client.charAt(0).toUpperCase() + client.slice(1)} - ${b.name}`,
+            barrackPath: b.path, client, cwd: cmd.cwd, initialCommand: cmd.command,
+            source: "launch",
+          });
+          setActiveTab("sessions");
         },
       });
-
-      // Git
-      cmds.push({
-        label: "git status",
-        description: "Git 상태 확인",
-        category: "git",
-        action: () => addTerminal({ id: crypto.randomUUID(), title: "git status", cwd: b.path, initialCommand: "git status" }),
-      });
-      cmds.push({
-        label: "git diff",
-        description: "변경사항 diff 보기",
-        category: "git",
-        action: () => addTerminal({ id: crypto.randomUUID(), title: "git diff", cwd: b.path, initialCommand: "git diff" }),
-      });
-      cmds.push({
-        label: "git add -p",
-        description: "인터랙티브 스테이징",
-        category: "git",
-        action: () => addTerminal({ id: crypto.randomUUID(), title: "git add -p", cwd: b.path, initialCommand: "git add -p" }),
-      });
-      cmds.push({
-        label: "git log --graph",
-        description: "커밋 그래프 보기",
-        category: "git",
-        action: () => addTerminal({ id: crypto.randomUUID(), title: "git graph", cwd: b.path, initialCommand: "git log --graph --oneline --all -20" }),
-      });
     }
+
+    // AIB
+    cmds.push({
+      label: "aib status",
+      description: "현재 배럭 상태 확인",
+      category: "aib",
+      action: () => {
+        addTerminal({ id: crypto.randomUUID(), title: `status - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: `${aib} status`, source: "terminal" });
+        setActiveTab("sessions");
+      },
+    });
+    cmds.push({
+      label: "aib sync",
+      description: "배럭 동기화 (dry-run 후 실행)",
+      category: "aib",
+      action: () => {
+        addTerminal({ id: crypto.randomUUID(), title: `Sync - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: `${aib} sync --dry-run '${b.path}'`, source: "terminal" });
+        setActiveTab("sessions");
+      },
+    });
+    cmds.push({
+      label: "aib wiki lint",
+      description: "���키 검증 (stale, 크기, 인덱스)",
+      category: "aib",
+      action: () => {
+        addTerminal({ id: crypto.randomUUID(), title: `Wiki Lint - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: `${aib} wiki lint`, source: "terminal" });
+        setActiveTab("sessions");
+      },
+    });
+    cmds.push({
+      label: "aib council",
+      description: "멀티-LLM 토론 시작",
+      category: "aib",
+      action: () => {
+        const topic = prompt("Council 토�� 주제:");
+        if (topic) {
+          addTerminal({ id: crypto.randomUUID(), title: `Council`, barrackPath: b.path, cwd: b.path, initialCommand: `${aib} council "${topic}"`, source: "council" });
+          setActiveTab("sessions");
+        }
+      },
+    });
+
+    // Git
+    cmds.push({
+      label: "git status",
+      description: "Git 상태 확인",
+      category: "git",
+      action: () => {
+        addTerminal({ id: crypto.randomUUID(), title: "git status", barrackPath: b.path, cwd: b.path, initialCommand: "git status", source: "terminal", autoCloseOnExit: true });
+        setActiveTab("sessions");
+      },
+    });
+    cmds.push({
+      label: "git diff",
+      description: "변경사항 diff 보기",
+      category: "git",
+      action: () => {
+        addTerminal({ id: crypto.randomUUID(), title: "git diff", barrackPath: b.path, cwd: b.path, initialCommand: "git diff", source: "terminal", autoCloseOnExit: true });
+        setActiveTab("sessions");
+      },
+    });
+    cmds.push({
+      label: "git add -p",
+      description: "인터랙티브 스테이징",
+      category: "git",
+      action: () => {
+        addTerminal({ id: crypto.randomUUID(), title: "git add -p", barrackPath: b.path, cwd: b.path, initialCommand: "git add -p", source: "terminal" });
+        setActiveTab("sessions");
+      },
+    });
+    cmds.push({
+      label: "git log --graph",
+      description: "커밋 그래프 보기",
+      category: "git",
+      action: () => {
+        addTerminal({ id: crypto.randomUUID(), title: "git graph", barrackPath: b.path, cwd: b.path, initialCommand: "git log --graph --oneline --all -20", source: "terminal", autoCloseOnExit: true });
+        setActiveTab("sessions");
+      },
+    });
 
     // Multi-barrack
     if (barracks.length > 1) {
@@ -119,14 +148,18 @@ export function CommandPalette() {
         category: "aib",
         action: () => {
           const syncCmd = barracks.map((br) => `echo '=== ${br.name} ===' && ${aib} sync '${br.path}'`).join(" && ");
-          addTerminal({ id: crypto.randomUUID(), title: "Sync All", initialCommand: syncCmd });
+          addTerminal({ id: crypto.randomUUID(), title: "Sync All", barrackPath: b.path, initialCommand: syncCmd, source: "terminal" });
+          setActiveTab("sessions");
         },
       });
       cmds.push({
         label: "Barracks List",
         description: "등록된 배럭 목록 확인",
         category: "aib",
-        action: () => addTerminal({ id: crypto.randomUUID(), title: "barracks list", initialCommand: `${aib} barracks list` }),
+        action: () => {
+          addTerminal({ id: crypto.randomUUID(), title: "barracks list", barrackPath: b.path, initialCommand: `${aib} barracks list`, source: "terminal", autoCloseOnExit: true });
+          setActiveTab("sessions");
+        },
       });
     }
 
@@ -136,12 +169,17 @@ export function CommandPalette() {
         label: qc.label,
         description: qc.command.length > 60 ? qc.command.slice(0, 60) + "..." : qc.command,
         category: "quick",
-        action: () => addTerminal({
-          id: crypto.randomUUID(),
-          title: qc.label,
-          cwd: qc.cwd || b?.path,
-          initialCommand: qc.command,
-        }),
+        action: () => {
+          addTerminal({
+            id: crypto.randomUUID(),
+            title: qc.label,
+            barrackPath: b.path,
+            cwd: qc.cwd || b.path,
+            initialCommand: qc.command,
+            source: "terminal",
+          });
+          setActiveTab("sessions");
+        },
       });
     }
     if (quickCommands.length > 0) {
@@ -161,7 +199,7 @@ export function CommandPalette() {
     }
 
     return cmds;
-  }, [b, barracks, addTerminal, quickCommands, removeQuickCommand]);
+  }, [b, barracks, addTerminal, quickCommands, removeQuickCommand, setActiveTab]);
 
   const filtered = query
     ? commands.filter(
@@ -268,7 +306,7 @@ export function CommandPalette() {
           ))}
           {filtered.length === 0 && (
             <div className="px-4 py-6 text-center text-[12px] text-cc-text-muted">
-              No matching commands
+              {b ? "No matching commands" : "배럭을 먼저 선택하세요"}
             </div>
           )}
         </div>

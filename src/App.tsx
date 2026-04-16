@@ -1,11 +1,10 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "./stores/appStore";
 import { useNotificationStore } from "./stores/notificationStore";
 import { Sidebar } from "./components/layout/Sidebar";
 import { MainContent } from "./components/layout/MainContent";
-import { TerminalPanel } from "./components/terminal/TerminalPanel";
+import { AgentTerminalPanel } from "./components/terminal/AgentTerminalPanel";
 import { NotificationToast } from "./components/system/NotificationToast";
 import { CommandPalette } from "./components/system/CommandPalette";
 
@@ -28,8 +27,7 @@ function App() {
   const addNotification = useNotificationStore((s) => s.addNotification);
 
   useEffect(() => {
-    // Clean up orphaned PTY sessions from previous webview (e.g. reload)
-    invoke("terminal_close_all").catch(() => {});
+    // NOTE: terminal_close_all removed — PTY sessions survive reload for reconnection
 
     fetchBarracks();
     fetchCliVersion();
@@ -71,7 +69,7 @@ function App() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <MainContent />
-      <TerminalPanel />
+      <AgentTerminalPanel />
       <NotificationToast />
       <CommandPalette />
     </div>

@@ -13,8 +13,10 @@ export function XTermInstance({ session, visible }: XTermInstanceProps) {
   const removeSession = useTerminalStore((s) => s.removeSession);
 
   const handleExit = useCallback(() => {
-    setTimeout(() => removeSession(session.id), 3000);
-  }, [session.id, removeSession]);
+    if (session.autoCloseOnExit) {
+      setTimeout(() => removeSession(session.id), 3000);
+    }
+  }, [session.id, session.autoCloseOnExit, removeSession]);
 
   useTerminal({
     sessionId: session.id,

@@ -56,6 +56,8 @@ pub fn run() {
             terminal::terminal_resize,
             terminal::terminal_close,
             terminal::terminal_close_all,
+            terminal::terminal_list,
+            terminal::terminal_reconnect,
         ])
         .setup(|app| {
             // --- System Tray ---

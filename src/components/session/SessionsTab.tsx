@@ -1,13 +1,9 @@
-import { useEffect, useState, useCallback, useReducer } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "../../stores/appStore";
+import { useTerminalStore } from "../../stores/terminalStore";
 import { SessionCard } from "./SessionCard";
-import { EmbeddedTerminalPanel } from "./EmbeddedTerminalPanel";
-import {
-  embeddedTerminalReducer,
-  INITIAL_EMBEDDED_STATE,
-} from "./embeddedTerminalReducer";
 import type { SessionInfo, SessionDetail, LaunchCommand } from "../../types";
 
 type ClientFilter = "all" | "Claude Code" | "Gemini CLI" | "Codex CLI";
@@ -21,12 +17,8 @@ export function SessionsTab() {
   const [clientFilter, setClientFilter] = useState<ClientFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [hidePending, setHidePending] = useState(true);
-  const [terminalState, dispatch] = useReducer(embeddedTerminalReducer, INITIAL_EMBEDDED_STATE);
-
-  // 배럭 전환 시 임베디드 터미널 초기화
-  useEffect(() => {
-    dispatch({ type: "RESET" });
-  }, [selectedBarrack?.path]);
+  const [launching, setLaunching] = useState(false);
+  const [skipPermissions, setSkipPermissions] = useState(false);
 
   const loadSessions = useCallback(async () => {
     if (!selectedBarrack) return;
@@ -65,6 +57,33 @@ export function SessionsTab() {
     }
   };
 
+  // --- Agent launch ---
+  const handleLaunch = async (client: string) => {
+    if (!selectedBarrack) return;
+    setLaunching(true);
+    try {
+      const cmd = await invoke<LaunchCommand>("get_launch_command", {
+        barrackPath: selectedBarrack.path,
+        client,
+        skipPermissions,
+      });
+      useTerminalStore.getState().addSession({
+        id: crypto.randomUUID(),
+        title: `${client.charAt(0).toUpperCase() + client.slice(1)} - ${selectedBarrack.name}`,
+        barrackPath: selectedBarrack.path,
+        client,
+        cwd: cmd.cwd,
+        initialCommand: cmd.command,
+        source: "launch",
+      });
+    } catch (e) {
+      alert(`세션 실행 실패: ${e}`);
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  // --- Session actions → terminal store ---
   const handleContinue = async (session: SessionInfo) => {
     if (!selectedBarrack) return;
     const clientKey = session.client.toLowerCase().split(" ")[0];
@@ -75,14 +94,14 @@ export function SessionsTab() {
         sessionId: session.id,
         skipPermissions: false,
       });
-      dispatch({
-        type: "ADD_SESSION",
-        session: {
-          id: crypto.randomUUID(),
-          title: `${session.client.split(" ")[0]} - ${session.id.slice(0, 8)}`,
-          cwd: cmd.cwd,
-          initialCommand: cmd.command,
-        },
+      useTerminalStore.getState().addSession({
+        id: crypto.randomUUID(),
+        title: `${session.client.split(" ")[0]} - ${session.id.slice(0, 8)}`,
+        barrackPath: selectedBarrack.path,
+        client: clientKey,
+        cwd: cmd.cwd,
+        initialCommand: cmd.command,
+        source: "continue",
       });
     } catch (e) {
       alert(`Continue 실패: ${e}`);
@@ -93,28 +112,27 @@ export function SessionsTab() {
     if (!selectedBarrack) return;
     const sessionFile = `${selectedBarrack.path}/sessions/${session.id}.md`;
     const violationFile = `${selectedBarrack.path}/sessions/${session.id}.violations`;
-    dispatch({
-      type: "ADD_SESSION",
-      session: {
-        id: crypto.randomUUID(),
-        title: `View - ${session.id.slice(0, 8)}`,
-        cwd: selectedBarrack.path,
-        initialCommand: `cat '${sessionFile}' && [ -f '${violationFile}' ] && echo '\\n=== VIOLATIONS ===' && cat '${violationFile}' || true`,
-      },
+    useTerminalStore.getState().addSession({
+      id: crypto.randomUUID(),
+      title: `View - ${session.id.slice(0, 8)}`,
+      barrackPath: selectedBarrack.path,
+      cwd: selectedBarrack.path,
+      initialCommand: `cat '${sessionFile}' && [ -f '${violationFile}' ] && echo '\\n=== VIOLATIONS ===' && cat '${violationFile}' || true`,
+      source: "view",
+      autoCloseOnExit: true,
     });
   };
 
   const handleMonitor = (session: SessionInfo) => {
     if (!selectedBarrack) return;
     const sessionFile = `${selectedBarrack.path}/sessions/${session.id}.md`;
-    dispatch({
-      type: "ADD_SESSION",
-      session: {
-        id: crypto.randomUUID(),
-        title: `Monitor - ${session.id.slice(0, 8)}`,
-        cwd: selectedBarrack.path,
-        initialCommand: `echo '=== Monitoring ${session.id} ===' && echo 'Refreshes every 3s. Ctrl+C to stop.' && echo '' && while true; do clear; echo '=== ${session.id} ===' && tail -30 '${sessionFile}'; sleep 3; done`,
-      },
+    useTerminalStore.getState().addSession({
+      id: crypto.randomUUID(),
+      title: `Monitor - ${session.id.slice(0, 8)}`,
+      barrackPath: selectedBarrack.path,
+      cwd: selectedBarrack.path,
+      initialCommand: `echo '=== Monitoring ${session.id} ===' && echo 'Refreshes every 3s. Ctrl+C to stop.' && echo '' && while true; do clear; echo '=== ${session.id} ===' && tail -30 '${sessionFile}'; sleep 3; done`,
+      source: "monitor",
     });
   };
 
@@ -126,97 +144,147 @@ export function SessionsTab() {
   });
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* 좌: 에이전트 목록 */}
-      <div className="flex-1 overflow-y-auto min-w-0">
-        <div className="p-5 max-w-2xl">
-          {/* 필터 */}
-          <div className="flex items-center gap-6 mb-4">
-            <div className="flex items-center gap-1">
-              {(["all", "active", "completed", "interrupted"] as const).map((f) => (
+    <div className="flex-1 overflow-y-auto min-w-0">
+      <div className="p-5 max-w-4xl">
+        {/* New Agent bar */}
+        <div className="mb-5 p-3 bg-cc-panel border border-cc-border rounded-lg">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-cc-text-muted uppercase tracking-wider">New Agent</span>
+            <div className="flex gap-2">
+              {["claude", "gemini", "codex"].map((client) => (
                 <button
-                  key={f}
-                  onClick={() => setStatusFilter(f)}
-                  className={`text-[12px] px-2.5 py-1 rounded-md transition-colors ${
-                    statusFilter === f
-                      ? "bg-cc-panel text-cc-text font-medium shadow-cc"
-                      : "text-cc-text-muted hover:text-cc-text-dim"
-                  }`}
+                  key={client}
+                  onClick={() => handleLaunch(client)}
+                  disabled={launching}
+                  className="px-3 py-1.5 text-xs bg-cc-bg border border-cc-border rounded-md hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors disabled:opacity-50"
                 >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                  {client.charAt(0).toUpperCase() + client.slice(1)}
                 </button>
               ))}
             </div>
             <div className="h-4 w-px bg-cc-border" />
-            <div className="flex items-center gap-1">
-              {(["all", "Claude Code", "Gemini CLI", "Codex CLI"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setClientFilter(f)}
-                  className={`text-[12px] px-2.5 py-1 rounded-md transition-colors ${
-                    clientFilter === f
-                      ? "bg-cc-panel text-cc-text font-medium shadow-cc"
-                      : "text-cc-text-muted hover:text-cc-text-dim"
-                  }`}
-                >
-                  {f === "all" ? "All" : f.split(" ")[0]}
-                </button>
-              ))}
-            </div>
-            <span className="flex-1" />
             <button
-              onClick={() => setHidePending((v) => !v)}
-              className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
-                hidePending
-                  ? "text-cc-text-muted hover:text-cc-text-dim"
-                  : "bg-cc-warning/20 text-cc-warning"
-              }`}
-              title={hidePending ? "빈 세션 포함 표시" : "빈 세션 숨기기"}
+              onClick={() => {
+                if (!selectedBarrack) return;
+                useTerminalStore.getState().addSession({
+                  id: crypto.randomUUID(),
+                  title: selectedBarrack.name,
+                  barrackPath: selectedBarrack.path,
+                  cwd: selectedBarrack.path,
+                  initialCommand: "/opt/homebrew/bin/aib status",
+                  source: "terminal",
+                });
+              }}
+              className="px-3 py-1.5 text-xs bg-cc-bg border border-cc-border rounded-md hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors"
             >
-              {hidePending ? "empty 숨김" : "empty 표시"}
+              Terminal
             </button>
-            <span className="text-[11px] text-cc-text-muted">
-              {filtered.length} / {sessions.length}
-            </span>
-          </div>
-
-          {/* 세션 카드 목록 */}
-          <div className="space-y-1.5">
-            {filtered.map((session) => (
-              <SessionCard
-                key={session.id}
-                session={session}
-                isExpanded={expandedId === session.id}
-                detail={details[session.id] ?? null}
-                onToggle={() => handleToggle(session.id)}
-                onContinue={() => handleContinue(session)}
-                onViewInTerminal={() => handleViewInTerminal(session)}
-                onMonitor={() => handleMonitor(session)}
+            <button
+              onClick={() => {
+                if (!selectedBarrack) return;
+                const topic = prompt("Council 토론 주제를 입력하세요:");
+                if (topic) {
+                  useTerminalStore.getState().addSession({
+                    id: crypto.randomUUID(),
+                    title: `Council - ${topic.slice(0, 20)}`,
+                    barrackPath: selectedBarrack.path,
+                    cwd: selectedBarrack.path,
+                    initialCommand: `/opt/homebrew/bin/aib council "${topic}"`,
+                    source: "council",
+                  });
+                }
+              }}
+              className="px-3 py-1.5 text-xs bg-cc-bg border border-cc-border rounded-md hover:border-cc-accent/40 hover:bg-cc-accent/10 transition-colors"
+            >
+              Council
+            </button>
+            <span className="flex-1" />
+            <label className="flex items-center gap-1.5 text-xs text-cc-text-dim cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={skipPermissions}
+                onChange={(e) => setSkipPermissions(e.target.checked)}
+                className="rounded border-cc-border bg-cc-panel text-cc-accent w-3.5 h-3.5 accent-cc-accent"
               />
+              skip-permissions
+            </label>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-center gap-6 mb-4">
+          <div className="flex items-center gap-1">
+            {(["all", "active", "completed", "interrupted"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={`text-[12px] px-2.5 py-1 rounded-md transition-colors ${
+                  statusFilter === f
+                    ? "bg-cc-panel text-cc-text font-medium shadow-cc"
+                    : "text-cc-text-muted hover:text-cc-text-dim"
+                }`}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
             ))}
           </div>
-
-          {filtered.length === 0 && (
-            <div className="text-center text-cc-text-muted py-12">
-              {sessions.length === 0
-                ? "에이전트 기록이 없습니다"
-                : "필터 조건에 맞는 에이전트가 없습니다"}
-            </div>
-          )}
+          <div className="h-4 w-px bg-cc-border" />
+          <div className="flex items-center gap-1">
+            {(["all", "Claude Code", "Gemini CLI", "Codex CLI"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setClientFilter(f)}
+                className={`text-[12px] px-2.5 py-1 rounded-md transition-colors ${
+                  clientFilter === f
+                    ? "bg-cc-panel text-cc-text font-medium shadow-cc"
+                    : "text-cc-text-muted hover:text-cc-text-dim"
+                }`}
+              >
+                {f === "all" ? "All" : f.split(" ")[0]}
+              </button>
+            ))}
+          </div>
+          <span className="flex-1" />
+          <button
+            onClick={() => setHidePending((v) => !v)}
+            className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+              hidePending
+                ? "text-cc-text-muted hover:text-cc-text-dim"
+                : "bg-cc-warning/20 text-cc-warning"
+            }`}
+            title={hidePending ? "빈 세션 포함 표시" : "빈 세션 숨기기"}
+          >
+            {hidePending ? "empty 숨김" : "empty 표시"}
+          </button>
+          <span className="text-[11px] text-cc-text-muted">
+            {filtered.length} / {sessions.length}
+          </span>
         </div>
+
+        {/* Session cards */}
+        <div className="space-y-1.5">
+          {filtered.map((session) => (
+            <SessionCard
+              key={session.id}
+              session={session}
+              isExpanded={expandedId === session.id}
+              detail={details[session.id] ?? null}
+              onToggle={() => handleToggle(session.id)}
+              onContinue={() => handleContinue(session)}
+              onViewInTerminal={() => handleViewInTerminal(session)}
+              onMonitor={() => handleMonitor(session)}
+            />
+          ))}
+        </div>
+
+        {filtered.length === 0 && (
+          <div className="text-center text-cc-text-muted py-12">
+            {sessions.length === 0
+              ? "에이전트 기록이 없습니다"
+              : "필터 조건에 맞는 에이전트가 없습니다"}
+          </div>
+        )}
       </div>
-
-      {/* 우: 임베디드 터미널 */}
-      {terminalState.isExpanded ? (
-        <EmbeddedTerminalPanel state={terminalState} dispatch={dispatch} />
-      ) : (
-        <div
-          className="w-7 flex flex-col items-center justify-center py-3 text-xs text-cc-text-muted bg-cc-sidebar border-l border-cc-border flex-shrink-0"
-          style={{ writingMode: "vertical-rl" }}
-        >
-          Agent Terminal
-        </div>
-      )}
     </div>
   );
 }

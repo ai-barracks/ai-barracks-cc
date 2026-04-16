@@ -91,8 +91,11 @@ export function FilesTab() {
       useTerminalStore.getState().addSession({
         id: crypto.randomUUID(),
         title: `Validate - ${selectedFile.name}`,
+        barrackPath: selectedBarrack!.path,
         cwd: selectedBarrack!.path,
         initialCommand: `/opt/homebrew/bin/aib sync --dry-run '${selectedBarrack!.path}'`,
+        source: "terminal",
+        autoCloseOnExit: true,
       });
       // Refresh file list + barrack data (Overview reflects changes)
       const result = await invoke<FileInfo[]>("get_barrack_files", {

@@ -82,11 +82,15 @@ export function SearchBar() {
                   useAppStore.getState().selectBarrack(match);
                 }
                 // Open file in terminal
+                const bp = match?.path ?? r.file_path.substring(0, r.file_path.lastIndexOf("/"));
                 useTerminalStore.getState().addSession({
                   id: crypto.randomUUID(),
                   title: `${r.source}: ${r.title}`,
+                  barrackPath: bp,
                   cwd: r.file_path.substring(0, r.file_path.lastIndexOf("/")),
                   initialCommand: `cat '${r.file_path}' | grep -n -C 2 '${query.replace(/'/g, "'\\''")}'`,
+                  source: "view",
+                  autoCloseOnExit: true,
                 });
                 setIsOpen(false);
                 setQuery("");
