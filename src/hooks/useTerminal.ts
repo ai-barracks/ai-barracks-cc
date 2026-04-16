@@ -121,6 +121,14 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     term.loadAddon(webLinksAddon);
     term.open(container);
 
+    // IME 조합 중 raw key event 차단 (한글/일본어/중국어 입력)
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) {
+        return false;
+      }
+      return true;
+    });
+
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
     isDisposedRef.current = false;

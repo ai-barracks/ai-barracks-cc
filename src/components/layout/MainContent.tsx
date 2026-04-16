@@ -56,7 +56,7 @@ export function MainContent() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className={activeTab === "sessions" ? "flex-1 flex flex-col overflow-hidden min-h-0" : "flex-1 overflow-y-auto"}>
         {activeTab === "overview" && <BarrackOverview />}
         {activeTab === "files" && <FilesTab />}
         {activeTab === "sessions" && <SessionsTab />}
