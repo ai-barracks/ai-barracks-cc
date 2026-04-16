@@ -52,13 +52,15 @@ pub async fn terminal_create(
     on_output: Channel<TerminalOutput>,
     cwd: Option<String>,
     initial_command: Option<String>,
+    cols: Option<u16>,
+    rows: Option<u16>,
 ) -> Result<String, String> {
     let terminal_id = Uuid::new_v4().to_string();
 
     let pty_system = native_pty_system();
     let size = PtySize {
-        rows: 24,
-        cols: 80,
+        rows: rows.unwrap_or(24),
+        cols: cols.unwrap_or(80),
         pixel_width: 0,
         pixel_height: 0,
     };

@@ -77,10 +77,11 @@ interface UseTerminalOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
   cwd?: string;
   initialCommand?: string;
+  visible?: boolean;
   onExit?: (code?: number | null) => void;
 }
 
-export function useTerminal({ sessionId, containerRef, cwd, initialCommand, onExit }: UseTerminalOptions) {
+export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visible, onExit }: UseTerminalOptions) {
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalIdRef = useRef<string | null>(null);
@@ -124,41 +125,39 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, onEx
     fitAddonRef.current = fitAddon;
     isDisposedRef.current = false;
 
-    // Fit after a short delay to ensure DOM is ready
+    // Fit after DOM is ready, THEN create PTY with correct initial size.
+    // This ensures the PTY never starts at the default 80x24 — it gets the
+    // real terminal dimensions from the very first frame.
     requestAnimationFrame(() => {
-      if (!isDisposedRef.current) {
-        fitAddon.fit();
-      }
-    });
-
-    // Create PTY channel
-    const channel = new Channel<TerminalOutput>();
-    channel.onmessage = (msg) => {
       if (isDisposedRef.current) return;
-      if (msg.type === "Data") {
-        term.write(msg.data);
-        appendToBuffer(sessionId, msg.data);
-      } else if (msg.type === "Exit") {
-        term.write("\r\n\x1b[90m[Process exited]\x1b[0m\r\n");
-        onExit?.(msg.code);
-      }
-    };
 
-    // Create PTY
-    invoke<string>("terminal_create", {
-      onOutput: channel,
-      cwd: cwd ?? null,
-      initialCommand: initialCommand ?? null,
-    }).then((id) => {
-      if (isDisposedRef.current) {
-        invoke("terminal_close", { terminalId: id });
-        return;
-      }
-      terminalIdRef.current = id;
+      fitAddon.fit();
 
-      // Send initial resize
-      const { cols, rows } = term;
-      invoke("terminal_resize", { terminalId: id, cols, rows });
+      const channel = new Channel<TerminalOutput>();
+      channel.onmessage = (msg) => {
+        if (isDisposedRef.current) return;
+        if (msg.type === "Data") {
+          term.write(msg.data);
+          appendToBuffer(sessionId, msg.data);
+        } else if (msg.type === "Exit") {
+          term.write("\r\n\x1b[90m[Process exited]\x1b[0m\r\n");
+          onExit?.(msg.code);
+        }
+      };
+
+      invoke<string>("terminal_create", {
+        onOutput: channel,
+        cwd: cwd ?? null,
+        initialCommand: initialCommand ?? null,
+        cols: term.cols,
+        rows: term.rows,
+      }).then((id) => {
+        if (isDisposedRef.current) {
+          invoke("terminal_close", { terminalId: id });
+          return;
+        }
+        terminalIdRef.current = id;
+      });
     });
 
     // Handle input
@@ -210,6 +209,16 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, onEx
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerRef]);
+
+  // Re-fit when tab becomes visible (display:none → block skips ResizeObserver)
+  useEffect(() => {
+    if (!visible || !fitAddonRef.current || isDisposedRef.current) return;
+    // setTimeout(0) ensures display:block has been applied before measuring
+    const t = setTimeout(() => {
+      if (!isDisposedRef.current) fitAddonRef.current?.fit();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [visible]);
 
   // React to settings/theme changes
   useEffect(() => {

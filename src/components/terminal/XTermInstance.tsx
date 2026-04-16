@@ -21,6 +21,7 @@ export function XTermInstance({ session, visible }: XTermInstanceProps) {
     containerRef,
     cwd: session.cwd,
     initialCommand: session.initialCommand,
+    visible,
     onExit: handleExit,
   });
 
