@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "../../stores/appStore";
 import { useTerminalStore } from "../../stores/terminalStore";
 import { SessionCard } from "./SessionCard";
+import { LiveTerminals } from "./LiveTerminals";
 import type { SessionInfo, SessionDetail, LaunchCommand } from "../../types";
 
 type ClientFilter = "all" | "Claude Code" | "Gemini CLI" | "Codex CLI";
@@ -215,6 +216,9 @@ export function SessionsTab() {
             </label>
           </div>
         </div>
+
+        {/* Live terminal sessions */}
+        <LiveTerminals />
 
         {/* Filters */}
         <div className="flex items-center gap-6 mb-4">

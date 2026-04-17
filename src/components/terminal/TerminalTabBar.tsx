@@ -29,7 +29,7 @@ function getMinPanelWidth(mode: ViewMode): number {
 }
 
 export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: TerminalTabBarProps) {
-  const { setActiveTerminal, removeSession, addSession, addQuickCommand } = useTerminalStore();
+  const { addSession, addQuickCommand } = useTerminalStore();
   const splitLayout = useTerminalStore((s) => s.splitLayoutPerBarrack[barrackPath]);
   const setSplitLayout = useTerminalStore((s) => s.setSplitLayout);
   const setPanelWidth = useTerminalStore((s) => s.setPanelWidth);
@@ -44,7 +44,6 @@ export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: Term
     const slots: (string | null)[] = Array.from({ length: slotCount }, (_, i) => sessionIds[i] ?? null);
     setSplitLayout(barrackPath, { mode, slots });
 
-    // Auto-expand panel if current width is below minimum for the new mode
     const minWidth = getMinPanelWidth(mode);
     if (panelWidth < minWidth) {
       setPanelWidth(barrackPath, minWidth);
@@ -105,47 +104,20 @@ export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: Term
   };
 
   return (
-    <div className="flex items-center h-9 bg-cc-sidebar border-b border-cc-border px-1 flex-shrink-0">
-      {/* Terminal tabs */}
-      <div className="flex items-center gap-0.5 flex-1 overflow-x-auto min-w-0">
-        {sessions.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setActiveTerminal(barrackPath, s.id)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors whitespace-nowrap ${
-              activeTerminalId === s.id
-                ? "bg-cc-panel text-cc-text"
-                : "text-cc-text-dim hover:text-cc-text hover:bg-cc-card-hover"
-            }`}
-          >
-            {s.source && s.source !== "terminal" && (
-              <span className="w-1.5 h-1.5 rounded-full bg-cc-accent inline-block flex-shrink-0" />
-            )}
-            <span className="truncate max-w-[100px]">{s.title}</span>
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
-                removeSession(s.id);
-              }}
-              className="text-cc-text-muted hover:text-cc-danger ml-0.5 transition-colors"
-            >
-              x
-            </span>
-          </button>
-        ))}
+    <div className="flex items-center h-7 bg-cc-sidebar border-b border-cc-border px-1 flex-shrink-0">
+      {/* New terminal */}
+      <button
+        onClick={handleNewTerminal}
+        className="px-2 py-0.5 text-xs text-cc-text-muted hover:text-cc-text hover:bg-cc-card-hover rounded transition-colors"
+        title="New Terminal"
+      >
+        +
+      </button>
 
-        {/* New terminal button */}
-        <button
-          onClick={handleNewTerminal}
-          className="px-2 py-1 text-xs text-cc-text-muted hover:text-cc-text hover:bg-cc-card-hover rounded transition-colors"
-          title="New Terminal"
-        >
-          +
-        </button>
-      </div>
+      <div className="flex-1" />
 
       {/* View mode toggle */}
-      <div className="flex items-center gap-0.5 ml-2 border-l border-cc-border pl-2">
+      <div className="flex items-center gap-0.5 border-r border-cc-border pr-2 mr-1">
         {VIEW_MODES.map((vm) => (
           <button
             key={vm.mode}
@@ -162,20 +134,20 @@ export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: Term
         ))}
       </div>
 
-      {/* Right actions */}
-      <div className="flex items-center gap-1 ml-2 relative">
+      {/* Actions */}
+      <div className="flex items-center gap-1 relative">
         {activeTerminalId && (
           <>
             <button
               onClick={handleExport}
-              className="px-1.5 py-1 text-xs text-cc-text-muted hover:text-cc-text transition-colors"
-              title="Export terminal output to file"
+              className="px-1.5 py-0.5 text-[11px] text-cc-text-muted hover:text-cc-text transition-colors"
+              title="Export terminal output"
             >
               Export
             </button>
             <button
               onClick={handleSaveQuickCommand}
-              className="px-1.5 py-1 text-xs text-cc-text-muted hover:text-cc-text transition-colors"
+              className="px-1.5 py-0.5 text-[11px] text-cc-text-muted hover:text-cc-text transition-colors"
               title="Save as Quick Command"
             >
               Save
@@ -184,10 +156,10 @@ export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: Term
         )}
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className="px-1.5 py-1 text-xs text-cc-text-muted hover:text-cc-text transition-colors"
+          className="px-1.5 py-0.5 text-[11px] text-cc-text-muted hover:text-cc-text transition-colors"
           title="Terminal Settings"
         >
-          Settings
+          ⚙
         </button>
 
         {showSettings && <TerminalSettingsPanel onClose={() => setShowSettings(false)} />}
