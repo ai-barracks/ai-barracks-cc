@@ -44,7 +44,7 @@ function BarrackCard({ barrack }: { barrack: BarrackInfo }) {
 }
 
 export function Sidebar() {
-  const { barracks, cliVersion, theme, toggleTheme, selectedBarrack, showSystemView } = useAppStore();
+  const { barracks, cliVersion, appVersion, theme, toggleTheme, selectedBarrack, showSystemView } = useAppStore();
 
   return (
     <div className="w-60 min-w-[240px] bg-cc-sidebar border-r border-cc-border flex flex-col h-full">
@@ -54,7 +54,9 @@ export function Sidebar() {
           !selectedBarrack ? "bg-cc-accent/10" : "hover:bg-cc-card-hover"
         }`}
       >
-        <h1 className="text-[13px] font-semibold text-cc-text">CommandCenter</h1>
+        <h1 className="text-[13px] font-semibold text-cc-text">
+          CommandCenter{appVersion && <span className="font-normal text-cc-text-muted ml-1">v{appVersion}</span>}
+        </h1>
         <p className="text-[11px] text-cc-text-muted">
           AI Barracks {cliVersion && `v${cliVersion}`}
         </p>

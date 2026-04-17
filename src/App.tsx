@@ -25,7 +25,7 @@ interface SyncNeededPayload {
 }
 
 function App() {
-  const { fetchBarracks, fetchCliVersion } = useAppStore();
+  const { fetchBarracks, fetchCliVersion, fetchAppVersion } = useAppStore();
   const addNotification = useNotificationStore((s) => s.addNotification);
 
   // Reconnect surviving PTY sessions after reload
@@ -55,6 +55,7 @@ function App() {
   useEffect(() => {
     fetchBarracks();
     fetchCliVersion();
+    fetchAppVersion();
     const saved = localStorage.getItem("cc-theme") ?? "dark";
     document.documentElement.setAttribute("data-theme", saved);
 
@@ -91,7 +92,7 @@ function App() {
       unlistenSync.then((fn) => fn());
       clearInterval(poll);
     };
-  }, [fetchBarracks, fetchCliVersion, addNotification]);
+  }, [fetchBarracks, fetchCliVersion, fetchAppVersion, addNotification]);
 
   return (
     <div className="flex h-screen overflow-hidden">

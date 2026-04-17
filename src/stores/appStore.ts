@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import type { BarrackInfo, TabType } from "../types";
 
 type Theme = "dark" | "light";
@@ -10,12 +11,14 @@ interface AppState {
   activeTab: TabType;
   lastTabPerBarrack: Record<string, TabType>;
   cliVersion: string;
+  appVersion: string;
   loading: boolean;
   error: string | null;
   theme: Theme;
 
   fetchBarracks: () => Promise<void>;
   fetchCliVersion: () => Promise<void>;
+  fetchAppVersion: () => Promise<void>;
   selectBarrack: (barrack: BarrackInfo) => void;
   setActiveTab: (tab: TabType) => void;
   pendingConfigFile: string | null;
@@ -42,6 +45,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeTab: "overview",
   lastTabPerBarrack: {},
   cliVersion: "",
+  appVersion: "",
   loading: false,
   error: null,
   theme: getInitialTheme(),
@@ -67,6 +71,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ cliVersion: version });
     } catch {
       set({ cliVersion: "unknown" });
+    }
+  },
+
+  fetchAppVersion: async () => {
+    try {
+      const version = await getVersion();
+      set({ appVersion: version });
+    } catch {
+      set({ appVersion: "" });
     }
   },
 
