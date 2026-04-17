@@ -48,12 +48,11 @@ function loadQuickCommands(): QuickCommand[] {
   }
 }
 
-// TODO: Re-enable after Phase 2 reconnection is wired up
-// function loadPersistedSessions(): TerminalSession[] {
-//   const saved = localStorage.getItem("cc-terminal-sessions");
-//   if (!saved) return [];
-//   try { return JSON.parse(saved); } catch { return []; }
-// }
+function loadPersistedSessions(): TerminalSession[] {
+  const saved = localStorage.getItem("cc-terminal-sessions");
+  if (!saved) return [];
+  try { return JSON.parse(saved); } catch { return []; }
+}
 
 function persistSessions(sessions: TerminalSession[]) {
   localStorage.setItem("cc-terminal-sessions", JSON.stringify(sessions));
@@ -99,6 +98,7 @@ interface TerminalState {
   addSession: (session: TerminalSession) => void;
   removeSession: (id: string) => void;
   setActiveTerminal: (barrackPath: string, id: string) => void;
+  setPtyId: (sessionId: string, ptyId: string) => void;
   setPanelWidth: (barrackPath: string, w: number) => void;
   setSplitLayout: (barrackPath: string, layout: SplitLayout) => void;
   setSlotTerminal: (barrackPath: string, slotIndex: number, sessionId: string | null) => void;
@@ -106,11 +106,10 @@ interface TerminalState {
   updateSettings: (partial: Partial<TerminalSettings>) => void;
   addQuickCommand: (cmd: QuickCommand) => void;
   removeQuickCommand: (id: string) => void;
+  reconnectSessions: (survivingPtyIds: Set<string>) => void;
 }
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
-  // TODO: Enable after Phase 2 reconnection is wired up in App.tsx
-  // Sessions are persisted but NOT auto-loaded — reconnection flow must validate PTYs first
   sessions: [],
   activeTerminalPerBarrack: {},
   panelWidthPerBarrack: loadPanelWidths(),
@@ -195,6 +194,15 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       activeTerminalPerBarrack: { ...s.activeTerminalPerBarrack, [barrackPath]: id },
     })),
 
+  setPtyId: (sessionId, ptyId) =>
+    set((s) => {
+      const next = s.sessions.map((t) =>
+        t.id === sessionId ? { ...t, ptyId } : t
+      );
+      persistSessions(next);
+      return { sessions: next };
+    }),
+
   setPanelWidth: (barrackPath, w) => {
     const next = { ...get().panelWidthPerBarrack, [barrackPath]: w };
     localStorage.setItem("cc-terminal-panel-widths", JSON.stringify(next));
@@ -245,6 +253,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     const next = get().quickCommands.filter((c) => c.id !== id);
     localStorage.setItem("cc-quick-commands", JSON.stringify(next));
     set({ quickCommands: next });
+  },
+
+  reconnectSessions: (survivingPtyIds) => {
+    const persisted = loadPersistedSessions();
+    const toReconnect = persisted.filter(
+      (s) => s.ptyId && survivingPtyIds.has(s.ptyId)
+    );
+    if (toReconnect.length === 0) return;
+
+    // Build activeTerminalPerBarrack from reconnected sessions
+    const active: Record<string, string> = {};
+    for (const s of toReconnect) {
+      active[s.barrackPath] = s.id;
+    }
+
+    set({ sessions: toReconnect, activeTerminalPerBarrack: active });
+    persistSessions(toReconnect);
   },
 }));
 

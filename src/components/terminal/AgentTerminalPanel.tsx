@@ -80,7 +80,7 @@ export function AgentTerminalPanel() {
         if (!isDragging.current) return;
         const delta = startX - e.clientX;
         const sidebarWidth = 240;
-        const minMainContentWidth = 200;
+        const minMainContentWidth = 60;
         const maxWidth = window.innerWidth - sidebarWidth - minMainContentWidth;
         const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
         setPanelWidth(bp, newWidth);
@@ -107,7 +107,7 @@ export function AgentTerminalPanel() {
   const handleDoubleClick = useCallback(() => {
     if (!bp) return;
     const sidebarWidth = 240;
-    const minMainContentWidth = 200;
+    const minMainContentWidth = 60;
     const maxWidth = window.innerWidth - sidebarWidth - minMainContentWidth;
     setPanelWidth(bp, panelWidth >= maxWidth - 10 ? 480 : maxWidth);
   }, [bp, panelWidth, setPanelWidth]);

@@ -11,12 +11,17 @@ interface XTermInstanceProps {
 export function XTermInstance({ session, visible }: XTermInstanceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const removeSession = useTerminalStore((s) => s.removeSession);
+  const setPtyId = useTerminalStore((s) => s.setPtyId);
 
   const handleExit = useCallback(() => {
     if (session.autoCloseOnExit) {
       setTimeout(() => removeSession(session.id), 3000);
     }
   }, [session.id, session.autoCloseOnExit, removeSession]);
+
+  const handlePtyCreated = useCallback((ptyId: string) => {
+    setPtyId(session.id, ptyId);
+  }, [session.id, setPtyId]);
 
   useTerminal({
     sessionId: session.id,
@@ -25,6 +30,8 @@ export function XTermInstance({ session, visible }: XTermInstanceProps) {
     initialCommand: session.initialCommand,
     visible,
     onExit: handleExit,
+    onPtyCreated: handlePtyCreated,
+    reconnectTerminalId: session.ptyId,
   });
 
   return (

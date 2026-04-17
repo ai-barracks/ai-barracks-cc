@@ -118,6 +118,7 @@ export interface TerminalSession {
   initialCommand?: string;
   source?: "launch" | "continue" | "monitor" | "view" | "terminal" | "council";
   autoCloseOnExit?: boolean;
+  ptyId?: string;
 }
 
 export interface TerminalSettings {

@@ -79,11 +79,12 @@ interface UseTerminalOptions {
   initialCommand?: string;
   visible?: boolean;
   onExit?: (code?: number | null) => void;
+  onPtyCreated?: (ptyId: string) => void;
   /** If set, reconnect to existing PTY instead of creating a new one */
   reconnectTerminalId?: string;
 }
 
-export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visible, onExit, reconnectTerminalId }: UseTerminalOptions) {
+export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visible, onExit, onPtyCreated, reconnectTerminalId }: UseTerminalOptions) {
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalIdRef = useRef<string | null>(null);
@@ -179,6 +180,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
             return;
           }
           terminalIdRef.current = id;
+          onPtyCreated?.(id);
         });
       }
     });

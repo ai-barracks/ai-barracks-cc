@@ -1,7 +1,9 @@
 import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "./stores/appStore";
 import { useNotificationStore } from "./stores/notificationStore";
+import { useTerminalStore } from "./stores/terminalStore";
 import { Sidebar } from "./components/layout/Sidebar";
 import { MainContent } from "./components/layout/MainContent";
 import { AgentTerminalPanel } from "./components/terminal/AgentTerminalPanel";
@@ -26,9 +28,31 @@ function App() {
   const { fetchBarracks, fetchCliVersion } = useAppStore();
   const addNotification = useNotificationStore((s) => s.addNotification);
 
+  // Reconnect surviving PTY sessions after reload
   useEffect(() => {
-    // NOTE: terminal_close_all removed — PTY sessions survive reload for reconnection
+    invoke<{ id: string; is_connected: boolean }[]>("terminal_list")
+      .then((terminals) => {
+        if (terminals.length > 0) {
+          const survivingIds = new Set(terminals.map((t) => t.id));
+          useTerminalStore.getState().reconnectSessions(survivingIds);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
+  // Prevent accidental reload/close when terminals are active
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const sessions = useTerminalStore.getState().sessions;
+      if (sessions.length > 0) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  useEffect(() => {
     fetchBarracks();
     fetchCliVersion();
     const saved = localStorage.getItem("cc-theme") ?? "dark";
