@@ -106,6 +106,7 @@ interface TerminalState {
   updateSettings: (partial: Partial<TerminalSettings>) => void;
   addQuickCommand: (cmd: QuickCommand) => void;
   removeQuickCommand: (id: string) => void;
+  markExited: (id: string) => void;
   reconnectSessions: (survivingPtyIds: Set<string>) => void;
 }
 
@@ -254,6 +255,15 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     localStorage.setItem("cc-quick-commands", JSON.stringify(next));
     set({ quickCommands: next });
   },
+
+  markExited: (id) =>
+    set((s) => {
+      const next = s.sessions.map((t) =>
+        t.id === id ? { ...t, exited: true } : t
+      );
+      persistSessions(next);
+      return { sessions: next };
+    }),
 
   reconnectSessions: (survivingPtyIds) => {
     const persisted = loadPersistedSessions();

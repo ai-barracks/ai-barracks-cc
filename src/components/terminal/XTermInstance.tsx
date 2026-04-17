@@ -12,12 +12,14 @@ export function XTermInstance({ session, visible }: XTermInstanceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const removeSession = useTerminalStore((s) => s.removeSession);
   const setPtyId = useTerminalStore((s) => s.setPtyId);
+  const markExited = useTerminalStore((s) => s.markExited);
 
   const handleExit = useCallback(() => {
+    markExited(session.id);
     if (session.autoCloseOnExit) {
       setTimeout(() => removeSession(session.id), 3000);
     }
-  }, [session.id, session.autoCloseOnExit, removeSession]);
+  }, [session.id, session.autoCloseOnExit, removeSession, markExited]);
 
   const handlePtyCreated = useCallback((ptyId: string) => {
     setPtyId(session.id, ptyId);

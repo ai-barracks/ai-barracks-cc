@@ -199,10 +199,13 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       }
     });
 
-    // ResizeObserver — skip fit() during active panel drag, apply after
+    // ResizeObserver — skip fit() during active panel drag or when off-screen
     let fitTimeout: ReturnType<typeof setTimeout> | null = null;
-    const observer = new ResizeObserver(() => {
+    const observer = new ResizeObserver((entries) => {
       if (isDisposedRef.current) return;
+      // Skip fit when container is invisible or too small (off-screen panel)
+      const entry = entries[0];
+      if (entry && (entry.contentRect.width < 10 || entry.contentRect.height < 10)) return;
       if (fitTimeout) clearTimeout(fitTimeout);
       const check = () => {
         if (isDisposedRef.current) return;
@@ -233,13 +236,16 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerRef]);
 
-  // Re-fit when tab becomes visible (display:none → block skips ResizeObserver)
+  // Re-fit and focus when tab becomes visible (display:none → block skips ResizeObserver)
   useEffect(() => {
     if (!visible || !fitAddonRef.current || isDisposedRef.current) return;
-    const t = setTimeout(() => {
-      if (!isDisposedRef.current) fitAddonRef.current?.fit();
-    }, 0);
-    return () => clearTimeout(t);
+    // Use rAF to ensure DOM layout is settled before fitting
+    const raf = requestAnimationFrame(() => {
+      if (isDisposedRef.current) return;
+      fitAddonRef.current?.fit();
+      terminalRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
   }, [visible]);
 
   // React to settings/theme changes

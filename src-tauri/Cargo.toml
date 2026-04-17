@@ -1,6 +1,6 @@
 [package]
 name = "ai-barracks-cc"
-version = "0.3.6"
+version = "0.3.7"
 description = "AI Barracks CommandCenter"
 edition = "2021"
 
