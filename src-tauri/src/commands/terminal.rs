@@ -185,6 +185,8 @@ pub async fn terminal_create(
     let shell = default_shell();
     let mut cmd = CommandBuilder::new(&shell);
     cmd.arg("-l");
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
 
     if let Some(ref dir) = cwd {
         cmd.cwd(dir);

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { TerminalSession, TerminalSettings, QuickCommand } from "../types";
+import type { TerminalSession, TerminalSettings, QuickCommand, SplitLayout } from "../types";
 
 const DEFAULT_SETTINGS: TerminalSettings = {
   fontFamily: "SF Mono, Menlo, Monaco, Consolas, monospace",
@@ -20,6 +20,16 @@ function loadSettings(): TerminalSettings {
 
 function loadPanelWidths(): Record<string, number> {
   const saved = localStorage.getItem("cc-terminal-panel-widths");
+  if (!saved) return {};
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return {};
+  }
+}
+
+function loadSplitLayouts(): Record<string, SplitLayout> {
+  const saved = localStorage.getItem("cc-terminal-split-layouts");
   if (!saved) return {};
   try {
     return JSON.parse(saved);
@@ -81,6 +91,7 @@ interface TerminalState {
   sessions: TerminalSession[];
   activeTerminalPerBarrack: Record<string, string>;
   panelWidthPerBarrack: Record<string, number>;
+  splitLayoutPerBarrack: Record<string, SplitLayout>;
   settings: TerminalSettings;
   quickCommands: QuickCommand[];
   isResizing: boolean;
@@ -89,6 +100,8 @@ interface TerminalState {
   removeSession: (id: string) => void;
   setActiveTerminal: (barrackPath: string, id: string) => void;
   setPanelWidth: (barrackPath: string, w: number) => void;
+  setSplitLayout: (barrackPath: string, layout: SplitLayout) => void;
+  setSlotTerminal: (barrackPath: string, slotIndex: number, sessionId: string | null) => void;
   setIsResizing: (v: boolean) => void;
   updateSettings: (partial: Partial<TerminalSettings>) => void;
   addQuickCommand: (cmd: QuickCommand) => void;
@@ -101,6 +114,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   sessions: [],
   activeTerminalPerBarrack: {},
   panelWidthPerBarrack: loadPanelWidths(),
+  splitLayoutPerBarrack: loadSplitLayouts(),
   settings: loadSettings(),
   quickCommands: loadQuickCommands(),
   isResizing: false,
@@ -109,8 +123,26 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     set((s) => {
       const next = [...s.sessions, session];
       persistSessions(next);
+
+      // Auto-fill empty slot in split/grid mode
+      const layout = s.splitLayoutPerBarrack[session.barrackPath];
+      let nextLayouts = s.splitLayoutPerBarrack;
+      if (layout && layout.mode !== "single") {
+        const emptyIdx = layout.slots.indexOf(null);
+        if (emptyIdx !== -1) {
+          const newSlots = [...layout.slots];
+          newSlots[emptyIdx] = session.id;
+          nextLayouts = {
+            ...s.splitLayoutPerBarrack,
+            [session.barrackPath]: { ...layout, slots: newSlots },
+          };
+          localStorage.setItem("cc-terminal-split-layouts", JSON.stringify(nextLayouts));
+        }
+      }
+
       return {
         sessions: next,
+        splitLayoutPerBarrack: nextLayouts,
         activeTerminalPerBarrack: {
           ...s.activeTerminalPerBarrack,
           [session.barrackPath]: session.id,
@@ -126,6 +158,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       persistSessions(remaining);
 
       const newActive = { ...s.activeTerminalPerBarrack };
+      let nextLayouts = s.splitLayoutPerBarrack;
       if (removed) {
         const bp = removed.barrackPath;
         if (newActive[bp] === id) {
@@ -133,11 +166,27 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           newActive[bp] = barrackSessions[barrackSessions.length - 1]?.id ?? "";
           if (!newActive[bp]) delete newActive[bp];
         }
+
+        // Clean up slot referencing removed session
+        const layout = s.splitLayoutPerBarrack[bp];
+        if (layout) {
+          const slotIdx = layout.slots.indexOf(id);
+          if (slotIdx !== -1) {
+            const newSlots = [...layout.slots];
+            newSlots[slotIdx] = null;
+            nextLayouts = {
+              ...s.splitLayoutPerBarrack,
+              [bp]: { ...layout, slots: newSlots },
+            };
+            localStorage.setItem("cc-terminal-split-layouts", JSON.stringify(nextLayouts));
+          }
+        }
       }
 
       return {
         sessions: remaining,
         activeTerminalPerBarrack: newActive,
+        splitLayoutPerBarrack: nextLayouts,
       };
     }),
 
@@ -150,6 +199,32 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     const next = { ...get().panelWidthPerBarrack, [barrackPath]: w };
     localStorage.setItem("cc-terminal-panel-widths", JSON.stringify(next));
     set({ panelWidthPerBarrack: next });
+  },
+
+  setSplitLayout: (barrackPath, layout) => {
+    const next = { ...get().splitLayoutPerBarrack, [barrackPath]: layout };
+    localStorage.setItem("cc-terminal-split-layouts", JSON.stringify(next));
+    set({ splitLayoutPerBarrack: next });
+  },
+
+  setSlotTerminal: (barrackPath, slotIndex, sessionId) => {
+    const current = get().splitLayoutPerBarrack[barrackPath];
+    if (!current) return;
+    const newSlots = [...current.slots];
+    // Clear session from any other slot first (prevent duplicate assignment)
+    if (sessionId) {
+      const existingIdx = newSlots.indexOf(sessionId);
+      if (existingIdx !== -1 && existingIdx !== slotIndex) {
+        newSlots[existingIdx] = null;
+      }
+    }
+    newSlots[slotIndex] = sessionId;
+    const next = {
+      ...get().splitLayoutPerBarrack,
+      [barrackPath]: { ...current, slots: newSlots },
+    };
+    localStorage.setItem("cc-terminal-split-layouts", JSON.stringify(next));
+    set({ splitLayoutPerBarrack: next });
   },
 
   setIsResizing: (v) => set({ isResizing: v }),

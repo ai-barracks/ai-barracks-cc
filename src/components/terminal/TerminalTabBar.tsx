@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTerminalStore, getBuffer } from "../../stores/terminalStore";
 import { TerminalSettingsPanel } from "./TerminalSettings";
-import type { TerminalSession } from "../../types";
+import type { TerminalSession, ViewMode } from "../../types";
 
 interface TerminalTabBarProps {
   barrackPath: string;
@@ -10,9 +10,46 @@ interface TerminalTabBarProps {
   activeTerminalId: string | null;
 }
 
+function slotsForMode(mode: ViewMode): number {
+  if (mode === "single") return 1;
+  if (mode === "grid") return 4;
+  return 2;
+}
+
+const VIEW_MODES: { mode: ViewMode; label: string; icon: string }[] = [
+  { mode: "single", label: "Single", icon: "\u25A1" },
+  { mode: "split-horizontal", label: "Split H", icon: "\u25EB" },
+  { mode: "split-vertical", label: "Split V", icon: "\u2B12" },
+  { mode: "grid", label: "Grid", icon: "\u2B1A" },
+];
+
+function getMinPanelWidth(mode: ViewMode): number {
+  if (mode === "split-horizontal" || mode === "grid") return 560;
+  return 280;
+}
+
 export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: TerminalTabBarProps) {
   const { setActiveTerminal, removeSession, addSession, addQuickCommand } = useTerminalStore();
+  const splitLayout = useTerminalStore((s) => s.splitLayoutPerBarrack[barrackPath]);
+  const setSplitLayout = useTerminalStore((s) => s.setSplitLayout);
+  const setPanelWidth = useTerminalStore((s) => s.setPanelWidth);
+  const panelWidth = useTerminalStore((s) => s.panelWidthPerBarrack[barrackPath] ?? 480);
   const [showSettings, setShowSettings] = useState(false);
+
+  const currentMode = splitLayout?.mode ?? "single";
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    const slotCount = slotsForMode(mode);
+    const sessionIds = sessions.map((s) => s.id);
+    const slots: (string | null)[] = Array.from({ length: slotCount }, (_, i) => sessionIds[i] ?? null);
+    setSplitLayout(barrackPath, { mode, slots });
+
+    // Auto-expand panel if current width is below minimum for the new mode
+    const minWidth = getMinPanelWidth(mode);
+    if (panelWidth < minWidth) {
+      setPanelWidth(barrackPath, minWidth);
+    }
+  }, [barrackPath, sessions, panelWidth, setSplitLayout, setPanelWidth]);
 
   const handleNewTerminal = () => {
     addSession({
@@ -105,6 +142,24 @@ export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: Term
         >
           +
         </button>
+      </div>
+
+      {/* View mode toggle */}
+      <div className="flex items-center gap-0.5 ml-2 border-l border-cc-border pl-2">
+        {VIEW_MODES.map((vm) => (
+          <button
+            key={vm.mode}
+            onClick={() => handleViewModeChange(vm.mode)}
+            className={`px-1.5 py-0.5 text-[11px] rounded transition-colors ${
+              currentMode === vm.mode
+                ? "bg-cc-accent/20 text-cc-accent"
+                : "text-cc-text-muted hover:text-cc-text-dim hover:bg-cc-card-hover"
+            }`}
+            title={vm.label}
+          >
+            {vm.icon}
+          </button>
+        ))}
       </div>
 
       {/* Right actions */}

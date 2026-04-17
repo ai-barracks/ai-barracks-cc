@@ -127,6 +127,13 @@ export interface TerminalSettings {
   cursorStyle: "block" | "underline" | "bar";
 }
 
+export type ViewMode = "single" | "split-horizontal" | "split-vertical" | "grid";
+
+export interface SplitLayout {
+  mode: ViewMode;
+  slots: (string | null)[];
+}
+
 export interface LaunchCommand {
   cwd: string;
   command: string;
