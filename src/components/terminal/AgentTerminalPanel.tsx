@@ -176,7 +176,7 @@ export function AgentTerminalPanel() {
         {/* Terminal instances — uses CSS Grid in split/grid mode, flat list in single mode.
             XTermInstances never unmount: they use stable key={s.id} and display toggle. */}
         <div
-          className={showPanel ? (isGridMode ? "flex-1 min-h-0" : "flex-1 relative overflow-hidden") : undefined}
+          className={showPanel ? (isGridMode ? "flex-1 min-h-0" : "flex-1 min-h-0 relative overflow-hidden") : undefined}
           style={showPanel && isGridMode ? { ...getGridStyle(viewMode), background: "var(--cc-border)" } : undefined}
         >
           {/* Empty slot placeholders (grid mode only) */}
@@ -214,6 +214,8 @@ export function AgentTerminalPanel() {
                 className={visible ? "flex flex-col overflow-hidden bg-cc-bg" : undefined}
                 style={{
                   display: visible ? "flex" : "none",
+                  flex: visible ? 1 : undefined,
+                  minHeight: visible ? 0 : undefined,
                   flexDirection: "column",
                   overflow: "hidden",
                   ...(isGridMode && visible ? { order: slotIndex } : {}),
@@ -227,7 +229,7 @@ export function AgentTerminalPanel() {
                     availableSessions={barrackSessions}
                   />
                 )}
-                <div className="flex-1 relative overflow-hidden">
+                <div className="flex-1 min-h-0 relative overflow-hidden">
                   <XTermInstance session={s} visible={visible} />
                 </div>
               </div>
