@@ -176,7 +176,7 @@ export function AgentTerminalPanel() {
         {/* Terminal instances — uses CSS Grid in split/grid mode, flat list in single mode.
             XTermInstances never unmount: they use stable key={s.id} and display toggle. */}
         <div
-          className={showPanel ? (isGridMode ? "flex-1 min-h-0" : "flex-1 min-h-0 relative overflow-hidden") : undefined}
+          className={showPanel ? (isGridMode ? "flex-1 min-h-0" : "flex-1 min-h-0 relative overflow-hidden flex flex-col") : undefined}
           style={showPanel && isGridMode ? { ...getGridStyle(viewMode), background: "var(--cc-border)" } : undefined}
         >
           {/* Empty slot placeholders (grid mode only) */}

@@ -79,7 +79,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const version = await getVersion();
       set({ appVersion: version });
     } catch {
-      set({ appVersion: "" });
+      set({ appVersion: __APP_VERSION__ });
     }
   },
 
