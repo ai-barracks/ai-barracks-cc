@@ -77,14 +77,31 @@ CC는 [AI Barracks CLI](https://github.com/ai-barracks/ai-barracks) 없이는 �
 ### Prerequisites
 
 ```bash
-# 1. AI Barracks CLI 먼저 설치 (필수)
+# 1. AI Barracks CLI 먼저 설치 (필수, ≥ 1.0.1 권장)
 brew tap ai-barracks/ai-barracks
 brew install ai-barracks
 
 # 2. 배럭 하나 이상 초기화
 cd ~/my-project
 aib init
+
+# 3. CC 내장 터미널에서 띄울 LLM CLI를 PATH에 두기 (사용하는 것만)
+#    - Claude Code: brew install --cask claude-code  또는  claude install latest
+#    - Gemini CLI:  npm install -g @google/gemini-cli
+#    - Codex CLI:   npm install -g @openai/codex-cli  (≥ 0.128 권장)
+#    설치 후 `which claude/gemini/codex`로 PATH 확인
 ```
+
+#### 알려진 함정 (반드시 확인)
+
+- **`.claude/settings.local.json` 무결성**: `permissions.allow[]`의 `Bash(...)` 항목 quote가 깨지면 Claude Code 일부 버전(예: 2.1.118)이 CC PTY에서 invisible Settings 다이얼로그를 띄우며 stdin 전체를 가로챕니다 → TUI는 보이는데 키 입력이 무시되는 증상. aib ≥ 1.0.1은 launch 직전 자동 검사·경고합니다. 수동 검사:
+  ```bash
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); allow=d.get("permissions",{}).get("allow",[])
+  bad=[x for x in allow if isinstance(x,str) and x.startswith("Bash(") and x.endswith(")") and (x[5:-1].count("\"")%2 or x[5:-1].count("'\''")%2)]
+  print("\n".join(bad) or "OK")' .claude/settings.local.json
+  ```
+- **Codex CLI 0.128+**: `--full-auto` 플래그가 제거되고 `--dangerously-bypass-approvals-and-sandbox`로 대체됨. aib ≥ 1.0.1에서 자동 매핑.
+- **첫 Claude 실행 시 workspace trust 다이얼로그**: 새 디렉토리에서 첫 실행 시 신뢰 확인이 필요. 외부 Terminal에서 한 번 `claude`로 trust 한 뒤 CC에서 사용 권장.
 
 ### Install CommandCenter
 

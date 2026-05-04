@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.1] - 2026-05-04
+
+### Added
+- **LAUNCH 실패 surfacing**: PTY가 5초 이내 exit하면 `useTerminal` Exit 핸들러가 inline 경고 배너를 출력 (Claude settings 깨짐 / Codex `--full-auto` 회귀 / CLI 미설치 등 흔한 원인 안내). 기존엔 `[Process exited]`만 짧게 떠서 진단이 어려웠음.
+- **README Prerequisites 보강**: Claude/Gemini/Codex CLI 설치, `.claude/settings.local.json` 무결성 점검 스니펫, Codex 0.128 플래그 변경, 첫 Claude workspace trust 안내.
+
+### Notes
+- aib ≥ 1.0.1 와 함께 사용 권장 (Codex 플래그 회귀 수정 + Claude settings 사전검사).
+
 ## [1.0.0] - 2026-04-17
 
 AI Barracks CommandCenter v1.0.0 공식 릴리즈.
