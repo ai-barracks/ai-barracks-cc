@@ -89,6 +89,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalIdRef = useRef<string | null>(null);
   const isDisposedRef = useRef(false);
+  const ptyStartTimeRef = useRef<number | null>(null);
 
   const settings = useTerminalStore((s) => s.settings);
   const theme = useAppStore((s) => s.theme);
@@ -149,7 +150,18 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
           term.write(msg.data);
           appendToBuffer(sessionId, msg.data);
         } else if (msg.type === "Exit") {
-          term.write("\r\n\x1b[90m[Process exited]\x1b[0m\r\n");
+          const elapsed = ptyStartTimeRef.current ? Date.now() - ptyStartTimeRef.current : null;
+          if (elapsed !== null && elapsed < 5000 && initialCommand) {
+            const seconds = (elapsed / 1000).toFixed(1);
+            term.write(`\r\n\x1b[33m⚠ Process exited ${seconds}s after launch.\x1b[0m\r\n`);
+            term.write(`\x1b[33m  Common causes:\x1b[0m\r\n`);
+            term.write(`\x1b[33m  • Claude TUI input lockup → check .claude/settings.local.json for unmatched quotes in Bash(...) entries (auto-detected by aib ≥ 1.0.1)\x1b[0m\r\n`);
+            term.write(`\x1b[33m  • CLI flag regression (e.g. codex --full-auto removed in 0.128 — fixed in aib ≥ 1.0.1)\x1b[0m\r\n`);
+            term.write(`\x1b[33m  • Missing CLI in PATH — verify with \`which claude/gemini/codex\`\x1b[0m\r\n`);
+            term.write("\x1b[90m[Process exited]\x1b[0m\r\n");
+          } else {
+            term.write("\r\n\x1b[90m[Process exited]\x1b[0m\r\n");
+          }
           onExit?.(msg.code);
         }
       };
@@ -180,6 +192,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
             return;
           }
           terminalIdRef.current = id;
+          ptyStartTimeRef.current = Date.now();
           onPtyCreated?.(id);
         });
       }
