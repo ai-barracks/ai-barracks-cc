@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -27,28 +27,36 @@ function RoleBadge({ role }: { role: string }) {
 
 export function FilesTab() {
   const { selectedBarrack, fetchBarracks, pendingConfigFile, clearPendingConfigFile } = useAppStore();
+  const barrackPath = selectedBarrack?.path;
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [editContent, setEditContent] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const hasChangesRef = useRef(false);
+  const selectedFileRef = useRef<FileInfo | null>(null);
+  useEffect(() => {
+    hasChangesRef.current = hasChanges;
+  }, [hasChanges]);
+  useEffect(() => {
+    selectedFileRef.current = selectedFile;
+  }, [selectedFile]);
 
   const loadFiles = useCallback(async () => {
-    if (!selectedBarrack) return;
+    if (!barrackPath) return;
+    if (hasChangesRef.current) return;
     try {
-      const result = await invoke<FileInfo[]>("get_barrack_files", {
-        barrackPath: selectedBarrack.path,
-      });
+      const result = await invoke<FileInfo[]>("get_barrack_files", { barrackPath });
       setFiles(result);
-      if (!selectedFile && result.length > 0) {
+      if (!selectedFileRef.current && result.length > 0) {
         setSelectedFile(result[0]);
         setEditContent(result[0].content);
       }
     } catch (e) {
       console.error("Failed to load files:", e);
     }
-  }, [selectedBarrack, selectedFile]);
+  }, [barrackPath]);
 
   useEffect(() => {
     loadFiles();
@@ -91,15 +99,15 @@ export function FilesTab() {
       useTerminalStore.getState().addSession({
         id: crypto.randomUUID(),
         title: `Validate - ${selectedFile.name}`,
-        barrackPath: selectedBarrack!.path,
-        cwd: selectedBarrack!.path,
-        initialCommand: `/opt/homebrew/bin/aib sync --dry-run '${selectedBarrack!.path}'`,
+        barrackPath: barrackPath!,
+        cwd: barrackPath!,
+        initialCommand: `/opt/homebrew/bin/aib sync --dry-run '${barrackPath!}'`,
         source: "terminal",
         autoCloseOnExit: true,
       });
       // Refresh file list + barrack data (Overview reflects changes)
       const result = await invoke<FileInfo[]>("get_barrack_files", {
-        barrackPath: selectedBarrack!.path,
+        barrackPath: barrackPath!,
       });
       setFiles(result);
       const updated = result.find((f) => f.name === selectedFile.name);

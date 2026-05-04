@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { OwnershipBanner } from "./OwnershipBanner";
@@ -78,23 +78,27 @@ function RuleSection({
 
 export function RulesEditor() {
   const { selectedBarrack, fetchBarracks } = useAppStore();
+  const barrackPath = selectedBarrack?.path;
   const [rules, setRules] = useState<RulesData | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const hasChangesRef = useRef(false);
+  useEffect(() => {
+    hasChangesRef.current = hasChanges;
+  }, [hasChanges]);
 
   const loadRules = useCallback(async () => {
-    if (!selectedBarrack) return;
+    if (!barrackPath) return;
+    if (hasChangesRef.current) return;
     try {
-      const data = await invoke<RulesData>("get_rules", {
-        barrackPath: selectedBarrack.path,
-      });
+      const data = await invoke<RulesData>("get_rules", { barrackPath });
       setRules(data);
       setHasChanges(false);
     } catch (e) {
       console.error("Failed to load rules:", e);
     }
-  }, [selectedBarrack]);
+  }, [barrackPath]);
 
   useEffect(() => {
     loadRules();
@@ -106,12 +110,12 @@ export function RulesEditor() {
   };
 
   const handleSave = async () => {
-    if (!selectedBarrack || !rules) return;
+    if (!barrackPath || !rules) return;
     setSaving(true);
     setSaveMsg(null);
     try {
       await invoke("save_rules", {
-        barrackPath: selectedBarrack.path,
+        barrackPath,
         rules,
       });
       setHasChanges(false);

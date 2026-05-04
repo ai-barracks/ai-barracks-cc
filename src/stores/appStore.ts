@@ -56,9 +56,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const barracks = await invoke<BarrackInfo[]>("get_barracks");
       const current = get().selectedBarrack;
-      const updated = current
+      const found = current
         ? barracks.find((b) => b.path === current.path) ?? null
         : null;
+      const updated =
+        found && current && JSON.stringify(found) === JSON.stringify(current)
+          ? current
+          : found;
       set({ barracks, selectedBarrack: updated, loading: false });
     } catch (e) {
       set({ error: String(e), loading: false });

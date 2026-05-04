@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { OwnershipBanner } from "./OwnershipBanner";
@@ -123,23 +123,29 @@ function ListField({
 
 export function SoulFormEditor() {
   const { selectedBarrack, fetchBarracks } = useAppStore();
+  const barrackPath = selectedBarrack?.path;
   const [data, setData] = useState<SoulData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const hasChangesRef = useRef(false);
+  useEffect(() => {
+    hasChangesRef.current = hasChanges;
+  }, [hasChanges]);
 
   const load = useCallback(async () => {
-    if (!selectedBarrack) return;
+    if (!barrackPath) return;
+    if (hasChangesRef.current) return;
     try {
       const content = await invoke<string>("read_file", {
-        filePath: `${selectedBarrack.path}/SOUL.md`,
+        filePath: `${barrackPath}/SOUL.md`,
       });
       setData(parseSoul(content));
       setHasChanges(false);
     } catch (e) {
       console.error("Failed to load SOUL.md:", e);
     }
-  }, [selectedBarrack]);
+  }, [barrackPath]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -150,12 +156,12 @@ export function SoulFormEditor() {
   };
 
   const handleSave = async () => {
-    if (!selectedBarrack || !data) return;
+    if (!barrackPath || !data) return;
     setSaving(true);
     setSaveMsg(null);
     try {
       await invoke("write_file", {
-        filePath: `${selectedBarrack.path}/SOUL.md`,
+        filePath: `${barrackPath}/SOUL.md`,
         content: buildSoul(data),
       });
       setHasChanges(false);

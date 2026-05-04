@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { OwnershipBanner } from "./OwnershipBanner";
@@ -99,23 +99,29 @@ function Field({
 
 export function YamlFormEditor() {
   const { selectedBarrack, fetchBarracks } = useAppStore();
+  const barrackPath = selectedBarrack?.path;
   const [config, setConfig] = useState<AgentConfig | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const hasChangesRef = useRef(false);
+  useEffect(() => {
+    hasChangesRef.current = hasChanges;
+  }, [hasChanges]);
 
   const loadConfig = useCallback(async () => {
-    if (!selectedBarrack) return;
+    if (!barrackPath) return;
+    if (hasChangesRef.current) return;
     try {
       const content = await invoke<string>("read_file", {
-        filePath: `${selectedBarrack.path}/agent.yaml`,
+        filePath: `${barrackPath}/agent.yaml`,
       });
       setConfig(parseYaml(content));
       setHasChanges(false);
     } catch (e) {
       console.error("Failed to load agent.yaml:", e);
     }
-  }, [selectedBarrack]);
+  }, [barrackPath]);
 
   useEffect(() => {
     loadConfig();
@@ -128,12 +134,12 @@ export function YamlFormEditor() {
   };
 
   const handleSave = async () => {
-    if (!selectedBarrack || !config) return;
+    if (!barrackPath || !config) return;
     setSaving(true);
     setSaveMsg(null);
     try {
       await invoke("write_file", {
-        filePath: `${selectedBarrack.path}/agent.yaml`,
+        filePath: `${barrackPath}/agent.yaml`,
         content: buildYaml(config),
       });
       setHasChanges(false);

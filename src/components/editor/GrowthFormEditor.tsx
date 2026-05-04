@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { OwnershipBanner } from "./OwnershipBanner";
@@ -88,23 +88,29 @@ function buildGrowth(data: GrowthData): string {
 
 export function GrowthFormEditor() {
   const { selectedBarrack, fetchBarracks } = useAppStore();
+  const barrackPath = selectedBarrack?.path;
   const [data, setData] = useState<GrowthData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const hasChangesRef = useRef(false);
+  useEffect(() => {
+    hasChangesRef.current = hasChanges;
+  }, [hasChanges]);
 
   const load = useCallback(async () => {
-    if (!selectedBarrack) return;
+    if (!barrackPath) return;
+    if (hasChangesRef.current) return;
     try {
       const content = await invoke<string>("read_file", {
-        filePath: `${selectedBarrack.path}/GROWTH.md`,
+        filePath: `${barrackPath}/GROWTH.md`,
       });
       setData(parseGrowth(content));
       setHasChanges(false);
     } catch (e) {
       console.error("Failed to load GROWTH.md:", e);
     }
-  }, [selectedBarrack]);
+  }, [barrackPath]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -115,12 +121,12 @@ export function GrowthFormEditor() {
   };
 
   const handleSave = async () => {
-    if (!selectedBarrack || !data) return;
+    if (!barrackPath || !data) return;
     setSaving(true);
     setSaveMsg(null);
     try {
       await invoke("write_file", {
-        filePath: `${selectedBarrack.path}/GROWTH.md`,
+        filePath: `${barrackPath}/GROWTH.md`,
         content: buildGrowth(data),
       });
       setHasChanges(false);

@@ -8,34 +8,36 @@ import type { WikiIndex } from "../../types";
 
 export function WikiTab() {
   const { selectedBarrack } = useAppStore();
+  const barrackPath = selectedBarrack?.path;
   const [wikiIndex, setWikiIndex] = useState<WikiIndex | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [topicContent, setTopicContent] = useState<string>("");
 
   const loadWiki = useCallback(async () => {
-    if (!selectedBarrack) return;
+    if (!barrackPath) return;
     try {
-      const index = await invoke<WikiIndex>("get_wiki_index", {
-        barrackPath: selectedBarrack.path,
-      });
+      const index = await invoke<WikiIndex>("get_wiki_index", { barrackPath });
       setWikiIndex(index);
     } catch (e) {
       console.error("Failed to load wiki:", e);
     }
-  }, [selectedBarrack]);
+  }, [barrackPath]);
 
   useEffect(() => {
     loadWiki();
-    setSelectedTopic(null);
-    setTopicContent("");
   }, [loadWiki]);
 
+  useEffect(() => {
+    setSelectedTopic(null);
+    setTopicContent("");
+  }, [barrackPath]);
+
   const handleSelectTopic = async (file: string) => {
-    if (!selectedBarrack) return;
+    if (!barrackPath) return;
     setSelectedTopic(file);
     try {
       const content = await invoke<string>("get_wiki_topic", {
-        barrackPath: selectedBarrack.path,
+        barrackPath,
         topicFile: file,
       });
       setTopicContent(content);
