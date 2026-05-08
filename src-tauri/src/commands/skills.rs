@@ -112,6 +112,8 @@ fn walk_skills_dir(skills_dir: &Path) -> Vec<SkillCard> {
         Err(_) => return cards,
     };
     let mut slugs: Vec<(String, PathBuf)> = Vec::new();
+    // 개별 entry의 IO 에러는 silent skip (transient FS 이슈에 graceful).
+    // 영속적 에러는 카드 누락으로 나타남 — 디렉터리 자체 read_dir 실패는 위에서 빈 Vec 반환.
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() {
@@ -129,8 +131,16 @@ fn walk_skills_dir(skills_dir: &Path) -> Vec<SkillCard> {
     }
     slugs.sort_by(|a, b| a.0.cmp(&b.0));
     for (slug, skill_md) in slugs {
-        let content = fs::read_to_string(&skill_md).unwrap_or_default();
-        cards.push(parse_skill_md(&slug, &content));
+        match fs::read_to_string(&skill_md) {
+            Ok(content) => cards.push(parse_skill_md(&slug, &content)),
+            Err(e) => cards.push(SkillCard {
+                slug: slug.clone(),
+                name: slug.clone(),
+                description: String::new(),
+                parse_error: Some(format!("SKILL.md 읽기 실패: {}", e)),
+                ..Default::default()
+            }),
+        }
     }
     cards
 }
@@ -273,5 +283,35 @@ mod tests {
         let result = get_skills_index(tmp.path().to_string_lossy().to_string()).unwrap();
         assert!(!result.skills_dir_exists);
         assert!(result.skills.is_empty());
+    }
+
+    #[test]
+    fn read_failure_surfaces_as_distinct_parse_error() {
+        // SKILL.md 자리에 디렉터리를 만들면 read_to_string은 IO Err 반환.
+        // walk_skills_dir은 이를 "SKILL.md 읽기 실패: ..."로 분류해야 함.
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        // (macOS/Linux에서 chmod 000 파일은 read 실패를 일으킨다.)
+        use std::os::unix::fs::PermissionsExt;
+        test_fs::create_dir_all(skills_dir.join("noperm")).unwrap();
+        let path = skills_dir.join("noperm").join("SKILL.md");
+        File::create(&path).unwrap().write_all(b"---\nname: x\n---\n").unwrap();
+        let mut perms = test_fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o000);
+        test_fs::set_permissions(&path, perms).unwrap();
+
+        let cards = walk_skills_dir(&skills_dir);
+        // 권한 복구해서 cleanup이 가능하게
+        let mut restore = test_fs::metadata(&path).unwrap().permissions();
+        restore.set_mode(0o644);
+        let _ = test_fs::set_permissions(&path, restore);
+
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].slug, "noperm");
+        let err = cards[0].parse_error.as_deref().unwrap_or("");
+        assert!(
+            err.contains("읽기 실패"),
+            "expected '읽기 실패' in parse_error, got {:?}", cards[0].parse_error
+        );
     }
 }
