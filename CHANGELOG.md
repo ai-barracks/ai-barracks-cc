@@ -1,11 +1,24 @@
 # Changelog
 
-## [1.1.0] - unreleased
+## [1.1.1] - unreleased
+
+### Fixed — Version metadata sync
+- **`src-tauri/tauri.conf.json`**: `version`을 1.0.2 → 1.1.1로 정정. v1.1.0 릴리즈 시 `tauri.conf.json` bump 누락으로 Info.plist `CFBundleShortVersionString` + DMG 파일명이 `1.0.2`로 표기되던 known cosmetic issue 해소.
+- **버전 정렬**: `package.json` + `Cargo.toml` 1.1.0 → 1.1.1. tauri.conf.json과 함께 한 번에 정정.
+
+### Notes
+- 코드 변경 없음 — v1.1.0 코드 그대로. 메타데이터/번들 파일명만 정정.
+- Info.plist의 `CFBundleShortVersionString`이 v1.1.1부터 실제 코드 버전과 일치 → 향후 설치 검증 시 메타데이터 신뢰 가능.
+
+## [1.1.0] - 2026-05-08
 
 ### Changed — Skills Schema Compatibility (paired with aib 1.1.0)
 - **`YamlFormEditor`**: `agent.yaml`의 `skills:` 블록을 더 이상 하드코딩된 리스트 형식으로 덮어쓰지 않음. 파싱 시 raw block을 보존하고, 저장 시 그대로 재출력. 1.0.x 리스트 형식·1.1.0 객체 형식(`discovery: auto, enabled: [...]`) 모두 안전하게 편집 가능.
   - **회귀 수정**: 기존 1.0.x 에디터는 알려지지 않은 필드(예: 사용자가 추가한 `skills.delegation`)를 저장 시 silent 손실시켰음. v1.1부터 skills 블록은 read-then-write로 보존.
 - **버전 정렬**: `package.json` + `Cargo.toml` 1.0.2 → 1.1.0. aib 1.1.0과 페어링.
+
+### Known Issue (cosmetic, fixed in v1.1.1)
+- DMG 파일명 + Info.plist `CFBundleShortVersionString`이 `1.0.2`로 표시됨 (`tauri.conf.json` bump 누락). 코드는 v1.1.0 그대로. v1.1.1에서 정정.
 
 ### Notes
 - aib ≥ 1.1.0 와 함께 사용 권장 (Skills 표준 디렉터리, `aib skills list/doctor` 명령).
