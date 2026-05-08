@@ -4,6 +4,7 @@ import { BarrackOverview } from "../barrack/BarrackOverview";
 import { FilesTab } from "../editor/FilesTab";
 import { SessionsTab } from "../session/SessionsTab";
 import { WikiTab } from "../wiki/WikiTab";
+import { SkillsTab } from "../skills/SkillsTab";
 import { GitTab } from "../git/GitTab";
 import { SystemView } from "../system/SystemView";
 import type { TabType } from "../../types";
@@ -13,6 +14,7 @@ const TABS: { key: TabType; label: string }[] = [
   { key: "files", label: "Config" },
   { key: "sessions", label: "Agents" },
   { key: "wiki", label: "Wiki" },
+  { key: "skills", label: "Skills" },
   { key: "git", label: "Git" },
 ];
 
@@ -61,6 +63,7 @@ export function MainContent() {
         {activeTab === "files" && <FilesTab />}
         {activeTab === "sessions" && <SessionsTab />}
         {activeTab === "wiki" && <WikiTab />}
+        {activeTab === "skills" && <SkillsTab />}
         {activeTab === "git" && <GitTab />}
       </div>
     </div>
