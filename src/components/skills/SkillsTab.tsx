@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useAppStore } from "../../stores/appStore";
 import type { SkillCard, SkillsIndex } from "../../types";
 
@@ -8,6 +10,11 @@ export function SkillsTab() {
   const barrackPath = selectedBarrack?.path;
   const [index, setIndex] = useState<SkillsIndex | null>(null);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [content, setContent] = useState<string>("");
+  const selectedCard = useMemo(
+    () => index?.skills.find((s) => s.slug === selectedSlug) ?? null,
+    [index, selectedSlug]
+  );
   const [query, setQuery] = useState("");
 
   const loadIndex = useCallback(async () => {
@@ -28,7 +35,25 @@ export function SkillsTab() {
   useEffect(() => {
     setSelectedSlug(null);
     setQuery("");
+    setContent("");
   }, [barrackPath]);
+
+  const handleSelect = useCallback(
+    async (slug: string) => {
+      setSelectedSlug(slug);
+      if (!barrackPath) return;
+      try {
+        const body = await invoke<string>("get_skill_content", {
+          barrackPath,
+          slug,
+        });
+        setContent(body);
+      } catch (e) {
+        setContent(`Error: ${e}`);
+      }
+    },
+    [barrackPath]
+  );
 
   const filteredSkills = useMemo(() => {
     if (!index) return [];
@@ -75,21 +100,65 @@ export function SkillsTab() {
                 key={skill.slug}
                 skill={skill}
                 selected={selectedSlug === skill.slug}
-                onClick={() => setSelectedSlug(skill.slug)}
+                onClick={() => handleSelect(skill.slug)}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* Right: empty for now (Task 6 fills this in) */}
       <div className="flex-1 p-6 overflow-y-auto">
-        <div className="flex items-center justify-center h-full text-cc-text-muted">
-          <div className="text-center">
-            <div className="text-3xl mb-3">🧪</div>
-            <p className="text-sm">스킬을 선택하세요</p>
+        {selectedCard ? (
+          <div className="space-y-4">
+            {/* Meta box */}
+            <div className="border border-cc-border rounded-lg p-4 bg-cc-panel/40">
+              <div className="text-base font-semibold mb-1">{selectedCard.name}</div>
+              {selectedCard.description && (
+                <p className="text-sm text-cc-text-dim mb-3">{selectedCard.description}</p>
+              )}
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs text-cc-text-muted">
+                <dt>slug</dt>
+                <dd className="font-mono text-cc-text-dim">{selectedCard.slug}</dd>
+                {selectedCard.aib_version && (
+                  <>
+                    <dt>aib_version</dt>
+                    <dd className="font-mono text-cc-text-dim">{selectedCard.aib_version}</dd>
+                  </>
+                )}
+                {selectedCard.upstream && (
+                  <>
+                    <dt>upstream</dt>
+                    <dd className="font-mono text-cc-text-dim break-all">{selectedCard.upstream}</dd>
+                  </>
+                )}
+                {selectedCard.argument_hint && (
+                  <>
+                    <dt>argument-hint</dt>
+                    <dd className="font-mono text-cc-text-dim">{selectedCard.argument_hint}</dd>
+                  </>
+                )}
+                {selectedCard.parse_error && (
+                  <>
+                    <dt className="text-red-400">parse_error</dt>
+                    <dd className="text-red-400">{selectedCard.parse_error}</dd>
+                  </>
+                )}
+              </dl>
+            </div>
+
+            {/* Body */}
+            <div className="prose prose-sm max-w-none prose-headings:text-cc-text prose-p:text-cc-text-dim prose-li:text-cc-text-dim prose-strong:text-cc-text prose-code:text-cc-accent prose-code:bg-cc-panel prose-code:px-1 prose-code:rounded prose-a:text-cc-accent">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center justify-center h-full text-cc-text-muted">
+            <div className="text-center">
+              <div className="text-3xl mb-3">🧪</div>
+              <p className="text-sm">스킬을 선택하세요</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
