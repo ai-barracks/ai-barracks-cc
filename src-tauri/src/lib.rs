@@ -38,6 +38,7 @@ pub fn run() {
             wiki::get_wiki_index,
             wiki::get_wiki_topic,
             skills::get_skills_index,
+            skills::get_skill_content,
             sync::sync_barrack,
             sync::sync_all_barracks,
             sync::remove_barrack,

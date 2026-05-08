@@ -160,6 +160,34 @@ pub fn get_skills_index(barrack_path: String) -> Result<SkillsIndex, String> {
     })
 }
 
+/// frontmatter 블록을 제거하고 본문만 반환.
+/// 정책 (spec 7.1): 닫는 '---' 다음의 빈 줄(`\n`)은 최대 1개까지 trim, 그 이상은 보존.
+/// frontmatter 자체가 없는 파일은 전체를 그대로 반환.
+fn extract_body(content: &str) -> String {
+    let normalized = content.replace("\r\n", "\n");
+    let after_open = match normalized.strip_prefix("---\n") {
+        Some(s) => s,
+        None => return normalized, // frontmatter 없음 — 전체 반환
+    };
+    let end_idx = match after_open.find("\n---\n") {
+        Some(i) => i,
+        None => {
+            // 닫는 --- 없음. 안전하게 frontmatter 없는 것으로 처리해 원본 반환.
+            return normalized;
+        }
+    };
+    let body = &after_open[end_idx + "\n---\n".len()..];
+    // 시작 빈 줄 1개까지만 제거
+    body.strip_prefix('\n').unwrap_or(body).to_string()
+}
+
+#[tauri::command]
+pub fn get_skill_content(barrack_path: String, slug: String) -> Result<String, String> {
+    let path = PathBuf::from(&barrack_path).join("skills").join(&slug).join("SKILL.md");
+    let content = fs::read_to_string(&path).map_err(|e| format!("SKILL.md 읽기 실패: {}", e))?;
+    Ok(extract_body(&content))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,5 +341,28 @@ mod tests {
             err.contains("읽기 실패"),
             "expected '읽기 실패' in parse_error, got {:?}", cards[0].parse_error
         );
+    }
+
+    #[test]
+    fn extracts_body_after_frontmatter() {
+        let input = "---\nname: foo\n---\n\nBody line 1\nBody line 2\n";
+        let body = extract_body(input);
+        // 첫 빈 줄 1개 제거 → "Body line 1\nBody line 2\n"
+        assert_eq!(body, "Body line 1\nBody line 2\n");
+    }
+
+    #[test]
+    fn preserves_extra_blank_lines() {
+        let input = "---\nname: foo\n---\n\n\nIntentional blank\n";
+        let body = extract_body(input);
+        // 앞 빈 줄 1개만 제거 → 빈 줄 1개 + 본문
+        assert_eq!(body, "\nIntentional blank\n");
+    }
+
+    #[test]
+    fn returns_full_content_when_no_frontmatter() {
+        let input = "no frontmatter here\nbody\n";
+        let body = extract_body(input);
+        assert_eq!(body, "no frontmatter here\nbody\n");
     }
 }
