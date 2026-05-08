@@ -47,9 +47,16 @@ export function SkillsTab() {
           barrackPath,
           slug,
         });
-        setContent(body);
+        // Race guard: 이 invoke가 시작된 후 사용자가 다른 카드를 선택했으면 무시.
+        setSelectedSlug((cur) => {
+          if (cur === slug) setContent(body);
+          return cur;
+        });
       } catch (e) {
-        setContent(`Error: ${e}`);
+        setSelectedSlug((cur) => {
+          if (cur === slug) setContent(`Error: ${e}`);
+          return cur;
+        });
       }
     },
     [barrackPath]
