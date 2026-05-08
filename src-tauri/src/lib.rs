@@ -1,7 +1,7 @@
 mod commands;
 mod watcher;
 
-use commands::{barracks, files, git, search, sessions, sync, terminal, wiki};
+use commands::{barracks, files, git, search, sessions, skills, sync, terminal, wiki};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
@@ -37,6 +37,7 @@ pub fn run() {
             sessions::get_session_detail,
             wiki::get_wiki_index,
             wiki::get_wiki_topic,
+            skills::get_skills_index,
             sync::sync_barrack,
             sync::sync_all_barracks,
             sync::remove_barrack,

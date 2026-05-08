@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
@@ -102,6 +105,51 @@ fn parse_skill_md(slug: &str, content: &str) -> SkillCard {
     }
 }
 
+fn walk_skills_dir(skills_dir: &Path) -> Vec<SkillCard> {
+    let mut cards = Vec::new();
+    let entries = match fs::read_dir(skills_dir) {
+        Ok(e) => e,
+        Err(_) => return cards,
+    };
+    let mut slugs: Vec<(String, PathBuf)> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let skill_md = path.join("SKILL.md");
+        if !skill_md.is_file() {
+            continue; // SKILL.md 없는 디렉터리는 skill 후보 아님 (spec 7번 표)
+        }
+        let slug = match path.file_name().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        slugs.push((slug, skill_md));
+    }
+    slugs.sort_by(|a, b| a.0.cmp(&b.0));
+    for (slug, skill_md) in slugs {
+        let content = fs::read_to_string(&skill_md).unwrap_or_default();
+        cards.push(parse_skill_md(&slug, &content));
+    }
+    cards
+}
+
+#[tauri::command]
+pub fn get_skills_index(barrack_path: String) -> Result<SkillsIndex, String> {
+    let skills_dir = PathBuf::from(&barrack_path).join("skills");
+    let exists = skills_dir.is_dir();
+    let skills = if exists {
+        walk_skills_dir(&skills_dir)
+    } else {
+        Vec::new()
+    };
+    Ok(SkillsIndex {
+        skills,
+        skills_dir_exists: exists,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +208,70 @@ mod tests {
         let card = parse_skill_md("foo", input);
         assert!(card.parse_error.is_none());
         assert_eq!(card.description, "bar");
+    }
+
+    use std::fs::{self as test_fs, File};
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    fn write_skill(dir: &Path, slug: &str, content: &str) {
+        let sub = dir.join(slug);
+        test_fs::create_dir_all(&sub).unwrap();
+        let mut f = File::create(sub.join("SKILL.md")).unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn empty_dir_returns_no_cards() {
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        test_fs::create_dir_all(&skills_dir).unwrap();
+        let cards = walk_skills_dir(&skills_dir);
+        assert!(cards.is_empty());
+    }
+
+    #[test]
+    fn finds_single_skill() {
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        write_skill(&skills_dir, "council", "---\nname: council\ndescription: A skill\n---\nBody\n");
+        let cards = walk_skills_dir(&skills_dir);
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].slug, "council");
+        assert_eq!(cards[0].name, "council");
+        assert_eq!(cards[0].description, "A skill");
+    }
+
+    #[test]
+    fn sorts_alphabetically_by_slug() {
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        write_skill(&skills_dir, "zoo", "---\nname: zoo\ndescription: z\n---\n");
+        write_skill(&skills_dir, "alpha", "---\nname: alpha\ndescription: a\n---\n");
+        write_skill(&skills_dir, "mid", "---\nname: mid\ndescription: m\n---\n");
+        let cards = walk_skills_dir(&skills_dir);
+        let slugs: Vec<&str> = cards.iter().map(|c| c.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["alpha", "mid", "zoo"]);
+    }
+
+    #[test]
+    fn ignores_dirs_without_skill_md() {
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        write_skill(&skills_dir, "council", "---\nname: council\ndescription: c\n---\n");
+        // SKILL.md 없는 디렉터리
+        test_fs::create_dir_all(skills_dir.join("not_a_skill")).unwrap();
+        let cards = walk_skills_dir(&skills_dir);
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].slug, "council");
+    }
+
+    #[test]
+    fn get_skills_index_handles_missing_skills_dir() {
+        let tmp = TempDir::new().unwrap();
+        // skills 디렉터리 자체가 없음
+        let result = get_skills_index(tmp.path().to_string_lossy().to_string()).unwrap();
+        assert!(!result.skills_dir_exists);
+        assert!(result.skills.is_empty());
     }
 }
