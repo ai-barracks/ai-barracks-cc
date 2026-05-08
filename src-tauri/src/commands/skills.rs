@@ -15,6 +15,7 @@ pub struct SkillCard {
     pub parse_error: Option<String>,
 }
 
+/// Task 3의 get_skills_index 명령에서 반환 — 카탈로그 카드 목록과 디렉터리 존재 여부.
 #[derive(Debug, Serialize)]
 pub struct SkillsIndex {
     pub skills: Vec<SkillCard>,
@@ -54,9 +55,10 @@ fn parse_skill_md(slug: &str, content: &str) -> SkillCard {
         }
     };
     let end_idx = match after_open.find("\n---\n").or_else(|| {
-        // EOF 직전에 닫는 ---로 끝나는 케이스
+        // EOF 케이스: 파일이 trailing newline 없이 "...\n---"로 끝남
         if after_open.ends_with("\n---") {
-            Some(after_open.len() - 3)
+            // YAML 끝 = "\n---" 시작 위치. find("\n---\n")가 \n 위치를 반환하는 것과 일관되게.
+            Some(after_open.len() - "\n---".len())
         } else {
             None
         }
@@ -106,13 +108,23 @@ mod tests {
 
     #[test]
     fn parses_valid_frontmatter() {
-        let input = "---\nname: foo\ndescription: bar\naib_version: \"1.1\"\n---\nBody text\n";
-        let card = parse_skill_md("foo", input);
-        assert_eq!(card.slug, "foo");
-        assert_eq!(card.name, "foo");
+        // slug와 name을 다르게 해서 name이 YAML에서 왔는지 / slug fallback인지 구분 가능하게 함
+        let input = "---\nname: pretty-name\ndescription: bar\naib_version: \"1.1\"\n---\nBody text\n";
+        let card = parse_skill_md("my-slug", input);
+        assert_eq!(card.slug, "my-slug");
+        assert_eq!(card.name, "pretty-name");  // YAML의 name이 사용됨 (slug fallback 아님)
         assert_eq!(card.description, "bar");
         assert_eq!(card.aib_version, Some("1.1".to_string()));
         assert!(card.parse_error.is_none(), "expected no parse_error, got {:?}", card.parse_error);
+    }
+
+    #[test]
+    fn parses_argument_hint_with_hyphen_yaml_key() {
+        // YAML의 'argument-hint' (hyphen)이 Rust의 argument_hint (underscore)로 매핑되는지 확인
+        let input = "---\nname: council\ndescription: x\nargument-hint: \"<topic> -m debate\"\n---\nbody\n";
+        let card = parse_skill_md("council", input);
+        assert!(card.parse_error.is_none(), "expected no parse_error, got {:?}", card.parse_error);
+        assert_eq!(card.argument_hint, Some("<topic> -m debate".to_string()));
     }
 
     #[test]
