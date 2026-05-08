@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.0] - unreleased
+
+### Changed — Skills Schema Compatibility (paired with aib 1.1.0)
+- **`YamlFormEditor`**: `agent.yaml`의 `skills:` 블록을 더 이상 하드코딩된 리스트 형식으로 덮어쓰지 않음. 파싱 시 raw block을 보존하고, 저장 시 그대로 재출력. 1.0.x 리스트 형식·1.1.0 객체 형식(`discovery: auto, enabled: [...]`) 모두 안전하게 편집 가능.
+  - **회귀 수정**: 기존 1.0.x 에디터는 알려지지 않은 필드(예: 사용자가 추가한 `skills.delegation`)를 저장 시 silent 손실시켰음. v1.1부터 skills 블록은 read-then-write로 보존.
+- **버전 정렬**: `package.json` + `Cargo.toml` 1.0.2 → 1.1.0. aib 1.1.0과 페어링.
+
+### Notes
+- aib ≥ 1.1.0 와 함께 사용 권장 (Skills 표준 디렉터리, `aib skills list/doctor` 명령).
+- Skills 카탈로그 전용 탭은 v1.1.1로 이연 — 본 릴리즈는 편집기 호환성 확보가 목적.
+
 ## [1.0.1] - 2026-05-04
 
 ### Added

@@ -10,7 +10,31 @@ interface AgentConfig {
   primary_model: string;
   fallback_models: string[];
   aib_version: string;
+  skills_raw: string;
   raw: string;
+}
+
+function extractTopLevelBlock(content: string, key: string): string {
+  const lines = content.split("\n");
+  const captured: string[] = [];
+  let inBlock = false;
+  const headRe = new RegExp(`^${key}\\s*:`);
+  const topLevelRe = /^[a-zA-Z_][a-zA-Z0-9_-]*\s*:/;
+  for (const line of lines) {
+    if (!inBlock && headRe.test(line)) {
+      inBlock = true;
+      captured.push(line);
+      continue;
+    }
+    if (inBlock) {
+      if (topLevelRe.test(line)) break;
+      captured.push(line);
+    }
+  }
+  while (captured.length > 0 && captured[captured.length - 1].trim() === "") {
+    captured.pop();
+  }
+  return captured.join("\n");
 }
 
 function parseYaml(content: string): AgentConfig {
@@ -21,6 +45,7 @@ function parseYaml(content: string): AgentConfig {
     primary_model: "",
     fallback_models: [],
     aib_version: "",
+    skills_raw: extractTopLevelBlock(content, "skills"),
     raw: content,
   };
 
@@ -48,6 +73,8 @@ function parseYaml(content: string): AgentConfig {
   return config;
 }
 
+const DEFAULT_SKILLS_BLOCK = "skills:\n  discovery: auto\n  enabled:\n    - council";
+
 function buildYaml(config: AgentConfig): string {
   let yaml = `name: ${config.name}\n`;
   yaml += `version: ${config.version}\n`;
@@ -62,7 +89,7 @@ function buildYaml(config: AgentConfig): string {
   }
   yaml += `\nmemory:\n  sessions: sessions/\n  wiki: wiki/\n`;
   yaml += `\nhooks:\n  session_start: "aib hook start {client}"\n  session_end: "aib hook end {client}"\n`;
-  yaml += `\nskills:\n  - council\n`;
+  yaml += `\n${config.skills_raw || DEFAULT_SKILLS_BLOCK}\n`;
   yaml += `\ncompliance:\n  session_retention: permanent\n  wiki_retention: permanent\n`;
   yaml += `\naib_version: ${config.aib_version}\n`;
   return yaml;
