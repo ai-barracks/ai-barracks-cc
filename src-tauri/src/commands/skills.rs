@@ -41,6 +41,56 @@ struct SkillFrontmatter {
     argument_hint: Option<String>,
 }
 
+/// Write-side frontmatter struct. Used by create_skill / update_skill.
+/// Custom fields go into `custom` (serde_yaml::Mapping) so users can add arbitrary frontmatter keys.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct SkillFrontmatterWrite {
+    pub name: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub argument_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_tools: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aib_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub growth_origin: Option<String>,
+    #[serde(default)]
+    pub custom: serde_yaml::Mapping,
+}
+
+/// Render `SkillFrontmatterWrite` to a YAML string suitable for the SKILL.md frontmatter
+/// block (between `---` fences). Uses hyphen keys for `argument-hint` / `allowed-tools`
+/// to match the Anthropic Agent Skills standard. The rendered string ends in a trailing newline.
+pub fn render_frontmatter_yaml(fm: &SkillFrontmatterWrite) -> String {
+    use serde_yaml::Value;
+    let mut map = serde_yaml::Mapping::new();
+    map.insert(Value::String("name".into()), Value::String(fm.name.clone()));
+    map.insert(Value::String("description".into()), Value::String(fm.description.clone()));
+    if let Some(v) = &fm.argument_hint {
+        map.insert(Value::String("argument-hint".into()), Value::String(v.clone()));
+    }
+    if let Some(v) = &fm.allowed_tools {
+        map.insert(Value::String("allowed-tools".into()), Value::String(v.clone()));
+    }
+    if let Some(v) = &fm.aib_version {
+        map.insert(Value::String("aib_version".into()), Value::String(v.clone()));
+    }
+    if let Some(v) = &fm.upstream {
+        map.insert(Value::String("upstream".into()), Value::String(v.clone()));
+    }
+    if let Some(v) = &fm.growth_origin {
+        map.insert(Value::String("growth_origin".into()), Value::String(v.clone()));
+    }
+    for (k, v) in &fm.custom {
+        map.insert(k.clone(), v.clone());
+    }
+    serde_yaml::to_string(&Value::Mapping(map))
+        .unwrap_or_else(|_| "name: invalid\ndescription: invalid\n".to_string())
+}
+
 /// SKILL.md 한 파일을 파싱해 SkillCard로 변환.
 /// slug는 호출자가 디렉터리 이름에서 채워준다.
 fn parse_skill_md(slug: &str, content: &str) -> SkillCard {
@@ -388,5 +438,27 @@ mod tests {
             !json.contains("\"argument-hint\""),
             "hyphen key must NOT appear in serialized output (would break frontend), got: {}", json
         );
+    }
+
+    #[test]
+    fn frontmatter_for_write_serializes_with_hyphen_keys() {
+        // RULES.md [2026-05-09] Tauri-Serde-Rename-Bidirectional-Trap regression test.
+        // YAML written to disk MUST use hyphen keys (Anthropic Agent Skills standard),
+        // not the underscore Rust field names.
+        let fm = SkillFrontmatterWrite {
+            name: "council".to_string(),
+            description: "Test description that is at least 20 chars.".to_string(),
+            argument_hint: Some("<topic>".to_string()),
+            allowed_tools: Some("Bash(./scripts/x *)".to_string()),
+            aib_version: Some("1.1".to_string()),
+            upstream: None,
+            growth_origin: Some("manual".to_string()),
+            custom: Default::default(),
+        };
+        let yaml = render_frontmatter_yaml(&fm);
+        assert!(yaml.contains("argument-hint:"), "must use hyphen key for argument-hint, got:\n{}", yaml);
+        assert!(yaml.contains("allowed-tools:"), "must use hyphen key for allowed-tools");
+        assert!(!yaml.contains("argument_hint:"), "must NOT serialize underscore form");
+        assert!(!yaml.contains("allowed_tools:"), "must NOT serialize underscore form");
     }
 }
