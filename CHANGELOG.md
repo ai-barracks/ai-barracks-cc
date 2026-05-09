@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.1.3] - unreleased
+## [1.1.3] - 2026-05-09
 
 ### Fixed — argument-hint frontend mapping
 - **`SkillCard.argument_hint`** serde attribute가 양방향(`rename = "..."`)이라 Tauri → frontend JSON 키가 `argument-hint` (hyphen)로 나갔고, TS interface는 `argument_hint` (underscore)를 기대 → frontend에서 모든 카드의 args 메타 칩이 표시되지 않음.
@@ -11,7 +11,7 @@
 - v1.1.2는 본 회귀를 가진 채 publish됨. 사용자는 v1.1.3 설치 권장.
 - 다른 frontmatter 필드(aib_version, upstream, parse_error)는 영향 없음 — rename 어트리뷰트가 없거나 underscore 키 그대로 사용.
 
-## [1.1.2] - unreleased
+## [1.1.2] - 2026-05-09
 
 ### Added — Skills 카탈로그 탭
 - **`SkillsTab`** (신규): 좌측 검색 박스 + SKILL.md 카드 리스트 / 우측 메타 박스 + 마크다운 본문. Wiki 탭 패턴 미러.
@@ -22,7 +22,7 @@
 - aib v1.1.0 release notes에서 v1.1.1로 약속됐던 "Skills 카탈로그 전용 탭" 항목 — v1.1.1은 메타데이터 sync 패치로 분리되어 본 항목은 v1.1.2로 이연됨.
 - v1.1.3+ 후보로 이연: `aib skills doctor` 실행 버튼, external skills 표시, 카드 정렬 토글, 편집 모드.
 
-## [1.1.1] - unreleased
+## [1.1.1] - 2026-05-08
 
 ### Fixed — Version metadata sync
 - **`src-tauri/tauri.conf.json`**: `version`을 1.0.2 → 1.1.1로 정정. v1.1.0 릴리즈 시 `tauri.conf.json` bump 누락으로 Info.plist `CFBundleShortVersionString` + DMG 파일명이 `1.0.2`로 표기되던 known cosmetic issue 해소.
