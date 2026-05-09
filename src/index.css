@@ -84,3 +84,16 @@
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
 }
+
+/*
+ * macOS WKWebView IME composition safety net (v1.2.2).
+ * xterm.js renders helper-textarea with opacity:0 + z-index:-5. macOS WKWebView
+ * IME engagement isn't strictly blocked by these CSS values (proven via
+ * cloneNode test where same CSS class but no listeners → composition fires),
+ * but elevating the textarea is harmless and avoids any compositor edge case.
+ * Real fix is the pre-open listener interception in src/hooks/useTerminal.ts.
+ */
+.xterm-helper-textarea {
+  opacity: 1 !important;
+  z-index: 9999 !important;
+}

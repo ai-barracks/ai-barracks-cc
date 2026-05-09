@@ -123,16 +123,160 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
 
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
-    term.open(container);
 
-    // Do not intercept IME/composition key events here.
+    // macOS WKWebView Korean/CJK IME — pre-open interception (v1.2.2 partial fix).
     //
-    // xterm.js has a built-in CompositionHelper that must see keydown events with
-    // keyCode 229 (the IME "composition character") in order to flush Korean/CJK
-    // text from the hidden textarea into onData. A previous custom key handler
-    // returned false for `event.isComposing || event.keyCode === 229`, which ran
-    // *before* CompositionHelper and caused intermittent Hangul drops/splits
-    // depending on the exact macOS IME event ordering.
+    // Why post-open patches kept failing: xterm registers its capture-phase
+    // keydown/keypress/input/composition* listeners inside `term.open()` via
+    // `_bindKeys()`. Same-element/same-phase listeners fire in registration
+    // order — anything added *after* `term.open()` always runs *after* xterm's,
+    // and `e.stopImmediatePropagation()` from a later listener cannot un-fire
+    // the earlier one. By the time a post-open hook reacts, xterm has already
+    // called `_coreService.triggerDataEvent("ㅇ")` for the first jamo.
+    //
+    // Workaround: monkey-patch `HTMLTextAreaElement.prototype.addEventListener`
+    // *before* `term.open()`. When xterm makes its first addEventListener call
+    // on the helper-textarea, we synchronously install our listeners *first*.
+    // xterm's later listeners run after ours so our `stopImmediatePropagation`
+    // actually blocks them.
+    //
+    // Known limitation (see wiki/topics/AIB-CC-Terminal-Korean-IME-Troubleshooting.md):
+    // macOS IME's first keystroke is "preview" mode — `compositionstart` does
+    // not fire for the first jamo. We drop Hangul Jamo (U+1100-U+11FF,
+    // U+3131-U+318E) at the input listener so it never reaches the PTY. This
+    // also means clearing the textarea fragments composition cycles, so the
+    // **first syllable of any new Korean burst arrives as 2-3 standalone jamo
+    // instead of a composed syllable.** Subsequent syllables compose correctly.
+    // Trade-off accepted because the alternative (revert) loses Korean entirely.
+    const enableProbe =
+      typeof window !== "undefined" && window.localStorage?.getItem("cc-ime-debug") === "1";
+
+    let lastSent: { data: string; t: number } | null = null;
+    const sendToPty = (data: string) => {
+      if (!data || !terminalIdRef.current) return;
+      const now = performance.now();
+      if (lastSent && lastSent.data === data && now - lastSent.t < 50) return;
+      lastSent = { data, t: now };
+      invoke("terminal_write", { terminalId: terminalIdRef.current, data });
+    };
+
+    let imeInstalled = false;
+    const installImeHandlers = (ta: HTMLTextAreaElement) => {
+      if (imeInstalled) return;
+      imeInstalled = true;
+
+      if (enableProbe) {
+        const enc = new TextEncoder();
+        const log = (type: string, extra: Record<string, unknown> = {}) =>
+          console.debug("[IME]", performance.now().toFixed(1), type, {
+            taValue: ta.value,
+            sel: [ta.selectionStart, ta.selectionEnd],
+            ...extra,
+          });
+        (["keydown", "beforeinput", "input", "compositionstart", "compositionupdate", "compositionend"] as const)
+          .forEach((t) =>
+            ta.addEventListener(
+              t,
+              (e: Event) => {
+                const k = e as KeyboardEvent & InputEvent & CompositionEvent;
+                log(t, {
+                  key: k.key,
+                  keyCode: k.keyCode,
+                  isComposing: k.isComposing,
+                  data: k.data,
+                  inputType: k.inputType,
+                });
+              },
+              true,
+            ),
+          );
+        term.onData((d) =>
+          log("onData", {
+            data: d,
+            hex: Array.from(enc.encode(d))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join(" "),
+          }),
+        );
+      }
+
+      let imeComposing = false;
+      let lastCompositionEnd = 0;
+
+      ta.addEventListener("compositionstart", (e: Event) => {
+        imeComposing = true;
+        e.stopImmediatePropagation();
+      }, { capture: true });
+
+      ta.addEventListener("compositionupdate", (e: Event) => {
+        e.stopImmediatePropagation();
+      }, { capture: true });
+
+      ta.addEventListener("compositionend", (e: Event) => {
+        imeComposing = false;
+        lastCompositionEnd = performance.now();
+        e.stopImmediatePropagation();
+        const composed = (e as CompositionEvent).data;
+        if (composed) {
+          // Drop pure-jamo "compositions" (uncomposed pre-state from fragmented cycles).
+          // Composed syllables (U+AC00-U+D7AF) pass through.
+          if (!/^[ᄀ-ᇿㄱ-ㆎ]+$/.test(composed)) {
+            sendToPty(composed);
+          } else if (enableProbe) {
+            console.debug("[IME] DROP jamo at compositionend", JSON.stringify(composed));
+          }
+        }
+        ta.value = "";
+      }, { capture: true });
+
+      ta.addEventListener("input", (e: Event) => {
+        if (imeComposing) {
+          e.stopImmediatePropagation();
+          return;
+        }
+        const data = ta.value;
+        e.stopImmediatePropagation();
+        ta.value = "";
+        if (!data) return;
+        if (/[ᄀ-ᇿㄱ-ㆎ]/.test(data)) {
+          if (enableProbe) console.debug("[IME] DROP jamo at input", JSON.stringify(data));
+          return;
+        }
+        if (performance.now() - lastCompositionEnd < 50) return;
+        sendToPty(data);
+      }, { capture: true });
+
+      ta.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.keyCode === 229) {
+          // Block xterm's CompositionHelper.keydown(229), which schedules a
+          // 0ms `_handleAnyTextareaChanges` that would re-send pre-composition jamo.
+          e.stopImmediatePropagation();
+        }
+      }, { capture: true });
+    };
+
+    const origAddEventListener = HTMLTextAreaElement.prototype.addEventListener;
+    HTMLTextAreaElement.prototype.addEventListener = function (
+      this: HTMLTextAreaElement,
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | AddEventListenerOptions,
+    ) {
+      if (!imeInstalled && this.classList?.contains("xterm-helper-textarea")) {
+        installImeHandlers(this);
+      }
+      return origAddEventListener.call(this, type, listener as EventListener, options);
+    };
+
+    try {
+      term.open(container);
+    } finally {
+      HTMLTextAreaElement.prototype.addEventListener = origAddEventListener;
+    }
+
+    if (!imeInstalled && term.textarea) {
+      installImeHandlers(term.textarea);
+    }
 
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -199,12 +343,10 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       }
     });
 
-    // Handle input
-    const inputDisposable = term.onData((data) => {
-      if (terminalIdRef.current) {
-        invoke("terminal_write", { terminalId: terminalIdRef.current, data });
-      }
-    });
+    // Handle input — routed through sendToPty so xterm's onData (e.g. ASCII via
+    // keypress, special key ANSI sequences) shares the dedup window with our
+    // IME bypass listener.
+    const inputDisposable = term.onData((data) => sendToPty(data));
 
     // Handle resize — send to PTY
     const resizeDisposable = term.onResize(({ cols, rows }) => {

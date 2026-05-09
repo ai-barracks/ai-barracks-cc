@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.2.2] - 2026-05-10
+
+### Fixed (partial) — macOS WKWebView Korean/CJK IME
+- **Composition events now fire on the helper-textarea.** xterm.js registers its capture-phase keyboard/input listeners inside `term.open()`, so any post-open hook ran *after* xterm's listener and `stopImmediatePropagation` was effectively a no-op. We now monkey-patch `HTMLTextAreaElement.prototype.addEventListener` *before* `term.open()`, install our IME listeners on the helper-textarea synchronously when xterm makes its first registration, and restore the prototype immediately after. xterm's later same-phase listeners run after ours, so our `stopImmediatePropagation` is real.
+- **Hangul Jamo (U+1100-U+11FF, U+3131-U+318E) is dropped at the input-event boundary.** macOS IME emits these as pre-composition state when composition cycles fragment; they are never user-intended terminal input. Composed Hangul syllables (U+AC00-U+D7AF) flow through compositionend.
+- **xterm onData and our IME bypass listener share a 50ms data+timestamp dedup window**, eliminating most space-doubling cases.
+- **CompositionHelper.keydown(229) is suppressed** so xterm's 0ms `_handleAnyTextareaChanges` fallback cannot re-send pre-composition jamo.
+
+### Known limitation — first syllable of a Korean burst
+- **macOS IME's first keystroke is "preview" mode** — `compositionstart` does not fire for it. The first jamo arrives as a regular input event ~400ms before composition engages. We drop it (per above) which preserves the rest of the syllable correctly *only when subsequent keys arrive within the same composition cycle*. In practice, **the first syllable of a Korean text burst typically arrives as 2-3 standalone jamo instead of a composed syllable**; subsequent syllables compose normally.
+- Workaround for users: type one extra placeholder character before Korean text, or use an external terminal (iTerm) for Korean-heavy work.
+- Full root-cause analysis and future-attempt guide in `ai_barracks_management/wiki/topics/AIB-CC-Terminal-Korean-IME-Troubleshooting.md` (5-hour spike, codex gpt-5.5 high review). Option B (custom textarea + ANSI key mapping) is the architectural fix; deferred to a future fresh session.
+
+### Verification
+- `npx tsc -b --noEmit` — clean.
+- Manual: `echo "안녕하세요"` → first syllable jamo, rest composed correctly.
+- Manual: `echo hello world` — single space (dedup working for non-IME path).
+- Manual: arrow history, Tab completion, Ctrl-C, Ctrl-L — unaffected (xterm's keydown for non-229 keys passes through).
+
 ## [1.2.1] - 2026-05-09
 
 ### Fixed — Terminal Korean IME / UTF-8 PTY locale
