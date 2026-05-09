@@ -307,6 +307,18 @@ Cmd+K → "ClickHouse ZooKeeper"
 
 ---
 
+### 🧪 Skills 카탈로그: 배럭이 가진 능력의 지도
+
+aib v1.1부터 모든 배럭이 `skills/<slug>/SKILL.md`를 first-class 자원으로 가집니다 — Anthropic Agent Skills 표준 + ai-barracks 확장 필드(`aib_version`, `upstream`). CommandCenter는 그 카탈로그를 한 화면에 풀어줍니다.
+
+좌측에는 SKILL.md frontmatter를 파싱해 만든 카드 리스트(name, description, `aib X.Y · upstream · args: …` 메타 칩) + 검색 박스. 우측에는 선택한 스킬의 메타 박스와 마크다운 본문이 Wiki 탭과 같은 prose 스타일로 렌더됩니다.
+
+**frontmatter가 깨진 SKILL.md는 silent skip하지 않습니다.** 카드 우상단에 ⚠️ 배지가 붙고 메타 박스에 빨간 `parse_error`가 노출되어, 시드를 손볼 시점을 놓치지 않게 합니다.
+
+빈 상태에서는 "이 배럭에는 Skills가 없습니다 / `aib sync`로 시드를 받으세요" 메시지가 표시됩니다.
+
+---
+
 ### 🌿 Monorepo-aware Git
 
 배럭이 repo 루트일 필요가 없습니다. `my-project/agents/etf-platform` 같은 **서브디렉토리도 지원**:
