@@ -80,6 +80,30 @@ export interface SkillsIndex {
   skills_dir_exists: boolean;
 }
 
+// v1.2.0: Skills CRUD
+// Hyphen keys (argument-hint / allowed-tools) match the Rust SkillFrontmatterWrite YAML
+// output, which deliberately uses Anthropic Agent Skills standard keys, not Rust field
+// names. See spec §2.1 (Tauri-Serde-Rename-Bidirectional-Trap regression test).
+export interface SkillFrontmatterWrite {
+  name: string;
+  description: string;
+  "argument-hint"?: string;
+  "allowed-tools"?: string;
+  aib_version?: string;
+  upstream?: string;
+  growth_origin?: string;
+  // Custom user-defined frontmatter fields. Wire format: serde_yaml::Mapping → arbitrary keys.
+  custom?: Record<string, unknown>;
+}
+
+export type SkillEditorMode = "form" | "raw";
+
+export interface SkillSaveResult {
+  saved: true;
+  syncOk: boolean;
+  syncError?: string;  // stderr first line if syncOk === false
+}
+
 export interface SyncResult {
   path: string;
   success: boolean;
