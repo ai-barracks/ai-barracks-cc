@@ -14,6 +14,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify version consistency (tag ↔ tauri.conf.json ↔ package.json ↔ Cargo.toml)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' is not a valid semver tag (expected vX.Y.Z[-pre])"
+            exit 1
+          fi
+          EXPECTED="${TAG#v}"
+          TAURI_VER=$(jq -r '.version' src-tauri/tauri.conf.json)
+          PKG_VER=$(jq -r '.version' package.json)
+          CARGO_VER=$(awk -F\" '/^version[[:space:]]*=/{print $2; exit}' src-tauri/Cargo.toml)
+          echo "tag(stripped)=$EXPECTED  tauri=$TAURI_VER  package=$PKG_VER  cargo=$CARGO_VER"
+          fail=0
+          for pair in "src-tauri/tauri.conf.json:$TAURI_VER" "package.json:$PKG_VER" "src-tauri/Cargo.toml:$CARGO_VER"; do
+            name="${pair%%:*}"
+            val="${pair#*:}"
+            if [[ "$val" != "$EXPECTED" ]]; then
+              echo "::error file=$name::version mismatch — $name has '$val', expected '$EXPECTED' (from tag $TAG)"
+              fail=1
+            fi
+          done
+          [[ "$fail" -eq 0 ]] || exit 1
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
