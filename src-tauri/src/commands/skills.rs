@@ -41,6 +41,207 @@ struct SkillFrontmatter {
     argument_hint: Option<String>,
 }
 
+/// Write-side frontmatter struct. Used by create_skill / update_skill.
+/// Custom fields go into `custom` (serde_yaml::Mapping) so users can add arbitrary frontmatter keys.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct SkillFrontmatterWrite {
+    pub name: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "argument-hint")]
+    pub argument_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "allowed-tools")]
+    pub allowed_tools: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aib_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub growth_origin: Option<String>,
+    #[serde(default)]
+    pub custom: serde_yaml::Mapping,
+}
+
+/// Render `SkillFrontmatterWrite` to a YAML string suitable for the SKILL.md frontmatter
+/// block (between `---` fences). Uses hyphen keys for `argument-hint` / `allowed-tools`
+/// to match the Anthropic Agent Skills standard. The rendered string ends in a trailing newline.
+pub fn render_frontmatter_yaml(fm: &SkillFrontmatterWrite) -> String {
+    use serde_yaml::Value;
+    let mut map = serde_yaml::Mapping::new();
+    map.insert(Value::String("name".into()), Value::String(fm.name.clone()));
+    map.insert(Value::String("description".into()), Value::String(fm.description.clone()));
+    if let Some(v) = &fm.argument_hint {
+        map.insert(Value::String("argument-hint".into()), Value::String(v.clone()));
+    }
+    if let Some(v) = &fm.allowed_tools {
+        map.insert(Value::String("allowed-tools".into()), Value::String(v.clone()));
+    }
+    if let Some(v) = &fm.aib_version {
+        map.insert(Value::String("aib_version".into()), Value::String(v.clone()));
+    }
+    if let Some(v) = &fm.upstream {
+        map.insert(Value::String("upstream".into()), Value::String(v.clone()));
+    }
+    if let Some(v) = &fm.growth_origin {
+        map.insert(Value::String("growth_origin".into()), Value::String(v.clone()));
+    }
+    for (k, v) in &fm.custom {
+        map.insert(k.clone(), v.clone());
+    }
+    serde_yaml::to_string(&Value::Mapping(map))
+        .unwrap_or_else(|_| "name: invalid\ndescription: invalid\n".to_string())
+}
+
+/// Inner implementation testable without Tauri runtime. Takes a `Path` (not String) so unit tests
+/// can use tempdir paths directly.
+pub fn create_skill_impl(
+    barrack: &Path,
+    slug: &str,
+    frontmatter: &SkillFrontmatterWrite,
+    body: &str,
+) -> Result<(), String> {
+    let skill_dir = barrack.join("skills").join(slug);
+    if skill_dir.exists() {
+        return Err(format!("skill already exists: {}", slug));
+    }
+    fs::create_dir_all(&skill_dir).map_err(|e| format!("create_dir_all failed: {}", e))?;
+    let yaml = render_frontmatter_yaml(frontmatter);
+    let mut content = String::with_capacity(yaml.len() + body.len() + 16);
+    content.push_str("---\n");
+    content.push_str(&yaml);
+    content.push_str("---\n\n");
+    content.push_str(body);
+    if !body.ends_with('\n') {
+        content.push('\n');
+    }
+    fs::write(skill_dir.join("SKILL.md"), content)
+        .map_err(|e| format!("write SKILL.md failed: {}", e))
+}
+
+#[tauri::command]
+pub fn create_skill(
+    barrack_path: String,
+    slug: String,
+    frontmatter: SkillFrontmatterWrite,
+    body: String,
+) -> Result<(), String> {
+    create_skill_impl(Path::new(&barrack_path), &slug, &frontmatter, &body)
+}
+
+pub fn update_skill_impl(
+    barrack: &Path,
+    slug: &str,
+    frontmatter: &SkillFrontmatterWrite,
+    body: &str,
+) -> Result<(), String> {
+    let skill_md = barrack.join("skills").join(slug).join("SKILL.md");
+    if !skill_md.exists() {
+        return Err(format!("skill not found: {}", slug));
+    }
+    let yaml = render_frontmatter_yaml(frontmatter);
+    let mut content = String::with_capacity(yaml.len() + body.len() + 16);
+    content.push_str("---\n");
+    content.push_str(&yaml);
+    content.push_str("---\n\n");
+    content.push_str(body);
+    if !body.ends_with('\n') {
+        content.push('\n');
+    }
+    fs::write(&skill_md, content).map_err(|e| format!("write SKILL.md failed: {}", e))
+}
+
+#[tauri::command]
+pub fn update_skill(
+    barrack_path: String,
+    slug: String,
+    frontmatter: SkillFrontmatterWrite,
+    body: String,
+) -> Result<(), String> {
+    update_skill_impl(Path::new(&barrack_path), &slug, &frontmatter, &body)
+}
+
+pub fn delete_skill_impl(barrack: &Path, slug: &str) -> Result<(), String> {
+    let skill_dir = barrack.join("skills").join(slug);
+    if !skill_dir.exists() {
+        return Err(format!("skill not found: {}", slug));
+    }
+    fs::remove_dir_all(&skill_dir).map_err(|e| format!("remove_dir_all failed: {}", e))
+}
+
+#[tauri::command]
+pub fn delete_skill(barrack_path: String, slug: String) -> Result<(), String> {
+    delete_skill_impl(Path::new(&barrack_path), &slug)
+}
+
+pub fn rename_skill_impl(barrack: &Path, old_slug: &str, new_slug: &str) -> Result<(), String> {
+    let old_dir = barrack.join("skills").join(old_slug);
+    let new_dir = barrack.join("skills").join(new_slug);
+    if !old_dir.exists() {
+        return Err(format!("skill not found: {}", old_slug));
+    }
+    if new_dir.exists() {
+        return Err(format!("target slug already exists: {}", new_slug));
+    }
+    fs::rename(&old_dir, &new_dir).map_err(|e| format!("rename failed: {}", e))?;
+
+    // Update the `name:` line inside the moved SKILL.md.
+    let skill_md = new_dir.join("SKILL.md");
+    if skill_md.exists() {
+        let content = fs::read_to_string(&skill_md).map_err(|e| format!("read SKILL.md failed: {}", e))?;
+        let updated = update_name_in_frontmatter(&content, new_slug);
+        fs::write(&skill_md, updated).map_err(|e| format!("write SKILL.md failed: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Replaces the `name:` line inside a SKILL.md frontmatter block with the new slug.
+/// Operates only on the first frontmatter block (between leading --- fences). If no
+/// frontmatter exists, returns the input unchanged. The body is left untouched.
+fn update_name_in_frontmatter(content: &str, new_name: &str) -> String {
+    let normalized = content.replace("\r\n", "\n");
+    let after_open = match normalized.strip_prefix("---\n") {
+        Some(s) => s,
+        None => return content.to_string(),
+    };
+    let close_idx = match after_open.find("\n---\n") {
+        Some(i) => i,
+        None => return content.to_string(),
+    };
+    let frontmatter = &after_open[..close_idx];
+    let rest = &after_open[close_idx..]; // starts with "\n---\n"
+
+    let mut new_fm = String::with_capacity(frontmatter.len() + new_name.len());
+    let mut name_replaced = false;
+    for line in frontmatter.lines() {
+        if !name_replaced && line.trim_start().starts_with("name:") {
+            new_fm.push_str(&format!("name: {}", new_name));
+            new_fm.push('\n');
+            name_replaced = true;
+        } else {
+            new_fm.push_str(line);
+            new_fm.push('\n');
+        }
+    }
+    // Strip the trailing extra newline that would otherwise duplicate
+    if new_fm.ends_with('\n') {
+        new_fm.pop();
+    }
+
+    let mut out = String::with_capacity(content.len() + 16);
+    out.push_str("---\n");
+    out.push_str(&new_fm);
+    out.push_str(rest);
+    out
+}
+
+#[tauri::command]
+pub fn rename_skill(
+    barrack_path: String,
+    old_slug: String,
+    new_slug: String,
+) -> Result<(), String> {
+    rename_skill_impl(Path::new(&barrack_path), &old_slug, &new_slug)
+}
+
 /// SKILL.md 한 파일을 파싱해 SkillCard로 변환.
 /// slug는 호출자가 디렉터리 이름에서 채워준다.
 fn parse_skill_md(slug: &str, content: &str) -> SkillCard {
@@ -388,5 +589,193 @@ mod tests {
             !json.contains("\"argument-hint\""),
             "hyphen key must NOT appear in serialized output (would break frontend), got: {}", json
         );
+    }
+
+    #[test]
+    fn frontmatter_for_write_serializes_with_hyphen_keys() {
+        // RULES.md [2026-05-09] Tauri-Serde-Rename-Bidirectional-Trap regression test.
+        // YAML written to disk MUST use hyphen keys (Anthropic Agent Skills standard),
+        // not the underscore Rust field names.
+        let fm = SkillFrontmatterWrite {
+            name: "council".to_string(),
+            description: "Test description that is at least 20 chars.".to_string(),
+            argument_hint: Some("<topic>".to_string()),
+            allowed_tools: Some("Bash(./scripts/x *)".to_string()),
+            aib_version: Some("1.1".to_string()),
+            upstream: None,
+            growth_origin: Some("manual".to_string()),
+            custom: Default::default(),
+        };
+        let yaml = render_frontmatter_yaml(&fm);
+        assert!(yaml.contains("argument-hint:"), "must use hyphen key for argument-hint, got:\n{}", yaml);
+        assert!(yaml.contains("allowed-tools:"), "must use hyphen key for allowed-tools");
+        assert!(!yaml.contains("argument_hint:"), "must NOT serialize underscore form");
+        assert!(!yaml.contains("allowed_tools:"), "must NOT serialize underscore form");
+    }
+
+    #[test]
+    fn create_skill_writes_md_with_frontmatter_and_body() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        // Pre-create skills/ so create_skill doesn't have to mkdir parent
+        test_fs::create_dir_all(barrack.join("skills")).unwrap();
+
+        let fm = SkillFrontmatterWrite {
+            name: "kanban".into(),
+            description: "Lightweight kanban board for the barrack.".into(),
+            argument_hint: Some("[--limit N]".into()),
+            ..Default::default()
+        };
+        let body = "# Kanban\n\n## When to invoke\n- Daily standup planning\n";
+
+        create_skill_impl(barrack, "kanban", &fm, body).expect("create should succeed");
+
+        let written = test_fs::read_to_string(barrack.join("skills/kanban/SKILL.md")).unwrap();
+        assert!(written.starts_with("---\n"));
+        assert!(written.contains("name: kanban"));
+        assert!(written.contains("description: Lightweight kanban"));
+        assert!(written.contains("argument-hint:"));  // hyphen key (Task 1 invariant)
+        assert!(written.contains("\n---\n"));          // closing fence
+        assert!(written.contains("# Kanban"));         // body
+    }
+
+    #[test]
+    fn create_skill_errors_on_collision() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        test_fs::create_dir_all(barrack.join("skills/kanban")).unwrap();
+        File::create(barrack.join("skills/kanban/SKILL.md")).unwrap();
+
+        let fm = SkillFrontmatterWrite {
+            name: "kanban".into(),
+            description: "x".repeat(20),
+            ..Default::default()
+        };
+        let err = create_skill_impl(barrack, "kanban", &fm, "body").expect_err("must reject existing slug");
+        assert!(err.contains("already exists"), "expected 'already exists' in error, got: {}", err);
+    }
+
+    #[test]
+    fn update_skill_overwrites_md_when_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        // Seed an existing skill via create_skill_impl
+        let fm0 = SkillFrontmatterWrite {
+            name: "council".into(),
+            description: "Original description meeting min length.".into(),
+            ..Default::default()
+        };
+        create_skill_impl(barrack, "council", &fm0, "old body").unwrap();
+
+        // Update with new content
+        let fm1 = SkillFrontmatterWrite {
+            name: "council".into(),
+            description: "New description with at least twenty chars.".into(),
+            ..Default::default()
+        };
+        update_skill_impl(barrack, "council", &fm1, "## New body\n").unwrap();
+
+        let written = test_fs::read_to_string(barrack.join("skills/council/SKILL.md")).unwrap();
+        assert!(written.contains("New description"));
+        assert!(written.contains("## New body"));
+        assert!(!written.contains("Original description"));
+        assert!(!written.contains("old body"));
+    }
+
+    #[test]
+    fn update_skill_errors_on_missing_slug() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        test_fs::create_dir_all(barrack.join("skills")).unwrap();
+        let fm = SkillFrontmatterWrite {
+            name: "ghost".into(),
+            description: "Ghost skill must not be writable as update.".into(),
+            ..Default::default()
+        };
+        let err = update_skill_impl(barrack, "ghost", &fm, "body").expect_err("must reject missing slug");
+        assert!(err.contains("not found"));
+    }
+
+    #[test]
+    fn delete_skill_removes_dir_recursive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        let skill_dir = barrack.join("skills/oldskill");
+        let scripts_dir = skill_dir.join("scripts");
+        test_fs::create_dir_all(&scripts_dir).unwrap();
+        File::create(skill_dir.join("SKILL.md")).unwrap();
+        File::create(scripts_dir.join("run.sh")).unwrap();
+
+        delete_skill_impl(barrack, "oldskill").unwrap();
+
+        assert!(!skill_dir.exists(), "skill dir should be removed recursively");
+    }
+
+    #[test]
+    fn delete_skill_errors_on_missing_slug() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = delete_skill_impl(tmp.path(), "nonexistent").expect_err("must reject missing slug");
+        assert!(err.contains("not found"));
+    }
+
+    #[test]
+    fn rename_skill_moves_dir_and_updates_name_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        let fm = SkillFrontmatterWrite {
+            name: "oldname".into(),
+            description: "Original twenty-char description.".into(),
+            argument_hint: Some("<arg>".into()),
+            ..Default::default()
+        };
+        create_skill_impl(barrack, "oldname", &fm, "body content").unwrap();
+
+        rename_skill_impl(barrack, "oldname", "newname").unwrap();
+
+        assert!(!barrack.join("skills/oldname").exists(), "old dir should be gone");
+        assert!(barrack.join("skills/newname/SKILL.md").exists(), "new dir should exist");
+        let content = test_fs::read_to_string(barrack.join("skills/newname/SKILL.md")).unwrap();
+        assert!(content.contains("name: newname"), "name field must be updated");
+        assert!(!content.contains("name: oldname"), "old name must be replaced");
+        assert!(content.contains("argument-hint:"), "other frontmatter fields preserved");
+        assert!(content.contains("body content"), "body preserved");
+    }
+
+    #[test]
+    fn rename_skill_errors_on_target_collision() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        let fm = SkillFrontmatterWrite {
+            name: "a".into(),
+            description: "x".repeat(20),
+            ..Default::default()
+        };
+        create_skill_impl(barrack, "a", &fm, "body").unwrap();
+        create_skill_impl(barrack, "b", &fm, "body").unwrap();
+
+        let err = rename_skill_impl(barrack, "a", "b").expect_err("must reject existing target slug");
+        assert!(err.contains("already exists") || err.contains("collision"));
+        // Source preserved on error
+        assert!(barrack.join("skills/a").exists(), "source must remain on error");
+    }
+
+    #[test]
+    fn frontmatter_write_deserializes_hyphen_keys_from_json() {
+        // Critical regression: when frontend invokes create_skill/update_skill, JSON keys
+        // are hyphen-cased ("argument-hint", "allowed-tools") to match the Anthropic Agent
+        // Skills standard. Without #[serde(rename = "...")] on the underscore Rust fields,
+        // these are silently dropped during deserialization, losing user input.
+        //
+        // This is the inverse direction of RULES.md [2026-05-09] Tauri-Serde-Rename-
+        // Bidirectional-Trap (which originally addressed Rust→frontend serialize).
+        let json = r#"{
+            "name":"x",
+            "description":"twenty-char description!!",
+            "argument-hint":"<a>",
+            "allowed-tools":"Bash(*)"
+        }"#;
+        let fm: SkillFrontmatterWrite = serde_json::from_str(json).expect("deserialize must succeed");
+        assert_eq!(fm.argument_hint.as_deref(), Some("<a>"), "argument-hint must deserialize into Rust argument_hint");
+        assert_eq!(fm.allowed_tools.as_deref(), Some("Bash(*)"), "allowed-tools must deserialize into Rust allowed_tools");
     }
 }

@@ -3,7 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAppStore } from "../../stores/appStore";
-import type { SkillCard, SkillsIndex } from "../../types";
+import type { SkillCard, SkillsIndex, SkillFrontmatterWrite } from "../../types";
+import { SkillEditorDialog } from "./SkillEditorDialog";
+import { SkillDeleteDialog } from "./SkillDeleteDialog";
 
 export function SkillsTab() {
   const { selectedBarrack } = useAppStore();
@@ -16,6 +18,16 @@ export function SkillsTab() {
     [index, selectedSlug]
   );
   const [query, setQuery] = useState("");
+
+  // CRUD dialog state (Task 12)
+  const [editorOpen, setEditorOpen] = useState<
+    { mode: "create" } | { mode: "edit"; slug: string } | null
+  >(null);
+  const [deleteOpen, setDeleteOpen] = useState<string | null>(null);
+  const [editorInitial, setEditorInitial] = useState<
+    { frontmatter: SkillFrontmatterWrite; body: string } | null
+  >(null);
+  const [aibVersion, setAibVersion] = useState<string | null>(null);
 
   const loadIndex = useCallback(async () => {
     if (!barrackPath) return;
@@ -31,6 +43,48 @@ export function SkillsTab() {
   useEffect(() => {
     loadIndex();
   }, [loadIndex]);
+
+  // aib version banner (Task 12 — backend get_cli_version takes no args; returns stripped "0.8.2"-style)
+  useEffect(() => {
+    invoke<string>("get_cli_version")
+      .then(setAibVersion)
+      .catch(() => setAibVersion("unknown"));
+  }, []);
+
+  const openEditor = useCallback(
+    async (slug: string) => {
+      if (!barrackPath) return;
+      try {
+        const raw = await invoke<string>("get_skill_content", { barrackPath, slug });
+        const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+        const fm: SkillFrontmatterWrite = { name: slug, description: "" };
+        let body = raw;
+        if (m) {
+          body = m[2] ?? "";
+          for (const line of m[1].split(/\r?\n/)) {
+            const kv = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
+            if (!kv) continue;
+            const [, k, v] = kv;
+            const val = v.replace(/^"(.*)"$/, "$1");
+            if (k === "name") fm.name = val;
+            else if (k === "description") fm.description = val;
+            else if (k === "argument-hint") fm["argument-hint"] = val;
+            else if (k === "allowed-tools") fm["allowed-tools"] = val;
+            else if (k === "aib_version") fm.aib_version = val;
+            else if (k === "upstream") fm.upstream = val;
+            else if (k === "growth_origin") fm.growth_origin = val;
+            else fm.custom = { ...(fm.custom ?? {}), [k]: val };
+          }
+        }
+        setEditorInitial({ frontmatter: fm, body });
+        setEditorOpen({ mode: "edit", slug });
+      } catch (e) {
+        console.error("Failed to load skill for edit:", e);
+        alert("Failed to load skill content. See console.");
+      }
+    },
+    [barrackPath]
+  );
 
   useEffect(() => {
     setSelectedSlug(null);
@@ -73,14 +127,37 @@ export function SkillsTab() {
 
   if (!index) return null;
 
+  const aibTooOld =
+    aibVersion !== null && aibVersion !== "unknown" && parseAibSemver(aibVersion) < 0x010200;
+
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col h-full">
+      {aibTooOld && (
+        <div className="px-3 py-2 bg-yellow-900/40 border-b border-yellow-700/60 text-xs">
+          설치된 aib 버전: <span className="font-mono">{aibVersion}</span>. Skills 등록은 aib v1.2.0+가
+          필요합니다.{" "}
+          <code className="bg-zinc-800 px-1 ml-1 rounded">brew upgrade ai-barracks</code> 후 앱을
+          재시작하세요.
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0">
       {/* Left: search + cards */}
-      <div className="w-64 min-w-[256px] border-r border-cc-border p-4">
-        <div className="mb-3">
+      <div className="w-64 min-w-[256px] border-r border-cc-border p-4 flex flex-col min-h-0">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="text-xs font-medium text-cc-text-muted uppercase tracking-wider">
             Skills ({index.skills.length})
           </h3>
+          <button
+            type="button"
+            className="px-2 py-1 text-xs bg-blue-600 rounded hover:bg-blue-500 disabled:opacity-50"
+            onClick={() => {
+              setEditorInitial(null);
+              setEditorOpen({ mode: "create" });
+            }}
+            disabled={!barrackPath}
+          >
+            + New Skill
+          </button>
         </div>
         <input
           type="search"
@@ -119,7 +196,25 @@ export function SkillsTab() {
           <div className="space-y-4">
             {/* Meta box */}
             <div className="border border-cc-border rounded-lg p-4 bg-cc-panel/40">
-              <div className="text-base font-semibold mb-1">{selectedCard.name}</div>
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <div className="text-base font-semibold">{selectedCard.name}</div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-xs bg-zinc-700 rounded hover:bg-zinc-600"
+                    onClick={() => openEditor(selectedCard.slug)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-xs bg-red-700 rounded hover:bg-red-600"
+                    onClick={() => setDeleteOpen(selectedCard.slug)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
               {selectedCard.description && (
                 <p className="text-sm text-cc-text-dim mb-3">{selectedCard.description}</p>
               )}
@@ -167,8 +262,46 @@ export function SkillsTab() {
           </div>
         )}
       </div>
+      </div>
+      {editorOpen && barrackPath && (
+        <SkillEditorDialog
+          mode={editorOpen.mode}
+          barrackPath={barrackPath}
+          initialSlug={editorOpen.mode === "edit" ? editorOpen.slug : undefined}
+          initialFrontmatter={editorInitial?.frontmatter}
+          initialBody={editorInitial?.body}
+          onClose={() => {
+            setEditorOpen(null);
+            setEditorInitial(null);
+          }}
+          onSaved={(savedSlug) => {
+            loadIndex();
+            setSelectedSlug(savedSlug);
+          }}
+        />
+      )}
+      {deleteOpen && barrackPath && (
+        <SkillDeleteDialog
+          barrackPath={barrackPath}
+          slug={deleteOpen}
+          onClose={() => setDeleteOpen(null)}
+          onDeleted={() => {
+            setDeleteOpen(null);
+            if (selectedSlug === deleteOpen) setSelectedSlug(null);
+            loadIndex();
+          }}
+        />
+      )}
     </div>
   );
+}
+
+// Accepts "aib v1.2.0", "v1.2.0", or "1.2.0" → returns 0xMMmmpp packed
+// (e.g. 1.2.0 → 0x010200) so we can compare with arithmetic ordering.
+function parseAibSemver(v: string): number {
+  const m = v.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return 0;
+  return (parseInt(m[1], 10) << 16) | (parseInt(m[2], 10) << 8) | parseInt(m[3], 10);
 }
 
 function SkillCardItem({

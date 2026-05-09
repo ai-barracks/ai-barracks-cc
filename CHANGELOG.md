@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.2.0] - unreleased
+
+### Added — Skills CRUD GUI (paired with aib v1.2.0 Skills loading)
+- **Create / Edit / Delete / Rename SKILL.md from the GUI.** Skills tab gains `[+ New Skill]`, `[Edit]`, `[Delete]` actions.
+- **Form / Raw hybrid editor**: Form mode (frontmatter fields + body textarea) is the source of truth; Raw mode is a read-only preview by default, with explicit `[Override with raw]` for direct YAML editing.
+- **Save & Sync orchestration**: every Create/Update/Delete/Rename runs `aib sync` automatically. If sync fails, the disk write is preserved and a banner appears with `[Retry sync]` (spec §3.5 — sync failure never rolls back user assets).
+- **Slug rename**: `[Rename slug]` button in Edit dialog. Backend moves the directory and updates the frontmatter `name:` field atomically.
+- **aib version banner**: warns when installed aib < v1.2.0 (Skills loading wirings depend on it).
+
+### Why this is aib-cc's first deliberate write-side feature for catalog data
+Until v1.1, the catalog views (Wiki, Skills) were intentionally read-only because agents auto-update those via hooks/protocol. Skills are different — `templates/docs/skills-protocol.md` "보호 원칙" forbids agent self-registration of skills, so the user is the only path. GUI write here serves a workflow that text editors handle clumsily; the read-only policy still applies to wiki/sessions/RULES.
+
+### Backend
+- 4 new Tauri commands in `src-tauri/src/commands/skills.rs`: `create_skill`, `update_skill`, `delete_skill`, `rename_skill`. All return `Result<(), String>` and are idempotent within their own scope.
+- `SkillFrontmatterWrite` struct with serde guards against the Tauri rename bidirectional trap (RULES.md [2026-05-09]).
+- 8+ Rust unit tests covering write/collision/missing/rename/serialize-key invariants.
+
+### Frontend
+- New: `SkillEditorDialog`, `SkillFormFields`, `SkillDeleteDialog`, `useSkillCrud` hook.
+- Modified: `SkillsTab.tsx` — wired action buttons, version banner, dialog renderers.
+
+### Out of scope (deferred)
+- Frontend unit test framework (vitest) — manual smoke test this release.
+- In-app drift banner (`aib skills check` integration) — every successful save runs sync, so drift in normal flow is zero. Use `aib skills doctor` from terminal for ad-hoc check.
+- Bulk import/export, template gallery, in-app skill invocation.
+
+### Compatibility
+- Requires aib v1.2.0+ at runtime (banner warns otherwise).
+- v1.1.x SKILL.md files are loaded as-is into the editor; custom frontmatter fields are preserved in the `custom` map.
+
 ## [1.1.4] - 2026-05-09
 
 ### Added — Release pipeline 검증 step
