@@ -91,6 +91,42 @@ pub fn render_frontmatter_yaml(fm: &SkillFrontmatterWrite) -> String {
         .unwrap_or_else(|_| "name: invalid\ndescription: invalid\n".to_string())
 }
 
+/// Inner implementation testable without Tauri runtime. Takes a `Path` (not String) so unit tests
+/// can use tempdir paths directly.
+pub fn create_skill_impl(
+    barrack: &Path,
+    slug: &str,
+    frontmatter: &SkillFrontmatterWrite,
+    body: &str,
+) -> Result<(), String> {
+    let skill_dir = barrack.join("skills").join(slug);
+    if skill_dir.exists() {
+        return Err(format!("skill already exists: {}", slug));
+    }
+    fs::create_dir_all(&skill_dir).map_err(|e| format!("create_dir_all failed: {}", e))?;
+    let yaml = render_frontmatter_yaml(frontmatter);
+    let mut content = String::with_capacity(yaml.len() + body.len() + 16);
+    content.push_str("---\n");
+    content.push_str(&yaml);
+    content.push_str("---\n\n");
+    content.push_str(body);
+    if !body.ends_with('\n') {
+        content.push('\n');
+    }
+    fs::write(skill_dir.join("SKILL.md"), content)
+        .map_err(|e| format!("write SKILL.md failed: {}", e))
+}
+
+#[tauri::command]
+pub fn create_skill(
+    barrack_path: String,
+    slug: String,
+    frontmatter: SkillFrontmatterWrite,
+    body: String,
+) -> Result<(), String> {
+    create_skill_impl(Path::new(&barrack_path), &slug, &frontmatter, &body)
+}
+
 /// SKILL.md 한 파일을 파싱해 SkillCard로 변환.
 /// slug는 호출자가 디렉터리 이름에서 채워준다.
 fn parse_skill_md(slug: &str, content: &str) -> SkillCard {
@@ -460,5 +496,47 @@ mod tests {
         assert!(yaml.contains("allowed-tools:"), "must use hyphen key for allowed-tools");
         assert!(!yaml.contains("argument_hint:"), "must NOT serialize underscore form");
         assert!(!yaml.contains("allowed_tools:"), "must NOT serialize underscore form");
+    }
+
+    #[test]
+    fn create_skill_writes_md_with_frontmatter_and_body() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        // Pre-create skills/ so create_skill doesn't have to mkdir parent
+        test_fs::create_dir_all(barrack.join("skills")).unwrap();
+
+        let fm = SkillFrontmatterWrite {
+            name: "kanban".into(),
+            description: "Lightweight kanban board for the barrack.".into(),
+            argument_hint: Some("[--limit N]".into()),
+            ..Default::default()
+        };
+        let body = "# Kanban\n\n## When to invoke\n- Daily standup planning\n";
+
+        create_skill_impl(barrack, "kanban", &fm, body).expect("create should succeed");
+
+        let written = test_fs::read_to_string(barrack.join("skills/kanban/SKILL.md")).unwrap();
+        assert!(written.starts_with("---\n"));
+        assert!(written.contains("name: kanban"));
+        assert!(written.contains("description: Lightweight kanban"));
+        assert!(written.contains("argument-hint:"));  // hyphen key (Task 1 invariant)
+        assert!(written.contains("\n---\n"));          // closing fence
+        assert!(written.contains("# Kanban"));         // body
+    }
+
+    #[test]
+    fn create_skill_errors_on_collision() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        test_fs::create_dir_all(barrack.join("skills/kanban")).unwrap();
+        File::create(barrack.join("skills/kanban/SKILL.md")).unwrap();
+
+        let fm = SkillFrontmatterWrite {
+            name: "kanban".into(),
+            description: "x".repeat(20),
+            ..Default::default()
+        };
+        let err = create_skill_impl(barrack, "kanban", &fm, "body").expect_err("must reject existing slug");
+        assert!(err.contains("already exists"), "expected 'already exists' in error, got: {}", err);
     }
 }
