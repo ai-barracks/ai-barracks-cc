@@ -127,6 +127,38 @@ pub fn create_skill(
     create_skill_impl(Path::new(&barrack_path), &slug, &frontmatter, &body)
 }
 
+pub fn update_skill_impl(
+    barrack: &Path,
+    slug: &str,
+    frontmatter: &SkillFrontmatterWrite,
+    body: &str,
+) -> Result<(), String> {
+    let skill_md = barrack.join("skills").join(slug).join("SKILL.md");
+    if !skill_md.exists() {
+        return Err(format!("skill not found: {}", slug));
+    }
+    let yaml = render_frontmatter_yaml(frontmatter);
+    let mut content = String::with_capacity(yaml.len() + body.len() + 16);
+    content.push_str("---\n");
+    content.push_str(&yaml);
+    content.push_str("---\n\n");
+    content.push_str(body);
+    if !body.ends_with('\n') {
+        content.push('\n');
+    }
+    fs::write(&skill_md, content).map_err(|e| format!("write SKILL.md failed: {}", e))
+}
+
+#[tauri::command]
+pub fn update_skill(
+    barrack_path: String,
+    slug: String,
+    frontmatter: SkillFrontmatterWrite,
+    body: String,
+) -> Result<(), String> {
+    update_skill_impl(Path::new(&barrack_path), &slug, &frontmatter, &body)
+}
+
 /// SKILL.md 한 파일을 파싱해 SkillCard로 변환.
 /// slug는 호출자가 디렉터리 이름에서 채워준다.
 fn parse_skill_md(slug: &str, content: &str) -> SkillCard {
@@ -538,5 +570,46 @@ mod tests {
         };
         let err = create_skill_impl(barrack, "kanban", &fm, "body").expect_err("must reject existing slug");
         assert!(err.contains("already exists"), "expected 'already exists' in error, got: {}", err);
+    }
+
+    #[test]
+    fn update_skill_overwrites_md_when_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        // Seed an existing skill via create_skill_impl
+        let fm0 = SkillFrontmatterWrite {
+            name: "council".into(),
+            description: "Original description meeting min length.".into(),
+            ..Default::default()
+        };
+        create_skill_impl(barrack, "council", &fm0, "old body").unwrap();
+
+        // Update with new content
+        let fm1 = SkillFrontmatterWrite {
+            name: "council".into(),
+            description: "New description with at least twenty chars.".into(),
+            ..Default::default()
+        };
+        update_skill_impl(barrack, "council", &fm1, "## New body\n").unwrap();
+
+        let written = test_fs::read_to_string(barrack.join("skills/council/SKILL.md")).unwrap();
+        assert!(written.contains("New description"));
+        assert!(written.contains("## New body"));
+        assert!(!written.contains("Original description"));
+        assert!(!written.contains("old body"));
+    }
+
+    #[test]
+    fn update_skill_errors_on_missing_slug() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        test_fs::create_dir_all(barrack.join("skills")).unwrap();
+        let fm = SkillFrontmatterWrite {
+            name: "ghost".into(),
+            description: "Ghost skill must not be writable as update.".into(),
+            ..Default::default()
+        };
+        let err = update_skill_impl(barrack, "ghost", &fm, "body").expect_err("must reject missing slug");
+        assert!(err.contains("not found"));
     }
 }
