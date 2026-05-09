@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.2.0] - unreleased
+## [1.2.0] - 2026-05-09
 
 ### Added — Skills CRUD GUI (paired with aib v1.2.0 Skills loading)
 - **Create / Edit / Delete / Rename SKILL.md from the GUI.** Skills tab gains `[+ New Skill]`, `[Edit]`, `[Delete]` actions.
