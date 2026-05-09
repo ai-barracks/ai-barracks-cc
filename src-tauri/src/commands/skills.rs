@@ -12,7 +12,7 @@ pub struct SkillCard {
     pub aib_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream: Option<String>,
-    #[serde(rename = "argument-hint", default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename(deserialize = "argument-hint"), default, skip_serializing_if = "Option::is_none")]
     pub argument_hint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parse_error: Option<String>,
@@ -364,5 +364,29 @@ mod tests {
         let input = "no frontmatter here\nbody\n";
         let body = extract_body(input);
         assert_eq!(body, "no frontmatter here\nbody\n");
+    }
+
+    #[test]
+    fn serializes_argument_hint_with_underscore_for_tauri() {
+        // Tauri는 SkillCard를 serde_json으로 직렬화해 frontend로 전달.
+        // TS interface가 argument_hint (underscore)를 기대하므로 JSON 키도 underscore여야 함.
+        // YAML deserialize는 hyphen("argument-hint")을 받아야 함 → 양방향 mismatch가 의도된 동작.
+        use serde_json;
+        let card = SkillCard {
+            slug: "council".to_string(),
+            name: "council".to_string(),
+            description: "x".to_string(),
+            argument_hint: Some("<topic>".to_string()),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&card).unwrap();
+        assert!(
+            json.contains("\"argument_hint\""),
+            "JSON must use underscore key for TS compatibility, got: {}", json
+        );
+        assert!(
+            !json.contains("\"argument-hint\""),
+            "hyphen key must NOT appear in serialized output (would break frontend), got: {}", json
+        );
     }
 }

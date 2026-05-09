@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.3] - unreleased
+
+### Fixed — argument-hint frontend mapping
+- **`SkillCard.argument_hint`** serde attribute가 양방향(`rename = "..."`)이라 Tauri → frontend JSON 키가 `argument-hint` (hyphen)로 나갔고, TS interface는 `argument_hint` (underscore)를 기대 → frontend에서 모든 카드의 args 메타 칩이 표시되지 않음.
+- Fix: `#[serde(rename(deserialize = "argument-hint"))]`로 변경 — YAML 입력 호환은 유지, JSON 출력은 underscore.
+- 회귀 테스트 추가: `serializes_argument_hint_with_underscore_for_tauri`.
+
+### Notes
+- v1.1.2는 본 회귀를 가진 채 publish됨. 사용자는 v1.1.3 설치 권장.
+- 다른 frontmatter 필드(aib_version, upstream, parse_error)는 영향 없음 — rename 어트리뷰트가 없거나 underscore 키 그대로 사용.
+
 ## [1.1.2] - unreleased
 
 ### Added — Skills 카탈로그 탭
