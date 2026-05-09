@@ -159,6 +159,19 @@ pub fn update_skill(
     update_skill_impl(Path::new(&barrack_path), &slug, &frontmatter, &body)
 }
 
+pub fn delete_skill_impl(barrack: &Path, slug: &str) -> Result<(), String> {
+    let skill_dir = barrack.join("skills").join(slug);
+    if !skill_dir.exists() {
+        return Err(format!("skill not found: {}", slug));
+    }
+    fs::remove_dir_all(&skill_dir).map_err(|e| format!("remove_dir_all failed: {}", e))
+}
+
+#[tauri::command]
+pub fn delete_skill(barrack_path: String, slug: String) -> Result<(), String> {
+    delete_skill_impl(Path::new(&barrack_path), &slug)
+}
+
 /// SKILL.md 한 파일을 파싱해 SkillCard로 변환.
 /// slug는 호출자가 디렉터리 이름에서 채워준다.
 fn parse_skill_md(slug: &str, content: &str) -> SkillCard {
@@ -610,6 +623,28 @@ mod tests {
             ..Default::default()
         };
         let err = update_skill_impl(barrack, "ghost", &fm, "body").expect_err("must reject missing slug");
+        assert!(err.contains("not found"));
+    }
+
+    #[test]
+    fn delete_skill_removes_dir_recursive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        let skill_dir = barrack.join("skills/oldskill");
+        let scripts_dir = skill_dir.join("scripts");
+        test_fs::create_dir_all(&scripts_dir).unwrap();
+        File::create(skill_dir.join("SKILL.md")).unwrap();
+        File::create(scripts_dir.join("run.sh")).unwrap();
+
+        delete_skill_impl(barrack, "oldskill").unwrap();
+
+        assert!(!skill_dir.exists(), "skill dir should be removed recursively");
+    }
+
+    #[test]
+    fn delete_skill_errors_on_missing_slug() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = delete_skill_impl(tmp.path(), "nonexistent").expect_err("must reject missing slug");
         assert!(err.contains("not found"));
     }
 }
