@@ -125,13 +125,14 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     term.loadAddon(webLinksAddon);
     term.open(container);
 
-    // IME 조합 중 raw key event 차단 (한글/일본어/중국어 입력)
-    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-      if (event.isComposing || event.keyCode === 229) {
-        return false;
-      }
-      return true;
-    });
+    // Do not intercept IME/composition key events here.
+    //
+    // xterm.js has a built-in CompositionHelper that must see keydown events with
+    // keyCode 229 (the IME "composition character") in order to flush Korean/CJK
+    // text from the hidden textarea into onData. A previous custom key handler
+    // returned false for `event.isComposing || event.keyCode === 229`, which ran
+    // *before* CompositionHelper and caused intermittent Hangul drops/splits
+    // depending on the exact macOS IME event ordering.
 
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;

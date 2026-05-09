@@ -56,6 +56,44 @@ fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
 }
 
+fn is_utf8_locale(value: &str) -> bool {
+    let upper = value.to_ascii_uppercase();
+    upper.contains("UTF-8") || upper.contains("UTF8")
+}
+
+fn env_value_is_utf8(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_some_and(|value| is_utf8_locale(&value))
+}
+
+/// GUI-launched macOS apps do not consistently inherit the user's shell locale.
+/// Force a UTF-8 character type locale for the child PTY when the inherited
+/// environment is missing/non-UTF-8; otherwise shells/readline/TUIs can treat
+/// Hangul bytes as single-byte input and show split/dropped characters.
+fn ensure_utf8_locale(cmd: &mut CommandBuilder) {
+    const DEFAULT_UTF8_LOCALE: &str = "en_US.UTF-8";
+
+    match std::env::var("LC_ALL") {
+        Ok(value) if !value.trim().is_empty() => {
+            if !is_utf8_locale(&value) {
+                cmd.env("LC_ALL", DEFAULT_UTF8_LOCALE);
+            }
+            // LC_ALL overrides all LC_* and LANG, so the rest is irrelevant.
+            return;
+        }
+        _ => {}
+    }
+
+    if !env_value_is_utf8("LC_CTYPE") {
+        cmd.env("LC_CTYPE", DEFAULT_UTF8_LOCALE);
+    }
+    if !env_value_is_utf8("LANG") {
+        cmd.env("LANG", DEFAULT_UTF8_LOCALE);
+    }
+}
+
 /// Spawn a reader task that streams PTY output to the channel and buffer.
 fn spawn_reader(
     mut reader: Box<dyn Read + Send>,
@@ -100,12 +138,7 @@ fn spawn_reader(
                             // Channel disconnected (webview reloaded)
                             is_connected.store(false, std::sync::atomic::Ordering::Relaxed);
                             // Keep reading into buffer instead of breaking
-                            drain_to_buffer_only(
-                                reader,
-                                leftover,
-                                abort_flag,
-                                output_buffer,
-                            );
+                            drain_to_buffer_only(reader, leftover, abort_flag, output_buffer);
                             return;
                         }
                     }
@@ -187,6 +220,7 @@ pub async fn terminal_create(
     cmd.arg("-l");
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    ensure_utf8_locale(&mut cmd);
 
     if let Some(ref dir) = cwd {
         cmd.cwd(dir);
@@ -321,9 +355,7 @@ pub async fn terminal_close(
 }
 
 #[tauri::command]
-pub async fn terminal_close_all(
-    state: tauri::State<'_, TerminalManager>,
-) -> Result<(), String> {
+pub async fn terminal_close_all(state: tauri::State<'_, TerminalManager>) -> Result<(), String> {
     let mut sessions = state
         .sessions
         .lock()
@@ -411,5 +443,30 @@ fn find_utf8_boundary(bytes: &[u8]) -> usize {
     match std::str::from_utf8(bytes) {
         Ok(_) => bytes.len(),
         Err(e) => e.valid_up_to(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{find_utf8_boundary, is_utf8_locale};
+
+    #[test]
+    fn locale_detection_accepts_common_utf8_spellings() {
+        assert!(is_utf8_locale("en_US.UTF-8"));
+        assert!(is_utf8_locale("ko_KR.utf8"));
+        assert!(is_utf8_locale("C.UTF-8"));
+        assert!(!is_utf8_locale("C"));
+        assert!(!is_utf8_locale("ko_KR.EUC-KR"));
+    }
+
+    #[test]
+    fn utf8_boundary_keeps_partial_hangul_for_next_read() {
+        let bytes = "안".as_bytes();
+        assert_eq!(find_utf8_boundary(bytes), bytes.len());
+        assert_eq!(find_utf8_boundary(&bytes[..2]), 0);
+
+        let mut mixed = "a".as_bytes().to_vec();
+        mixed.extend_from_slice(&bytes[..2]);
+        assert_eq!(find_utf8_boundary(&mixed), 1);
     }
 }

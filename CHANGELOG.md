@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.1] - 2026-05-09
+
+### Fixed — Terminal Korean IME / UTF-8 PTY locale
+- **Korean/CJK IME composition no longer gets intercepted before xterm.js CompositionHelper.** Removed the custom `attachCustomKeyEventHandler` path that returned `false` for `event.isComposing` / `keyCode === 229`, which could drop or split Hangul input before xterm flushed the hidden textarea into `onData`.
+- **PTY child locale is forced to UTF-8 when inherited GUI app env is missing/non-UTF-8.** `LC_ALL` is respected when already UTF-8; otherwise `LC_CTYPE`/`LANG` are defaulted to `en_US.UTF-8` so shells/readline/TUIs treat Hangul as multibyte input.
+- **Regression coverage:** Rust tests cover UTF-8 locale detection and partial Hangul byte-boundary buffering.
+
+### Verification
+- `cargo test` — 28 passed.
+- `npm run build` — passed (Vite chunk-size warning only).
+
 ## [1.2.0] - 2026-05-09
 
 ### Added — Skills CRUD GUI (paired with aib v1.2.0 Skills loading)
