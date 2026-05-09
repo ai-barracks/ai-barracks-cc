@@ -47,9 +47,9 @@ struct SkillFrontmatter {
 pub struct SkillFrontmatterWrite {
     pub name: String,
     pub description: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "argument-hint")]
     pub argument_hint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "allowed-tools")]
     pub allowed_tools: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aib_version: Option<String>,
@@ -757,5 +757,25 @@ mod tests {
         assert!(err.contains("already exists") || err.contains("collision"));
         // Source preserved on error
         assert!(barrack.join("skills/a").exists(), "source must remain on error");
+    }
+
+    #[test]
+    fn frontmatter_write_deserializes_hyphen_keys_from_json() {
+        // Critical regression: when frontend invokes create_skill/update_skill, JSON keys
+        // are hyphen-cased ("argument-hint", "allowed-tools") to match the Anthropic Agent
+        // Skills standard. Without #[serde(rename = "...")] on the underscore Rust fields,
+        // these are silently dropped during deserialization, losing user input.
+        //
+        // This is the inverse direction of RULES.md [2026-05-09] Tauri-Serde-Rename-
+        // Bidirectional-Trap (which originally addressed Rust→frontend serialize).
+        let json = r#"{
+            "name":"x",
+            "description":"twenty-char description!!",
+            "argument-hint":"<a>",
+            "allowed-tools":"Bash(*)"
+        }"#;
+        let fm: SkillFrontmatterWrite = serde_json::from_str(json).expect("deserialize must succeed");
+        assert_eq!(fm.argument_hint.as_deref(), Some("<a>"), "argument-hint must deserialize into Rust argument_hint");
+        assert_eq!(fm.allowed_tools.as_deref(), Some("Bash(*)"), "allowed-tools must deserialize into Rust allowed_tools");
     }
 }
