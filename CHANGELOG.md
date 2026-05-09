@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.4] - 2026-05-09
+
+### Added — Release pipeline 검증 step
+- **`.github/workflows/release.yml`**: `checkout` 직후, build 전에 tag↔version 일치 검증 step 추가. 다음을 fail-fast로 검증:
+  - 태그가 `vX.Y.Z[-pre]` semver 형식인지
+  - `src-tauri/tauri.conf.json` / `package.json` / `src-tauri/Cargo.toml`의 `version` 필드가 모두 태그(앞의 `v` 제거)와 일치하는지
+- **Why**: v1.1.0 릴리즈에서 3개 version 파일이 `1.0.2`인 채로 `v1.1.0` 태그만 푸시되어 DMG 파일명이 `_1.0.2_`로 잘못 묶이는 사고가 있었다. 워크플로우 차원에서 동일 사고를 차단.
+
+### Docs
+- README에 Skills 카탈로그 탭 섹션 추가, CHANGELOG `[1.1.1]/[1.1.2]/[1.1.3]`에 publish date stamp.
+
+### Notes
+- 코드 변경 없음 — release pipeline + 문서만 정비.
+
 ## [1.1.3] - 2026-05-09
 
 ### Fixed — argument-hint frontend mapping
