@@ -317,6 +317,18 @@ aib v1.1부터 모든 배럭이 `skills/<slug>/SKILL.md`를 first-class 자원�
 
 빈 상태에서는 "이 배럭에는 Skills가 없습니다 / `aib sync`로 시드를 받으세요" 메시지가 표시됩니다.
 
+### Skills 카탈로그 + 등록·편집 (v1.2.0+)
+
+각 배럭의 `skills/<slug>/SKILL.md`를 GUI에서 직접 등록·수정·삭제·이름 변경할 수 있습니다 (Anthropic Agent Skills 호환).
+
+- **카탈로그**: 배럭에 등록된 모든 스킬을 카드로 검색·열람.
+- **`[+ New Skill]`**: frontmatter 폼(name·description·argument-hint·allowed-tools·custom field 등) + 본문 markdown 에디터로 새 스킬 생성.
+- **`[Edit]`**: 기존 스킬 편집. `[Rename slug]`로 디렉토리 이름까지 변경 가능 (frontmatter `name`도 자동 갱신).
+- **`[Delete]`**: 슬러그 타이핑 확인 후 디렉토리 재귀 삭제.
+- **Save & Sync 자동**: 모든 mutation은 `aib sync`를 자동 호출하여 W1 symlink + W2 카탈로그를 즉시 materialize. sync 실패 시 SKILL.md는 보존되고 `[Retry sync]` 배너가 표시됩니다.
+
+> **요구사항**: aib v1.2.0+ 설치 (Skills loading wirings를 처리하는 것은 aib 본체).
+
 ---
 
 ### 🌿 Monorepo-aware Git
