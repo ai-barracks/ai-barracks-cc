@@ -172,6 +172,76 @@ pub fn delete_skill(barrack_path: String, slug: String) -> Result<(), String> {
     delete_skill_impl(Path::new(&barrack_path), &slug)
 }
 
+pub fn rename_skill_impl(barrack: &Path, old_slug: &str, new_slug: &str) -> Result<(), String> {
+    let old_dir = barrack.join("skills").join(old_slug);
+    let new_dir = barrack.join("skills").join(new_slug);
+    if !old_dir.exists() {
+        return Err(format!("skill not found: {}", old_slug));
+    }
+    if new_dir.exists() {
+        return Err(format!("target slug already exists: {}", new_slug));
+    }
+    fs::rename(&old_dir, &new_dir).map_err(|e| format!("rename failed: {}", e))?;
+
+    // Update the `name:` line inside the moved SKILL.md.
+    let skill_md = new_dir.join("SKILL.md");
+    if skill_md.exists() {
+        let content = fs::read_to_string(&skill_md).map_err(|e| format!("read SKILL.md failed: {}", e))?;
+        let updated = update_name_in_frontmatter(&content, new_slug);
+        fs::write(&skill_md, updated).map_err(|e| format!("write SKILL.md failed: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Replaces the `name:` line inside a SKILL.md frontmatter block with the new slug.
+/// Operates only on the first frontmatter block (between leading --- fences). If no
+/// frontmatter exists, returns the input unchanged. The body is left untouched.
+fn update_name_in_frontmatter(content: &str, new_name: &str) -> String {
+    let normalized = content.replace("\r\n", "\n");
+    let after_open = match normalized.strip_prefix("---\n") {
+        Some(s) => s,
+        None => return content.to_string(),
+    };
+    let close_idx = match after_open.find("\n---\n") {
+        Some(i) => i,
+        None => return content.to_string(),
+    };
+    let frontmatter = &after_open[..close_idx];
+    let rest = &after_open[close_idx..]; // starts with "\n---\n"
+
+    let mut new_fm = String::with_capacity(frontmatter.len() + new_name.len());
+    let mut name_replaced = false;
+    for line in frontmatter.lines() {
+        if !name_replaced && line.trim_start().starts_with("name:") {
+            new_fm.push_str(&format!("name: {}", new_name));
+            new_fm.push('\n');
+            name_replaced = true;
+        } else {
+            new_fm.push_str(line);
+            new_fm.push('\n');
+        }
+    }
+    // Strip the trailing extra newline that would otherwise duplicate
+    if new_fm.ends_with('\n') {
+        new_fm.pop();
+    }
+
+    let mut out = String::with_capacity(content.len() + 16);
+    out.push_str("---\n");
+    out.push_str(&new_fm);
+    out.push_str(rest);
+    out
+}
+
+#[tauri::command]
+pub fn rename_skill(
+    barrack_path: String,
+    old_slug: String,
+    new_slug: String,
+) -> Result<(), String> {
+    rename_skill_impl(Path::new(&barrack_path), &old_slug, &new_slug)
+}
+
 /// SKILL.md 한 파일을 파싱해 SkillCard로 변환.
 /// slug는 호출자가 디렉터리 이름에서 채워준다.
 fn parse_skill_md(slug: &str, content: &str) -> SkillCard {
@@ -646,5 +716,46 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let err = delete_skill_impl(tmp.path(), "nonexistent").expect_err("must reject missing slug");
         assert!(err.contains("not found"));
+    }
+
+    #[test]
+    fn rename_skill_moves_dir_and_updates_name_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        let fm = SkillFrontmatterWrite {
+            name: "oldname".into(),
+            description: "Original twenty-char description.".into(),
+            argument_hint: Some("<arg>".into()),
+            ..Default::default()
+        };
+        create_skill_impl(barrack, "oldname", &fm, "body content").unwrap();
+
+        rename_skill_impl(barrack, "oldname", "newname").unwrap();
+
+        assert!(!barrack.join("skills/oldname").exists(), "old dir should be gone");
+        assert!(barrack.join("skills/newname/SKILL.md").exists(), "new dir should exist");
+        let content = test_fs::read_to_string(barrack.join("skills/newname/SKILL.md")).unwrap();
+        assert!(content.contains("name: newname"), "name field must be updated");
+        assert!(!content.contains("name: oldname"), "old name must be replaced");
+        assert!(content.contains("argument-hint:"), "other frontmatter fields preserved");
+        assert!(content.contains("body content"), "body preserved");
+    }
+
+    #[test]
+    fn rename_skill_errors_on_target_collision() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        let fm = SkillFrontmatterWrite {
+            name: "a".into(),
+            description: "x".repeat(20),
+            ..Default::default()
+        };
+        create_skill_impl(barrack, "a", &fm, "body").unwrap();
+        create_skill_impl(barrack, "b", &fm, "body").unwrap();
+
+        let err = rename_skill_impl(barrack, "a", "b").expect_err("must reject existing target slug");
+        assert!(err.contains("already exists") || err.contains("collision"));
+        // Source preserved on error
+        assert!(barrack.join("skills/a").exists(), "source must remain on error");
     }
 }
