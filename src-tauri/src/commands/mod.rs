@@ -6,3 +6,4 @@ pub mod terminal;
 pub mod wiki;
 pub mod sync;
 pub mod search;
+pub mod skills;

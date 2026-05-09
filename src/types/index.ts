@@ -65,6 +65,21 @@ export interface WikiIndex {
   recent_changes: string[];
 }
 
+export interface SkillCard {
+  slug: string;
+  name: string;
+  description: string;
+  aib_version?: string;
+  upstream?: string;
+  argument_hint?: string;
+  parse_error?: string;
+}
+
+export interface SkillsIndex {
+  skills: SkillCard[];
+  skills_dir_exists: boolean;
+}
+
 export interface SyncResult {
   path: string;
   success: boolean;
@@ -107,7 +122,7 @@ export interface GitLogEntry {
   date: string;
 }
 
-export type TabType = "overview" | "files" | "sessions" | "wiki" | "git";
+export type TabType = "overview" | "files" | "sessions" | "wiki" | "skills" | "git";
 
 export interface TerminalSession {
   id: string;

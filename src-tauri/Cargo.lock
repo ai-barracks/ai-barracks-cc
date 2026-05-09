@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "ai-barracks-cc"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "chrono",
  "dirs",
@@ -33,6 +33,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-notification",
  "tauri-plugin-shell",
+ "tempfile",
  "tokio",
  "uuid",
 ]

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.2] - unreleased
+
+### Added — Skills 카탈로그 탭
+- **`SkillsTab`** (신규): 좌측 검색 박스 + SKILL.md 카드 리스트 / 우측 메타 박스 + 마크다운 본문. Wiki 탭 패턴 미러.
+- **Tauri commands**: `get_skills_index` (skills/<slug>/SKILL.md walk + `serde_yaml` frontmatter 파싱), `get_skill_content` (frontmatter 제거 후 본문 반환).
+- **frontmatter 손상 노출**: silent skip 금지 — 파싱 실패 시 카드에 ⚠️ 배지 + 메타 박스에 빨간 `parse_error` 표시. spec D3.
+
+### Notes
+- aib v1.1.0 release notes에서 v1.1.1로 약속됐던 "Skills 카탈로그 전용 탭" 항목 — v1.1.1은 메타데이터 sync 패치로 분리되어 본 항목은 v1.1.2로 이연됨.
+- v1.1.3+ 후보로 이연: `aib skills doctor` 실행 버튼, external skills 표시, 카드 정렬 토글, 편집 모드.
+
 ## [1.1.1] - unreleased
 
 ### Fixed — Version metadata sync
