@@ -230,6 +230,17 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       }, { capture: true });
 
       ta.addEventListener("input", (e: Event) => {
+        const inputEvent = e as InputEvent;
+        if (inputEvent.inputType === "insertFromPaste") {
+          // xterm's native paste handler already forwards ClipboardEvent data
+          // through onData. The browser may still insert the clipboard text into
+          // the helper textarea afterwards, which would make this IME bypass
+          // send the same payload a second time. Keep the helper textarea clean
+          // without interfering with the already-handled xterm paste path.
+          e.stopImmediatePropagation();
+          ta.value = "";
+          return;
+        }
         if (imeComposing) {
           e.stopImmediatePropagation();
           return;

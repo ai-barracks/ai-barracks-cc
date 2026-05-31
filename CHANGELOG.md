@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.3] - 2026-05-31
+
+### Fixed — Terminal clipboard paste deduplication
+- **Clipboard paste in the built-in terminal no longer inputs text twice.** The v1.2.2 IME helper-textarea bypass now ignores `InputEvent.inputType === "insertFromPaste"`, leaving paste delivery to xterm.js' native `ClipboardEvent` handler and only clearing the helper textarea residue.
+- **Korean/CJK IME workaround preserved.** The guard is scoped to clipboard paste, so composition input (`insertCompositionText` / `insertText`) continues through the existing IME path.
+
+### Verification
+- `git diff --check` — clean.
+- `npx tsc --noEmit --pretty false` — clean.
+- `npm run build` — clean (Vite chunk-size warning only).
+- `cargo test --manifest-path src-tauri/Cargo.toml` — 28 passed.
+
 ## [1.2.2] - 2026-05-10
 
 ### Fixed (partial) — macOS WKWebView Korean/CJK IME
