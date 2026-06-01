@@ -25,7 +25,7 @@ AI Barracks의 데스크톱 관제 앱. 배럭 관리, 설정 편집, 에이전�
 | ♻️ 세션 이어받기 | `aib hook continue <session_id>` 명령·ID 기억 | 세션 카드의 **Continue 버튼** 클릭 |
 | 🌿 Git 관리 | 별도 터미널에서 `git` 실행, 모노레포 sub-path 수동 처리 | **Git 탭** — 모노레포 sub-path 자동 감지, UI에서 commit/push |
 | 🧩 Claude/Gemini/Codex 병렬 작업 | Terminal.app 탭·창 수동 관리 | **Split/Grid 레이아웃** + 배럭별 터미널 상태 **영속** |
-| 💥 창 닫거나 리로드 시 터미널 | 세션 날아감 | **PTY 생존** + 출력 버퍼 replay + 자동 재연결 |
+| 💥 창 닫거나 리로드 시 터미널 | 세션 날아감 | **PTY 생존** + replay + 자동 재연결 · **앱 재시작 후엔 디스크 scrollback 복원 + archive 탭** |
 
 한 줄로 요약하면:
 
@@ -252,6 +252,10 @@ CC의 터미널은 단순히 xterm을 내장한 게 아닙니다. **세션 생�
 3. 버퍼 replay → 라이브 스트림 이어받기
 
 **결과**: Claude Code가 10분짜리 리팩토링을 돌리는 중에 CC를 리로드해도 **아무것도 잃지 않습니다.**
+
+**앱을 완전히 종료(Quit)하면 PTY는 사라집니다.** v1.3.0부터 이를 위해 **터미널 출력을 디스크에 영속화**합니다:
+- 각 세션 scrollback이 `app_data/scrollback/<id>.bin`에 atomic하게 저장됩니다 (per-session 1MB cap, UTF-8 경계 안전, global 100MB + 14일 retention GC).
+- 앱 재시작 시 살아있는 PTY가 없는 세션은 **archive 탭**(read-only)으로 복원돼 "프로세스 종료됨" 배너와 함께 이전 출력을 replay합니다. 같은 cwd에서 새 세션을 시작하거나 기록을 삭제할 수 있습니다 (자동 PTY 부착 없음).
 
 시스템 트레이까지 더해 이중으로 보호합니다:
 - 창을 X로 닫아도 → 트레이로 숨음, PTY 유지
