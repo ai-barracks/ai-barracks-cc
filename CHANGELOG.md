@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.4.0] - unreleased
+## [1.4.0] - 2026-06-01
 
 ### Added — Agent liveness dot (Plan 2: aib-cc UI; pairs with aib ≥ 1.3.0 Plan 1)
 - **세션 카드별 실시간 생사 점 + 툴팁.** `aib`가 쓰는 `sessions/.live/<id>.status` sidecar를 읽어 `kill(pid,0)` 생존 확인 + 경과시간으로 effective 상태(`working`/`working_stale`/`blocked`/`crashed`/`interrupted`/`done`/`idle`/`none`)로 fold — `aib sessions state` 레퍼런스 매트릭스를 Rust 단위 테스트로 동일성 고정. `none`은 점 없음.
