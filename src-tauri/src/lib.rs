@@ -64,8 +64,20 @@ pub fn run() {
             terminal::terminal_close_all,
             terminal::terminal_list,
             terminal::terminal_reconnect,
+            terminal::load_scrollback,
+            terminal::delete_scrollback,
+            terminal::clear_all_scrollback,
+            terminal::list_archived_sessions,
         ])
         .setup(|app| {
+            // --- Scrollback persistence ---
+            // Bind the terminal scrollback store to the app data dir and run a
+            // best-effort startup GC. Failure here is non-fatal (no-op store).
+            if let Ok(data_dir) = app.path().app_data_dir() {
+                app.state::<terminal::TerminalManager>()
+                    .init_scrollback(&data_dir);
+            }
+
             // --- System Tray ---
             let show = MenuItemBuilder::with_id("show", "Show CommandCenter").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
