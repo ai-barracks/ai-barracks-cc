@@ -42,6 +42,11 @@ pub fn start_watcher(app: AppHandle) {
             if sessions_dir.exists() {
                 let _ = watcher.watch(&sessions_dir, RecursiveMode::NonRecursive);
             }
+            // Watch the ephemeral liveness sidecar dir (created if missing so the watch
+            // succeeds). sessions/ is NonRecursive, so .live needs its own watch.
+            let live_dir = sessions_dir.join(".live");
+            let _ = std::fs::create_dir_all(&live_dir);
+            let _ = watcher.watch(&live_dir, RecursiveMode::NonRecursive);
             for file in &["SOUL.md", "RULES.md", "GROWTH.md", "agent.yaml"] {
                 let file_path = PathBuf::from(path).join(file);
                 if file_path.exists() {
@@ -62,7 +67,18 @@ pub fn start_watcher(app: AppHandle) {
                             .first()
                             .map(|p| p.to_string_lossy().to_string())
                             .unwrap_or_default();
-                        let _ = app.emit("file-changed", changed_path);
+                        // Liveness sidecar writes route to a dedicated (debounced) channel.
+                        // Check ALL event paths (rename events carry from+to) so a .live
+                        // write isn't missed when it isn't the first path.
+                        let is_live = event
+                            .paths
+                            .iter()
+                            .any(|p| p.to_string_lossy().contains("/.live/"));
+                        if is_live {
+                            let _ = app.emit("live-changed", changed_path);
+                        } else {
+                            let _ = app.emit("file-changed", changed_path);
+                        }
                     }
                 }
                 Err(_) => break,
@@ -82,6 +98,9 @@ pub fn start_periodic_checks(app: AppHandle) {
         loop {
             check_stale_sessions(&app, &mut notified_sessions);
             check_sync_needed(&app);
+            // Re-fold trigger: lets the UI catch working->working_stale time transitions
+            // and watch-misses (get_live_states reads the FS directly each tick).
+            let _ = app.emit("live-tick", ());
 
             thread::sleep(Duration::from_secs(30));
         }

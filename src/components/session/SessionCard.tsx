@@ -1,4 +1,4 @@
-import type { SessionInfo, SessionDetail } from "../../types";
+import type { SessionInfo, SessionDetail, LiveState } from "../../types";
 
 const CLIENT_BADGES: Record<string, string> = {
   "Claude Code": "bg-orange-500/15 text-orange-400 border-orange-500/20",
@@ -17,6 +17,24 @@ const STATUS_STYLES: Record<string, string> = {
   completed: "bg-blue-500/20 text-blue-400",
   interrupted: "bg-cc-warning/20 text-cc-warning",
 };
+
+// Effective liveness -> dot color (real cc-* tokens; `none` => no dot rendered).
+const LIVE_DOT: Record<string, string> = {
+  working: "bg-cc-accent",
+  working_stale: "bg-cc-accent/50",
+  blocked: "bg-cc-danger",
+  crashed: "bg-cc-danger ring-2 ring-cc-danger/40",
+  interrupted: "bg-cc-warning",
+  done: "bg-cc-success",
+  idle: "bg-cc-text-muted/40",
+};
+
+function liveTooltip(ls?: LiveState): string {
+  if (!ls) return "";
+  const m = Math.floor(ls.age_sec / 60);
+  const pidTxt = ls.pid_unknown ? "pid?" : `pid ${ls.pid}${ls.pid_alive ? "" : " (dead)"}`;
+  return `${ls.effective} · ${ls.state} · ${m}m ago · ${pidTxt}`;
+}
 
 function Section({ title, items, color }: { title: string; items: string[]; color?: string }) {
   return (
@@ -41,6 +59,8 @@ interface SessionCardProps {
   onContinue: () => void;
   onViewInTerminal: () => void;
   onMonitor: () => void;
+  liveState?: LiveState;
+  onAck?: (sessionId: string, runId: string) => void;
 }
 
 export function SessionCard({
@@ -51,18 +71,35 @@ export function SessionCard({
   onContinue,
   onViewInTerminal,
   onMonitor,
+  liveState,
+  onAck,
 }: SessionCardProps) {
   const canContinue = session.status === "completed" || session.status === "interrupted";
   const isActive = session.status === "active";
+
+  // Ack-on-open: opening a `done` card acknowledges its run (-> idle). Never auto-ack blocked.
+  const handleToggle = () => {
+    if (!isExpanded && liveState?.effective === "done" && onAck) {
+      onAck(liveState.session_id, liveState.run_id);
+    }
+    onToggle();
+  };
 
   return (
     <div className="rounded-lg overflow-hidden border border-cc-border shadow-cc">
       <div className="flex items-stretch">
         <button
-          onClick={onToggle}
+          onClick={handleToggle}
           className="flex-1 text-left px-4 py-3 hover:bg-cc-card-hover transition-colors"
         >
           <div className="flex items-center gap-2">
+            {liveState && LIVE_DOT[liveState.effective] && (
+              <span
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${LIVE_DOT[liveState.effective]}`}
+                title={liveTooltip(liveState)}
+                aria-label={`status: ${liveState.effective}`}
+              />
+            )}
             <span className="text-[13px] font-medium text-cc-text truncate flex-1">
               {session.task || "(pending)"}
             </span>

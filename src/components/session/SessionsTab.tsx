@@ -5,6 +5,7 @@ import { useAppStore } from "../../stores/appStore";
 import { useTerminalStore } from "../../stores/terminalStore";
 import { SessionCard } from "./SessionCard";
 import { LiveTerminals } from "./LiveTerminals";
+import { useLiveStates } from "../../hooks/useLiveStates";
 import type { SessionInfo, SessionDetail, LaunchCommand } from "../../types";
 
 type ClientFilter = "all" | "Claude Code" | "Gemini CLI" | "Codex CLI";
@@ -20,6 +21,23 @@ export function SessionsTab() {
   const [hidePending, setHidePending] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [skipPermissions, setSkipPermissions] = useState(false);
+  const liveStates = useLiveStates(selectedBarrack?.path);
+
+  const ackSession = useCallback(
+    async (sessionId: string, runId: string) => {
+      if (!selectedBarrack) return;
+      try {
+        await invoke("ack_live_state", {
+          barrackPath: selectedBarrack.path,
+          sessionId,
+          runId,
+        });
+      } catch {
+        // ignore
+      }
+    },
+    [selectedBarrack],
+  );
 
   const loadSessions = useCallback(async () => {
     if (!selectedBarrack) return;
@@ -282,6 +300,8 @@ export function SessionsTab() {
               onContinue={() => handleContinue(session)}
               onViewInTerminal={() => handleViewInTerminal(session)}
               onMonitor={() => handleMonitor(session)}
+              liveState={liveStates[session.id]}
+              onAck={ackSession}
             />
           ))}
         </div>

@@ -212,3 +212,25 @@ export interface QuickCommand {
   command: string;
   cwd?: string;
 }
+
+// --- Agent liveness (mirrors Rust `live::Effective` / `live::LiveState`, snake_case) ---
+export type EffectiveState =
+  | "working"
+  | "working_stale"
+  | "blocked"
+  | "crashed"
+  | "interrupted"
+  | "done"
+  | "idle"
+  | "none";
+
+export interface LiveState {
+  session_id: string;
+  effective: EffectiveState;
+  state: string;
+  age_sec: number;
+  pid: number;
+  pid_alive: boolean;
+  pid_unknown: boolean;
+  run_id: string; // aib writes now-pid-random; ack matches this verbatim
+}

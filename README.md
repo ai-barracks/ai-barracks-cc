@@ -226,6 +226,29 @@ CLI는 세션 시작 시점에 stale을 정리하지만, **CC는 stale이 *발�
 
 ---
 
+### 🟢 에이전트 생사 인지: 세션이 살아있는지 한눈에
+
+각 세션 카드 앞의 **색점 하나**가 그 에이전트의 *실제* 상태를 말해줍니다. `aib`(≥ 1.3.0)의 Claude Code hook이 `sessions/.live/<id>.status` sidecar에 남긴 상태를, CC가 읽어 `kill(pid,0)` 프로세스 생존 확인 + 경과시간으로 **effective 상태**로 fold합니다 — `aib sessions state`와 **동일한 규칙을 Rust로 재구현**(매트릭스 일치를 단위 테스트로 고정).
+
+| 점 | 상태 | 의미 |
+|----|------|------|
+| 🔵 | `working` | 도구 실행 중 (Pre/PostToolUse) |
+| 🔵 흐림 | `working_stale` | working인데 180초+ 무갱신 |
+| 🔴 | `blocked` | 사용자 승인/입력 대기 (Notification) |
+| 🔴 테두리 | `crashed` | blocked인데 프로세스가 죽음 |
+| 🟠 | `interrupted` | working 도중 프로세스가 죽음 |
+| 🟢 | `done` | 턴 완료 (Stop) — 확인 대기 |
+| ⚪ | `idle` | done을 확인함 (카드를 펼치면 자동 ack) |
+
+- **PTY와 분리** — CC 내장 터미널 *밖에서* 띄운 `claude`도 파일 기반으로 추적됩니다.
+- `.live/` 변경은 **250ms 디바운스**로 합치고, **30초 tick**으로 `working → working_stale` 같은 시간 전이도 반영합니다.
+- `done` 카드를 펼치면 해당 run을 ack → ⚪ idle. Continue로 새 run이 시작되면 `run_id`가 바뀌어 자동으로 다시 활성 표시됩니다.
+- *non-Claude(Gemini/Codex)·hook 없는 세션은 점이 없습니다* — 점의 부재를 idle로 오해하지 마세요.
+
+> sidecar 스키마와 fold 알고리즘의 레퍼런스는 어디까지나 `aib sessions state`이고, CC는 그 규칙을 그대로 따릅니다 (헤드리스 일관성).
+
+---
+
 ### ⌨️ 강화된 터미널: 웹뷰가 죽어도 PTY는 산다
 
 CC의 터미널은 단순히 xterm을 내장한 게 아닙니다. **세션 생존성**이 핵심 설계 원칙입니다.

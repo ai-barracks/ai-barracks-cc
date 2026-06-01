@@ -1,4 +1,5 @@
 mod commands;
+mod live;
 mod watcher;
 
 use commands::{barracks, files, git, search, sessions, skills, sync, terminal, wiki};
@@ -68,6 +69,8 @@ pub fn run() {
             terminal::delete_scrollback,
             terminal::clear_all_scrollback,
             terminal::list_archived_sessions,
+            live::get_live_states,
+            live::ack_live_state,
         ])
         .setup(|app| {
             // --- Scrollback persistence ---
