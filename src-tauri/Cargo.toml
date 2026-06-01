@@ -1,6 +1,6 @@
 [package]
 name = "ai-barracks-cc"
-version = "1.3.0"
+version = "1.4.0"
 description = "AI Barracks CommandCenter"
 edition = "2021"
 
@@ -25,6 +25,5 @@ notify = { version = "8", features = ["macos_fsevent"] }
 tokio = { version = "1", features = ["full"] }
 portable-pty = "0.8"
 uuid = { version = "1", features = ["v4"] }
-
-[dev-dependencies]
+libc = "0.2"
 tempfile = "3"

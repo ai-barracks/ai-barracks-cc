@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0] - unreleased
+
+### Added — Agent liveness dot (Plan 2: aib-cc UI; pairs with aib ≥ 1.3.0 Plan 1)
+- **세션 카드별 실시간 생사 점 + 툴팁.** `aib`가 쓰는 `sessions/.live/<id>.status` sidecar를 읽어 `kill(pid,0)` 생존 확인 + 경과시간으로 effective 상태(`working`/`working_stale`/`blocked`/`crashed`/`interrupted`/`done`/`idle`/`none`)로 fold — `aib sessions state` 레퍼런스 매트릭스를 Rust 단위 테스트로 동일성 고정. `none`은 점 없음.
+- **PTY 분리**: CC 내장 터미널 밖에서 띄운 `claude`도 추적. `.live/` watch(250ms 디바운스 `live-changed`) + 30초 `live-tick`로 시간 전이(`working_stale`) 반영.
+- **done → idle ack**: `done` 카드를 펼치면 `ack_live_state`가 `.ack`를 atomic(temp+rename)하게 기록 → idle. Continue로 새 `run_id`가 시작되면 ack 불일치로 자동 재활성.
+- non-Claude/hook-less 세션은 점 없음 — 부재 ≠ idle (범례로 명시).
+- `libc` 런타임 의존성 추가(`kill(pid,0)`), `tempfile`을 dev-dep → 런타임 dep로 이동(`.ack` atomic write).
+
+### Verification
+- `cargo test` — 65 passed (live:: 10 신규: EPERM/unknown pid, fold 매트릭스 boundary·ack-mismatch·done+dead, read_live_states ack-join, malformed missing-`ts` 제외, ack atomic + path-escape reject).
+- `npx tsc --noEmit` + `npm run build` — clean.
+
 ## [1.3.0] - 2026-06-01
 
 ### Added — Terminal scrollback disk persistence + archive tab
