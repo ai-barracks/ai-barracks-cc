@@ -43,6 +43,8 @@ pub struct StatusFile {
 #[derive(Debug, Clone, Deserialize)]
 pub struct AckFile {
     pub acked_run_id: String,
+    #[serde(default)]
+    pub ack_ts: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -67,7 +69,9 @@ pub fn fold(
     stale_working: i64,
 ) -> Effective {
     let age = now - s.ts;
-    let acked = ack.map_or(false, |a| a.acked_run_id == s.run_id);
+    // ack must match the run AND not predate this status (aib reuses run_id across a
+    // session's turns; a later done than the ack is a new turn-end, not acknowledged).
+    let acked = ack.map_or(false, |a| a.acked_run_id == s.run_id && a.ack_ts >= s.ts);
     match s.state.as_str() {
         "done" => {
             if acked {
@@ -179,7 +183,13 @@ pub fn get_live_states(barrack_path: String) -> Result<Vec<LiveState>, String> {
 /// Operator-written `.ack` (atomic temp+rename). Lets a `done` session fold to `idle`.
 pub fn write_ack(barrack_path: &str, session_id: &str, run_id: &str) -> Result<(), String> {
     use std::io::Write;
-    if session_id.is_empty() || session_id.contains('/') || session_id.contains("..") {
+    // Whitelist: aib session ids are [A-Za-z0-9_-]+ — rejects '/', '.', '\\', drive
+    // prefixes, control chars, and any path-escape in one check.
+    if session_id.is_empty()
+        || !session_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err("invalid session_id".into());
     }
     let dir = std::path::PathBuf::from(barrack_path).join("sessions/.live");
@@ -264,8 +274,8 @@ mod tests {
         // done: unacked -> done (alive/dead/unknown); ack match -> idle; ack mismatch -> done
         assert_eq!(fold(&st("done", now, "r"), None, now, Alive, STALE), Effective::Done);
         assert_eq!(fold(&st("done", now, "r"), None, now, Dead, STALE), Effective::Done);
-        assert_eq!(fold(&st("done", now, "RID"), Some(&AckFile { acked_run_id: "RID".into() }), now, Alive, STALE), Effective::Idle);
-        assert_eq!(fold(&st("done", now, "RID"), Some(&AckFile { acked_run_id: "OTHER".into() }), now, Alive, STALE), Effective::Done);
+        assert_eq!(fold(&st("done", now, "RID"), Some(&AckFile { acked_run_id: "RID".into(), ack_ts: now }), now, Alive, STALE), Effective::Idle);
+        assert_eq!(fold(&st("done", now, "RID"), Some(&AckFile { acked_run_id: "OTHER".into(), ack_ts: now }), now, Alive, STALE), Effective::Done);
         // malformed state -> none
         assert_eq!(fold(&st("weird", now, "r"), None, now, Alive, STALE), Effective::None);
     }
@@ -349,5 +359,18 @@ mod tests {
     fn ack_rejects_path_escape() {
         let tmp = TempDir::new().unwrap();
         assert!(write_ack(tmp.path().to_str().unwrap(), "../evil", "R").is_err());
+    }
+
+    // Regression (Codex MAJOR): aib reuses one run_id across all turns of a session.
+    // ack stores run_id + ack_ts; a LATER done in the same run (bigger ts) must NOT be
+    // pre-acked just because the run_id matches — else the user misses later turn-ends.
+    #[test]
+    fn ack_does_not_preack_later_done_same_run() {
+        let now = 1_000_000i64;
+        let ack = AckFile { acked_run_id: "RID".into(), ack_ts: now };
+        // the done that was acknowledged -> idle
+        assert_eq!(fold(&st("done", now, "RID"), Some(&ack), now, Alive, STALE), Effective::Idle);
+        // a NEW done in the same run, after the ack -> still Done (not pre-acked)
+        assert_eq!(fold(&st("done", now + 50, "RID"), Some(&ack), now + 50, Alive, STALE), Effective::Done);
     }
 }

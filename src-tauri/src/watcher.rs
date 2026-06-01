@@ -68,7 +68,13 @@ pub fn start_watcher(app: AppHandle) {
                             .map(|p| p.to_string_lossy().to_string())
                             .unwrap_or_default();
                         // Liveness sidecar writes route to a dedicated (debounced) channel.
-                        if changed_path.contains("/.live/") {
+                        // Check ALL event paths (rename events carry from+to) so a .live
+                        // write isn't missed when it isn't the first path.
+                        let is_live = event
+                            .paths
+                            .iter()
+                            .any(|p| p.to_string_lossy().contains("/.live/"));
+                        if is_live {
                             let _ = app.emit("live-changed", changed_path);
                         } else {
                             let _ = app.emit("file-changed", changed_path);
