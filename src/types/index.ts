@@ -159,6 +159,32 @@ export interface TerminalSession {
   autoCloseOnExit?: boolean;
   ptyId?: string;
   exited?: boolean;
+  /**
+   * Liveness discriminator. Absent/"live" → interactive PTY-backed terminal
+   * (default; existing behavior). "archive" → dead session restored read-only
+   * from persisted scrollback. Archive tabs never attach a PTY.
+   */
+  mode?: "live" | "archive";
+  /** RFC3339 close timestamp from the scrollback meta (archive tabs only). */
+  closedAt?: string;
+}
+
+/** One row from the Rust `list_archived_sessions` command (camelCase keys). */
+export interface ArchivedSession {
+  ptyId: string;
+  cwd?: string;
+  title?: string;
+  closedAt?: string;
+  byteLen: number;
+}
+
+/** Payload returned by the Rust `load_scrollback` command (camelCase keys). */
+export interface ScrollbackPayload {
+  text: string | null;
+  cwd?: string;
+  title?: string;
+  closedAt?: string;
+  byteLen: number;
 }
 
 export interface TerminalSettings {
