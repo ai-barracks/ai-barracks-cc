@@ -19,7 +19,7 @@ interface TerminalOutputExit {
 
 type TerminalOutput = TerminalOutputData | TerminalOutputExit;
 
-function getTerminalTheme(appTheme: "dark" | "light") {
+export function getTerminalTheme(appTheme: "dark" | "light") {
   if (appTheme === "dark") {
     return {
       background: "#1c1c1e",

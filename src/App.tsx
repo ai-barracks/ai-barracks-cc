@@ -9,6 +9,7 @@ import { MainContent } from "./components/layout/MainContent";
 import { AgentTerminalPanel } from "./components/terminal/AgentTerminalPanel";
 import { NotificationToast } from "./components/system/NotificationToast";
 import { CommandPalette } from "./components/system/CommandPalette";
+import type { ArchivedSession } from "./types";
 
 interface StaleSessionPayload {
   barrack_path: string;
@@ -28,16 +29,24 @@ function App() {
   const { fetchBarracks, fetchCliVersion, fetchAppVersion } = useAppStore();
   const addNotification = useNotificationStore((s) => s.addNotification);
 
-  // Reconnect surviving PTY sessions after reload
+  // After a reload, reconcile terminal tabs from two sources, once:
+  //   - terminal_list        → live PTYs that survived (interactive tabs)
+  //   - list_archived_sessions → persisted scrollback of dead sessions (archive tabs)
+  // Live wins for a shared id. Resolved together in a single store write so the
+  // tab list is never observed in a half-merged state (and never polled — a
+  // one-shot avoids the Zustand reference-identity effect cascade).
   useEffect(() => {
-    invoke<{ id: string; is_connected: boolean }[]>("terminal_list")
-      .then((terminals) => {
-        if (terminals.length > 0) {
-          const survivingIds = new Set(terminals.map((t) => t.id));
-          useTerminalStore.getState().reconnectSessions(survivingIds);
-        }
-      })
-      .catch(() => {});
+    Promise.all([
+      invoke<{ id: string; is_connected: boolean }[]>("terminal_list").catch(
+        () => [] as { id: string; is_connected: boolean }[]
+      ),
+      invoke<ArchivedSession[]>("list_archived_sessions").catch(
+        () => [] as ArchivedSession[]
+      ),
+    ]).then(([terminals, archived]) => {
+      const survivingIds = new Set(terminals.map((t) => t.id));
+      useTerminalStore.getState().reconcileSessions(survivingIds, archived);
+    });
   }, []);
 
   // Prevent accidental reload/close when terminals are active

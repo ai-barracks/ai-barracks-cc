@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0] - 2026-06-01
+
+### Added — Terminal scrollback disk persistence + archive tab
+- **앱 재시작 후 이전 터미널 출력 복원.** raw PTY 바이트를 `app_data/scrollback/{id}.bin`(+ `meta.json`)에 atomic(unique temp + per-session write mutex + rename)하게 영속화. per-session 1MB cap(UTF-8/newline aligned tail-truncate), global 100MB + 14일 retention, rate-limited GC.
+- **Archive 탭**: 죽은 세션을 read-only로 복원 — "프로세스 종료됨" 배너 + `load_scrollback` replay + 버튼(같은 cwd 새 세션 / 기록 삭제 / 닫기). 자동 PTY 부착 없음. 탭에 `mode: 'live' | 'archive'` 판별자.
+- load는 best-effort(손상 파일도 panic 없음), `was_truncated`-gated ANSI straddle 보정(정상 파일 첫 줄 보존), `validate_pty_id` path-traversal 방어.
+
+### Verification
+- `cargo test` — 55 passed (8-thread concurrent-save consistency, UTF-8 boundary, path-traversal reject 포함).
+- `npm run build` — clean, 0 type errors.
+- Codex 코드리뷰 7항목 반영 (traversal/first-line/tmp-race/straddle/GC/stale-meta/orphan).
+
 ## [1.2.3] - 2026-05-31
 
 ### Fixed — Terminal clipboard paste deduplication

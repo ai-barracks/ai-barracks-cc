@@ -1,6 +1,7 @@
 pub mod barracks;
 pub mod files;
 pub mod git;
+pub mod scrollback;
 pub mod sessions;
 pub mod terminal;
 pub mod wiki;

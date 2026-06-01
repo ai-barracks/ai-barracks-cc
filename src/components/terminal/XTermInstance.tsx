@@ -1,6 +1,7 @@
 import { useRef, useCallback } from "react";
 import { useTerminal } from "../../hooks/useTerminal";
 import { useTerminalStore } from "../../stores/terminalStore";
+import { ArchiveTermView } from "./ArchiveTermView";
 import type { TerminalSession } from "../../types";
 
 interface XTermInstanceProps {
@@ -9,6 +10,16 @@ interface XTermInstanceProps {
 }
 
 export function XTermInstance({ session, visible }: XTermInstanceProps) {
+  // Archive tabs are dead, read-only sessions: render a self-contained
+  // read-only view that never attaches a PTY. The live `useTerminal` hook
+  // below is reserved for interactive sessions only (zero regression).
+  if (session.mode === "archive") {
+    return <ArchiveTermView session={session} visible={visible} />;
+  }
+  return <LiveXTermInstance session={session} visible={visible} />;
+}
+
+function LiveXTermInstance({ session, visible }: XTermInstanceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const removeSession = useTerminalStore((s) => s.removeSession);
   const setPtyId = useTerminalStore((s) => s.setPtyId);

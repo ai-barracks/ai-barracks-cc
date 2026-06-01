@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { TerminalSession, TerminalSettings, QuickCommand, SplitLayout } from "../types";
+import type { TerminalSession, TerminalSettings, QuickCommand, SplitLayout, ArchivedSession } from "../types";
 
 const DEFAULT_SETTINGS: TerminalSettings = {
   fontFamily: "SF Mono, Menlo, Monaco, Consolas, monospace",
@@ -107,7 +107,12 @@ interface TerminalState {
   addQuickCommand: (cmd: QuickCommand) => void;
   removeQuickCommand: (id: string) => void;
   markExited: (id: string) => void;
-  reconnectSessions: (survivingPtyIds: Set<string>) => void;
+  /**
+   * Rebuild the tab list after a reload from two sources: surviving live PTYs
+   * (interactive tabs) and on-disk archived sessions (read-only tabs). Live wins
+   * for a shared id. Supersedes the older live-only reconnect path.
+   */
+  reconcileSessions: (survivingPtyIds: Set<string>, archived: ArchivedSession[]) => void;
 }
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
@@ -265,21 +270,65 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return { sessions: next };
     }),
 
-  reconnectSessions: (survivingPtyIds) => {
+  reconcileSessions: (survivingPtyIds, archived) => {
     const persisted = loadPersistedSessions();
-    const toReconnect = persisted.filter(
-      (s) => s.ptyId && survivingPtyIds.has(s.ptyId)
-    );
-    if (toReconnect.length === 0) return;
 
-    // Build activeTerminalPerBarrack from reconnected sessions
-    const active: Record<string, string> = {};
-    for (const s of toReconnect) {
-      active[s.barrackPath] = s.id;
+    // 1. Live: persisted sessions whose PTY survived the reload. These keep
+    //    full interactive behavior. A surviving PTY always wins over an archive
+    //    entry for the same id.
+    const liveSessions: TerminalSession[] = persisted
+      .filter((s) => s.ptyId != null && survivingPtyIds.has(s.ptyId))
+      .map((s) => ({ ...s, mode: "live" as const, exited: false }));
+    const livePtyIds = new Set(
+      liveSessions.map((s) => s.ptyId).filter((id): id is string => id != null)
+    );
+
+    // 2. Archive: archived ptyIds with no surviving live PTY → read-only tabs.
+    //    Reuse the persisted session row (barrackPath/title/cwd) when one exists
+    //    so the tab lands under its original barrack; otherwise synthesize a row
+    //    keyed by ptyId, rooting it at the archived cwd.
+    const persistedByPty = new Map<string, TerminalSession>();
+    for (const s of persisted) {
+      if (s.ptyId != null) persistedByPty.set(s.ptyId, s);
     }
 
-    set({ sessions: toReconnect, activeTerminalPerBarrack: active });
-    persistSessions(toReconnect);
+    const archiveSessions: TerminalSession[] = [];
+    for (const a of archived) {
+      if (livePtyIds.has(a.ptyId)) continue; // live wins
+      const prior = persistedByPty.get(a.ptyId);
+      const barrackPath = prior?.barrackPath ?? a.cwd ?? "";
+      archiveSessions.push({
+        id: prior?.id ?? a.ptyId,
+        title: a.title ?? prior?.title ?? "zsh",
+        barrackPath,
+        client: prior?.client,
+        cwd: a.cwd ?? prior?.cwd,
+        initialCommand: prior?.initialCommand,
+        source: prior?.source,
+        ptyId: a.ptyId,
+        mode: "archive",
+        exited: true,
+        closedAt: a.closedAt,
+      });
+    }
+
+    const next = [...liveSessions, ...archiveSessions];
+    // Nothing to restore (no live PTY survived, no archive on disk): leave the
+    // store at its initial empty state and do NOT touch persisted rows. This
+    // matches the prior reconnect behavior and avoids wiping anything if a
+    // backend call transiently failed.
+    if (next.length === 0) return;
+
+    // Build active-terminal map: prefer a live session per barrack, else the
+    // first (archive) session for that barrack.
+    const active: Record<string, string> = {};
+    for (const s of next) {
+      if (!(s.barrackPath in active)) active[s.barrackPath] = s.id;
+      else if (s.mode === "live") active[s.barrackPath] = s.id;
+    }
+
+    set({ sessions: next, activeTerminalPerBarrack: active });
+    persistSessions(next);
   },
 }));
 
