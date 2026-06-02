@@ -3,6 +3,133 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+/// Backend slug validator (defense-in-depth; frontend also validates).
+/// Accepts: lowercase ASCII letter followed by lowercase letters, digits, or '-'.
+/// Rejects: uppercase, dot-prefixed, empty, leading hyphen, slashes, `..`, etc.
+fn validate_slug(slug: &str) -> Result<(), String> {
+    if slug.is_empty() {
+        return Err("slug is empty".into());
+    }
+    let bytes = slug.as_bytes();
+    if !bytes[0].is_ascii_lowercase() {
+        return Err(format!(
+            "invalid slug '{}': must start with a lowercase letter [a-z]",
+            slug
+        ));
+    }
+    for &b in &bytes[1..] {
+        let ok = b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-';
+        if !ok {
+            return Err(format!(
+                "invalid slug '{}': only [a-z0-9-] allowed after the first char",
+                slug
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Resolve `<barrack>/skills` to its canonical path if it exists.
+/// Returns `Ok(None)` when the entry is genuinely missing (caller may create it).
+/// Returns `Err` when the entry is present but unsafe — a broken symlink, a
+/// non-directory, or a symlink whose canonical target escapes the canonical
+/// barrack root. `symlink_metadata` is used so a broken symlink at the
+/// `skills/` slot is detected as *present* rather than silently treated as
+/// missing (which would otherwise let `create_dir_all` follow it and create
+/// the dangling target outside the barrack).
+fn lookup_skills_root(barrack: &Path) -> Result<Option<PathBuf>, String> {
+    let skills_dir = barrack.join("skills");
+    match fs::symlink_metadata(&skills_dir) {
+        Ok(md) => {
+            // Non-symlink entries must already be directories. Symlinks are
+            // validated by the canonical-prefix check below.
+            if !md.file_type().is_symlink() && !md.is_dir() {
+                return Err("skills 경로가 디렉터리가 아님".into());
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("skills 디렉터리 확인 실패: {}", e)),
+    }
+    let canon_barrack = fs::canonicalize(barrack)
+        .map_err(|e| format!("barrack 정규화 실패: {}", e))?;
+    let canon_skills = fs::canonicalize(&skills_dir)
+        .map_err(|e| format!("skills 디렉터리 정규화 실패: {}", e))?;
+    if !canon_skills.starts_with(&canon_barrack) {
+        return Err("skills 디렉터리가 barrack 루트를 벗어남".into());
+    }
+    if !canon_skills.is_dir() {
+        return Err("skills 경로가 디렉터리가 아님".into());
+    }
+    Ok(Some(canon_skills))
+}
+
+/// Defense-in-depth: ensure the resolved `<barrack>/skills/<slug>` path stays
+/// under the canonical `<barrack>/skills` directory. `validate_slug` already
+/// rejects any traversal pattern, but this catches symlink-based escapes too.
+/// Returns the canonical skills_dir on success so callers can reuse it.
+fn ensure_under_skills(barrack: &Path, slug: &str) -> Result<PathBuf, String> {
+    let canon_skills = match lookup_skills_root(barrack)? {
+        Some(p) => p,
+        None => {
+            // Truly missing — create as a regular directory under barrack.
+            let skills_dir = barrack.join("skills");
+            fs::create_dir_all(&skills_dir)
+                .map_err(|e| format!("skills 디렉터리 생성 실패: {}", e))?;
+            match lookup_skills_root(barrack)? {
+                Some(p) => p,
+                None => return Err("skills 디렉터리 생성 후에도 해석 실패".into()),
+            }
+        }
+    };
+    // If the candidate exists (regular dir/file OR a symlink, including a
+    // broken one), follow symlinks and verify the real target stays inside.
+    // Using symlink_metadata here means a broken symlink is treated as present
+    // and rejected by the canonicalize failure below, rather than silently
+    // appearing as "missing" via the symlink-following `exists()`.
+    let candidate = canon_skills.join(slug);
+    match fs::symlink_metadata(&candidate) {
+        Ok(_) => {
+            let canon = fs::canonicalize(&candidate)
+                .map_err(|e| format!("skill 경로 정규화 실패: {}", e))?;
+            if !canon.starts_with(&canon_skills) {
+                return Err("경로가 skills 디렉터리를 벗어남".into());
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("skill 경로 확인 실패: {}", e)),
+    }
+    Ok(canon_skills)
+}
+
+/// Defense-in-depth: when an existing `<canon_skills>/<slug>/SKILL.md` is about
+/// to be read or written, verify it canonicalizes inside the canonical skill
+/// directory. `ensure_under_skills` only validates the slug *directory*; a
+/// SKILL.md file inside that directory could still be a symlink that points
+/// outside, letting an attacker make us read or overwrite arbitrary files.
+/// Uses `symlink_metadata` so a broken SKILL.md symlink is detected as present
+/// (and rejected when canonicalize fails) rather than misclassified as missing.
+/// No-op when SKILL.md does not yet exist (used by create path).
+fn ensure_skill_md_inside(canon_skills: &Path, slug: &str) -> Result<(), String> {
+    let skill_dir = canon_skills.join(slug);
+    let skill_md = skill_dir.join("SKILL.md");
+    match fs::symlink_metadata(&skill_md) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("SKILL.md 확인 실패: {}", e)),
+    }
+    let canon_skill_dir = fs::canonicalize(&skill_dir)
+        .map_err(|e| format!("skill 디렉터리 정규화 실패: {}", e))?;
+    if !canon_skill_dir.starts_with(canon_skills) {
+        return Err("skill 디렉터리가 skills 루트를 벗어남".into());
+    }
+    let canon_md = fs::canonicalize(&skill_md)
+        .map_err(|e| format!("SKILL.md 정규화 실패: {}", e))?;
+    if !canon_md.starts_with(&canon_skill_dir) {
+        return Err("SKILL.md 경로가 skill 디렉터리를 벗어남".into());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
 pub struct SkillCard {
     pub slug: String,
@@ -99,7 +226,9 @@ pub fn create_skill_impl(
     frontmatter: &SkillFrontmatterWrite,
     body: &str,
 ) -> Result<(), String> {
-    let skill_dir = barrack.join("skills").join(slug);
+    validate_slug(slug)?;
+    let canon_skills = ensure_under_skills(barrack, slug)?;
+    let skill_dir = canon_skills.join(slug);
     if skill_dir.exists() {
         return Err(format!("skill already exists: {}", slug));
     }
@@ -133,10 +262,21 @@ pub fn update_skill_impl(
     frontmatter: &SkillFrontmatterWrite,
     body: &str,
 ) -> Result<(), String> {
-    let skill_md = barrack.join("skills").join(slug).join("SKILL.md");
-    if !skill_md.exists() {
-        return Err(format!("skill not found: {}", slug));
+    validate_slug(slug)?;
+    let canon_skills = ensure_under_skills(barrack, slug)?;
+    let skill_md = canon_skills.join(slug).join("SKILL.md");
+    // symlink_metadata so a broken SKILL.md symlink registers as "present" and
+    // is rejected by ensure_skill_md_inside below, not silently mis-reported
+    // as "not found" via the symlink-following exists().
+    match fs::symlink_metadata(&skill_md) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("skill not found: {}", slug));
+        }
+        Err(e) => return Err(format!("SKILL.md 확인 실패: {}", e)),
     }
+    // Catch SKILL.md symlinks that point outside the skill dir before writing.
+    ensure_skill_md_inside(&canon_skills, slug)?;
     let yaml = render_frontmatter_yaml(frontmatter);
     let mut content = String::with_capacity(yaml.len() + body.len() + 16);
     content.push_str("---\n");
@@ -160,7 +300,9 @@ pub fn update_skill(
 }
 
 pub fn delete_skill_impl(barrack: &Path, slug: &str) -> Result<(), String> {
-    let skill_dir = barrack.join("skills").join(slug);
+    validate_slug(slug)?;
+    let canon_skills = ensure_under_skills(barrack, slug)?;
+    let skill_dir = canon_skills.join(slug);
     if !skill_dir.exists() {
         return Err(format!("skill not found: {}", slug));
     }
@@ -173,19 +315,31 @@ pub fn delete_skill(barrack_path: String, slug: String) -> Result<(), String> {
 }
 
 pub fn rename_skill_impl(barrack: &Path, old_slug: &str, new_slug: &str) -> Result<(), String> {
-    let old_dir = barrack.join("skills").join(old_slug);
-    let new_dir = barrack.join("skills").join(new_slug);
+    validate_slug(old_slug)?;
+    validate_slug(new_slug)?;
+    let canon_skills = ensure_under_skills(barrack, old_slug)?;
+    // Also re-check the new slug for symlink-escape (its target may already exist).
+    let _ = ensure_under_skills(barrack, new_slug)?;
+    let old_dir = canon_skills.join(old_slug);
+    let new_dir = canon_skills.join(new_slug);
     if !old_dir.exists() {
         return Err(format!("skill not found: {}", old_slug));
     }
     if new_dir.exists() {
         return Err(format!("target slug already exists: {}", new_slug));
     }
+    // Validate the existing SKILL.md is not a symlink escape before renaming;
+    // post-rename we'd have to read+write through the same symlink for the
+    // `name:` update, which would touch an out-of-tree file.
+    ensure_skill_md_inside(&canon_skills, old_slug)?;
     fs::rename(&old_dir, &new_dir).map_err(|e| format!("rename failed: {}", e))?;
 
     // Update the `name:` line inside the moved SKILL.md.
     let skill_md = new_dir.join("SKILL.md");
     if skill_md.exists() {
+        // Defense-in-depth: re-verify under the new slug post-rename in case
+        // anything raced. (The pre-rename check already validated the file.)
+        ensure_skill_md_inside(&canon_skills, new_slug)?;
         let content = fs::read_to_string(&skill_md).map_err(|e| format!("read SKILL.md failed: {}", e))?;
         let updated = update_name_in_frontmatter(&content, new_slug);
         fs::write(&skill_md, updated).map_err(|e| format!("write SKILL.md failed: {}", e))?;
@@ -317,12 +471,24 @@ fn walk_skills_dir(skills_dir: &Path) -> Vec<SkillCard> {
     // 영속적 에러는 카드 누락으로 나타남 — 디렉터리 자체 read_dir 실패는 위에서 빈 Vec 반환.
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() {
+        // symlink_metadata so we never follow a symlinked skill dir or
+        // SKILL.md (defense against symlink-escape reads). Skipping the
+        // entry is the least disruptive choice: a hostile symlink simply
+        // does not appear in the index.
+        let md = match fs::symlink_metadata(&path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if md.file_type().is_symlink() || !md.is_dir() {
             continue;
         }
         let skill_md = path.join("SKILL.md");
-        if !skill_md.is_file() {
-            continue; // SKILL.md 없는 디렉터리는 skill 후보 아님 (spec 7번 표)
+        let md_md = match fs::symlink_metadata(&skill_md) {
+            Ok(m) => m,
+            Err(_) => continue, // SKILL.md 없는 디렉터리는 skill 후보 아님
+        };
+        if md_md.file_type().is_symlink() || !md_md.is_file() {
+            continue;
         }
         let slug = match path.file_name().and_then(|s| s.to_str()) {
             Some(s) => s.to_string(),
@@ -348,16 +514,23 @@ fn walk_skills_dir(skills_dir: &Path) -> Vec<SkillCard> {
 
 #[tauri::command]
 pub fn get_skills_index(barrack_path: String) -> Result<SkillsIndex, String> {
-    let skills_dir = PathBuf::from(&barrack_path).join("skills");
-    let exists = skills_dir.is_dir();
-    let skills = if exists {
-        walk_skills_dir(&skills_dir)
-    } else {
-        Vec::new()
+    let barrack = PathBuf::from(&barrack_path);
+    // lookup_skills_root rejects an escaping/broken/non-dir skills entry and
+    // returns None only when the directory is genuinely absent. Walking the
+    // canonical path guarantees we never read across a symlinked skills root.
+    let canon_skills = match lookup_skills_root(&barrack)? {
+        Some(p) => p,
+        None => {
+            return Ok(SkillsIndex {
+                skills: Vec::new(),
+                skills_dir_exists: false,
+            });
+        }
     };
+    let skills = walk_skills_dir(&canon_skills);
     Ok(SkillsIndex {
         skills,
-        skills_dir_exists: exists,
+        skills_dir_exists: true,
     })
 }
 
@@ -382,11 +555,19 @@ fn extract_body(content: &str) -> String {
     body.strip_prefix('\n').unwrap_or(body).to_string()
 }
 
-#[tauri::command]
-pub fn get_skill_content(barrack_path: String, slug: String) -> Result<String, String> {
-    let path = PathBuf::from(&barrack_path).join("skills").join(&slug).join("SKILL.md");
+pub fn get_skill_content_impl(barrack: &Path, slug: &str) -> Result<String, String> {
+    validate_slug(slug)?;
+    let canon_skills = ensure_under_skills(barrack, slug)?;
+    // Catch SKILL.md symlinks that point outside the skill dir before reading.
+    ensure_skill_md_inside(&canon_skills, slug)?;
+    let path = canon_skills.join(slug).join("SKILL.md");
     let content = fs::read_to_string(&path).map_err(|e| format!("SKILL.md 읽기 실패: {}", e))?;
     Ok(extract_body(&content))
+}
+
+#[tauri::command]
+pub fn get_skill_content(barrack_path: String, slug: String) -> Result<String, String> {
+    get_skill_content_impl(Path::new(&barrack_path), &slug)
 }
 
 #[cfg(test)]
@@ -777,5 +958,418 @@ mod tests {
         let fm: SkillFrontmatterWrite = serde_json::from_str(json).expect("deserialize must succeed");
         assert_eq!(fm.argument_hint.as_deref(), Some("<a>"), "argument-hint must deserialize into Rust argument_hint");
         assert_eq!(fm.allowed_tools.as_deref(), Some("Bash(*)"), "allowed-tools must deserialize into Rust allowed_tools");
+    }
+
+    // ---- AIBCC-002: slug validation + traversal defense-in-depth ----
+
+    #[test]
+    fn validate_slug_accepts_well_formed() {
+        for slug in ["a", "ab", "a1", "kanban", "kanban-board", "council-x-2"] {
+            validate_slug(slug).unwrap_or_else(|e| panic!("slug {} should pass: {}", slug, e));
+        }
+    }
+
+    #[test]
+    fn validate_slug_rejects_malformed() {
+        let bad = [
+            "",          // empty
+            ".hidden",   // dot prefix
+            "..",        // dotdot
+            "../evil",   // traversal
+            "a/b",       // slash
+            "a\\b",      // backslash
+            "Aupper",    // uppercase first
+            "abC",       // uppercase mid
+            "-bad",      // leading hyphen
+            "1bad",      // leading digit
+            "name_us",   // underscore
+            "name space",// space
+            "name.ext",  // dot
+        ];
+        for slug in bad {
+            assert!(
+                validate_slug(slug).is_err(),
+                "slug {:?} should be rejected",
+                slug
+            );
+        }
+    }
+
+    #[test]
+    fn create_update_delete_get_rename_reject_invalid_slugs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        let fm = SkillFrontmatterWrite {
+            name: "x".into(),
+            description: "x".repeat(20),
+            ..Default::default()
+        };
+        for bad in ["../evil", "a/b", ".hidden", "", "Aupper", "-bad"] {
+            assert!(
+                create_skill_impl(barrack, bad, &fm, "body").is_err(),
+                "create must reject {:?}",
+                bad
+            );
+            assert!(
+                update_skill_impl(barrack, bad, &fm, "body").is_err(),
+                "update must reject {:?}",
+                bad
+            );
+            assert!(
+                delete_skill_impl(barrack, bad).is_err(),
+                "delete must reject {:?}",
+                bad
+            );
+            assert!(
+                get_skill_content_impl(barrack, bad).is_err(),
+                "get_skill_content must reject {:?}",
+                bad
+            );
+            assert!(
+                rename_skill_impl(barrack, bad, "valid").is_err(),
+                "rename (old={:?}) must reject",
+                bad
+            );
+            assert!(
+                rename_skill_impl(barrack, "valid", bad).is_err(),
+                "rename (new={:?}) must reject",
+                bad
+            );
+        }
+    }
+
+    #[test]
+    fn traversal_attempts_do_not_escape_skills_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        // Create a decoy file outside the barrack to confirm we never touch it.
+        let sentinel_dir = tempfile::tempdir().unwrap();
+        let sentinel = sentinel_dir.path().join("agent.yaml");
+        test_fs::write(&sentinel, "untouched").unwrap();
+
+        let fm = SkillFrontmatterWrite {
+            name: "x".into(),
+            description: "x".repeat(20),
+            ..Default::default()
+        };
+
+        // Even if attacker passes a slug that string-concatenates outside, validation rejects.
+        let escape = "../../foo";
+        assert!(create_skill_impl(barrack, escape, &fm, "body").is_err());
+        assert!(delete_skill_impl(barrack, escape).is_err());
+
+        // The decoy is unchanged
+        let after = test_fs::read_to_string(&sentinel).unwrap();
+        assert_eq!(after, "untouched");
+
+        // No directory was created at the escape target
+        assert!(
+            !barrack
+                .parent()
+                .map(|p| p.join("foo").exists())
+                .unwrap_or(false),
+            "must not have created sibling 'foo' dir"
+        );
+    }
+
+    /// Test helper: build `<barrack>/skills/<slug>/` with `SKILL.md` as a
+    /// symlink to a file outside the barrack. Returns (barrack tmpdir,
+    /// outside tmpdir, outside file path) so tests can assert the outside
+    /// file is left untouched.
+    #[cfg(unix)]
+    fn setup_skill_with_md_symlink_escape(slug: &str) -> (TempDir, TempDir, PathBuf) {
+        use std::os::unix::fs::symlink;
+        let outside = TempDir::new().unwrap();
+        let outside_file = outside.path().join("evil.md");
+        test_fs::write(&outside_file, "untouched").unwrap();
+
+        let barrack = TempDir::new().unwrap();
+        let skill_dir = barrack.path().join("skills").join(slug);
+        test_fs::create_dir_all(&skill_dir).unwrap();
+        symlink(&outside_file, skill_dir.join("SKILL.md")).unwrap();
+
+        (barrack, outside, outside_file)
+    }
+
+    #[test]
+    fn update_skill_rejects_skill_md_symlink_escape() {
+        #[cfg(unix)]
+        {
+            let (barrack, _outside, outside_file) =
+                setup_skill_with_md_symlink_escape("council");
+            let fm = SkillFrontmatterWrite {
+                name: "council".into(),
+                description: "x".repeat(20),
+                ..Default::default()
+            };
+            let err = update_skill_impl(barrack.path(), "council", &fm, "pwn")
+                .expect_err("update must reject SKILL.md symlink escape");
+            assert!(err.contains("벗어남"), "got: {}", err);
+            // Outside file unchanged.
+            let after = test_fs::read_to_string(&outside_file).unwrap();
+            assert_eq!(after, "untouched");
+        }
+    }
+
+    #[test]
+    fn get_skill_content_rejects_skill_md_symlink_escape() {
+        #[cfg(unix)]
+        {
+            let (barrack, _outside, outside_file) =
+                setup_skill_with_md_symlink_escape("council");
+            let err = get_skill_content_impl(barrack.path(), "council")
+                .expect_err("get must reject SKILL.md symlink escape");
+            assert!(err.contains("벗어남"), "got: {}", err);
+            // Outside file unchanged (read attempt didn't happen).
+            let after = test_fs::read_to_string(&outside_file).unwrap();
+            assert_eq!(after, "untouched");
+        }
+    }
+
+    #[test]
+    fn rename_skill_rejects_skill_md_symlink_escape() {
+        #[cfg(unix)]
+        {
+            let (barrack, _outside, outside_file) =
+                setup_skill_with_md_symlink_escape("oldname");
+            let err = rename_skill_impl(barrack.path(), "oldname", "newname")
+                .expect_err("rename must reject SKILL.md symlink escape");
+            assert!(err.contains("벗어남"), "got: {}", err);
+            // Outside file unchanged: the `name:` update never executed.
+            let after = test_fs::read_to_string(&outside_file).unwrap();
+            assert_eq!(after, "untouched");
+            // Source dir preserved on error (pre-rename validation).
+            assert!(
+                barrack.path().join("skills/oldname").exists(),
+                "old slug dir must remain when rename is rejected"
+            );
+            assert!(
+                !barrack.path().join("skills/newname").exists(),
+                "new slug dir must not have been created"
+            );
+        }
+    }
+
+    #[test]
+    fn create_skill_path_unchanged_by_skill_md_check() {
+        // Regression: ensure_skill_md_inside is a no-op when SKILL.md does not
+        // exist, so create_skill_impl still works on a fresh slug.
+        let tmp = tempfile::tempdir().unwrap();
+        let fm = SkillFrontmatterWrite {
+            name: "fresh".into(),
+            description: "twenty-char description here.".into(),
+            ..Default::default()
+        };
+        create_skill_impl(tmp.path(), "fresh", &fm, "body").unwrap();
+        assert!(tmp.path().join("skills/fresh/SKILL.md").exists());
+    }
+
+    #[test]
+    fn valid_existing_skill_paths_still_pass() {
+        // Regression: make sure legitimate slugs continue to work end-to-end.
+        let tmp = tempfile::tempdir().unwrap();
+        let barrack = tmp.path();
+        let fm = SkillFrontmatterWrite {
+            name: "council".into(),
+            description: "A perfectly valid skill description.".into(),
+            ..Default::default()
+        };
+        create_skill_impl(barrack, "council", &fm, "Body").unwrap();
+        get_skill_content_impl(barrack, "council").unwrap();
+        update_skill_impl(barrack, "council", &fm, "New body").unwrap();
+        rename_skill_impl(barrack, "council", "council-2").unwrap();
+        delete_skill_impl(barrack, "council-2").unwrap();
+    }
+
+    // ---- AIBCC-001/002 follow-up: residual symlink-traversal coverage ----
+
+    /// (1) CRUD/get/index must reject when `<barrack>/skills` is itself a
+    /// symlink to an outside directory. Even though the outside dir contains
+    /// a real "evil-skill" entry, no operation may write to it or surface
+    /// its content.
+    #[test]
+    fn cruds_reject_when_skills_dir_is_symlink_escape() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+
+            // Outside dir pre-populated with a skill-shaped entry.
+            let outside = TempDir::new().unwrap();
+            let outside_skill = outside.path().join("evil-skill");
+            test_fs::create_dir_all(&outside_skill).unwrap();
+            let outside_md = outside_skill.join("SKILL.md");
+            test_fs::write(
+                &outside_md,
+                "---\nname: evil\ndescription: outside-content-must-not-leak.\n---\nsecret body\n",
+            )
+            .unwrap();
+
+            // Barrack with skills/ → outside.
+            let barrack = TempDir::new().unwrap();
+            symlink(outside.path(), barrack.path().join("skills")).unwrap();
+
+            let fm = SkillFrontmatterWrite {
+                name: "fresh".into(),
+                description: "twenty-char description here.".into(),
+                ..Default::default()
+            };
+
+            // Every mutating command must refuse.
+            assert!(
+                create_skill_impl(barrack.path(), "fresh", &fm, "body").is_err(),
+                "create must reject symlinked skills root"
+            );
+            assert!(
+                update_skill_impl(barrack.path(), "evil-skill", &fm, "pwn").is_err(),
+                "update must reject symlinked skills root"
+            );
+            assert!(
+                delete_skill_impl(barrack.path(), "evil-skill").is_err(),
+                "delete must reject symlinked skills root"
+            );
+            assert!(
+                rename_skill_impl(barrack.path(), "evil-skill", "renamed").is_err(),
+                "rename must reject symlinked skills root"
+            );
+            // Read commands must refuse too.
+            assert!(
+                get_skill_content_impl(barrack.path(), "evil-skill").is_err(),
+                "get_skill_content must reject symlinked skills root"
+            );
+            assert!(
+                get_skills_index(barrack.path().to_string_lossy().to_string()).is_err(),
+                "get_skills_index must reject symlinked skills root"
+            );
+
+            // The outside SKILL.md must be byte-for-byte untouched.
+            let after = test_fs::read_to_string(&outside_md).unwrap();
+            assert!(
+                after.contains("secret body"),
+                "outside file content was modified: {}",
+                after
+            );
+            // The outside dir must not have gained a "fresh" or "renamed" entry.
+            assert!(
+                !outside.path().join("fresh").exists(),
+                "create must not have written into outside dir"
+            );
+            assert!(
+                !outside.path().join("renamed").exists(),
+                "rename must not have written into outside dir"
+            );
+        }
+    }
+
+    /// (2) `get_skills_index` must not surface content read through a
+    /// symlinked skill directory or a symlinked SKILL.md. The legitimate
+    /// regular-file skill in the same dir must still appear.
+    #[test]
+    fn get_skills_index_skips_skill_dir_and_md_symlink_escapes() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+
+            // Outside material with telltale secret strings.
+            let outside = TempDir::new().unwrap();
+            let outside_skill = outside.path().join("evil");
+            test_fs::create_dir_all(&outside_skill).unwrap();
+            test_fs::write(
+                outside_skill.join("SKILL.md"),
+                "---\nname: evil\ndescription: SECRET-DIR-CONTENT\n---\n",
+            )
+            .unwrap();
+            let outside_md = outside.path().join("evil-md.md");
+            test_fs::write(
+                &outside_md,
+                "---\nname: evil2\ndescription: SECRET-MD-CONTENT\n---\n",
+            )
+            .unwrap();
+
+            let barrack = TempDir::new().unwrap();
+            let skills_dir = barrack.path().join("skills");
+            test_fs::create_dir_all(&skills_dir).unwrap();
+
+            // Case A: a whole skill dir is a symlink to outside.
+            symlink(&outside_skill, skills_dir.join("dir-link")).unwrap();
+
+            // Case B: a real skill dir hosts a symlinked SKILL.md.
+            let mixed = skills_dir.join("mixed");
+            test_fs::create_dir_all(&mixed).unwrap();
+            symlink(&outside_md, mixed.join("SKILL.md")).unwrap();
+
+            // Case C: a fully legitimate skill that must still show up.
+            write_skill(
+                &skills_dir,
+                "legit",
+                "---\nname: legit\ndescription: legitimate skill description here.\n---\n",
+            );
+
+            let result =
+                get_skills_index(barrack.path().to_string_lossy().to_string()).unwrap();
+
+            // Only the legit skill appears — symlinked entries are skipped.
+            let slugs: Vec<&str> = result.skills.iter().map(|c| c.slug.as_str()).collect();
+            assert_eq!(slugs, vec!["legit"], "symlinked entries must not appear");
+
+            // No outside secret content leaked through any card.
+            for c in &result.skills {
+                assert!(
+                    !c.name.contains("SECRET") && !c.description.contains("SECRET"),
+                    "outside content leaked into card: {:?}",
+                    c
+                );
+            }
+        }
+    }
+
+    /// (3) Broken SKILL.md symlink must be rejected for update/get *before*
+    /// any write or read. We verify both that the call errors and that the
+    /// dangling symlink target was never materialized on disk.
+    #[test]
+    fn broken_skill_md_symlink_rejected_before_io() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+
+            let outside = TempDir::new().unwrap();
+            // Target deliberately does NOT exist — broken symlink.
+            let broken_target = outside.path().join("nonexistent-target.md");
+
+            let barrack = TempDir::new().unwrap();
+            let skill_dir = barrack.path().join("skills").join("council");
+            test_fs::create_dir_all(&skill_dir).unwrap();
+            symlink(&broken_target, skill_dir.join("SKILL.md")).unwrap();
+
+            let fm = SkillFrontmatterWrite {
+                name: "council".into(),
+                description: "twenty-char description here.".into(),
+                ..Default::default()
+            };
+
+            let err = update_skill_impl(barrack.path(), "council", &fm, "pwn body")
+                .expect_err("update must reject broken SKILL.md symlink");
+            // Rejection reason: either escape ("벗어남") or canonicalize failure ("정규화").
+            assert!(
+                err.contains("벗어남") || err.contains("정규화"),
+                "got: {}",
+                err
+            );
+
+            let err = get_skill_content_impl(barrack.path(), "council")
+                .expect_err("get must reject broken SKILL.md symlink");
+            assert!(
+                err.contains("벗어남") || err.contains("정규화"),
+                "got: {}",
+                err
+            );
+
+            // Most important: if the broken symlink had been followed by
+            // fs::write(), the dangling target would be created on disk.
+            assert!(
+                !broken_target.exists(),
+                "broken symlink target must not have been created at {:?}",
+                broken_target
+            );
+        }
     }
 }

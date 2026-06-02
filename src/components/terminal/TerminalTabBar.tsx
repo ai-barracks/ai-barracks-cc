@@ -73,12 +73,14 @@ export function TerminalTabBar({ barrackPath, sessions, activeTerminalId }: Term
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const filename = `terminal-${session.title.replace(/[^a-zA-Z0-9가-힣_-]/g, "_")}-${timestamp}.txt`;
-    const dir = `${session.barrackPath}/sessions`;
-    const filePath = `${dir}/${filename}`;
 
     try {
-      await invoke("write_file", { filePath, content });
-      alert(`Exported: ${filePath}`);
+      await invoke("write_session_export", {
+        barrackPath: session.barrackPath,
+        filename,
+        content,
+      });
+      alert(`Exported: ${session.barrackPath}/sessions/${filename}`);
     } catch (e) {
       alert(`Export 실패: ${e}`);
     }

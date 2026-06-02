@@ -137,8 +137,9 @@ export function SoulFormEditor() {
     if (!barrackPath) return;
     if (hasChangesRef.current) return;
     try {
-      const content = await invoke<string>("read_file", {
-        filePath: `${barrackPath}/SOUL.md`,
+      const content = await invoke<string>("read_barrack_file", {
+        barrackPath,
+        filename: "SOUL.md",
       });
       setData(parseSoul(content));
       setHasChanges(false);
@@ -160,8 +161,9 @@ export function SoulFormEditor() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      await invoke("write_file", {
-        filePath: `${barrackPath}/SOUL.md`,
+      await invoke("write_barrack_file", {
+        barrackPath,
+        filename: "SOUL.md",
         content: buildSoul(data),
       });
       setHasChanges(false);

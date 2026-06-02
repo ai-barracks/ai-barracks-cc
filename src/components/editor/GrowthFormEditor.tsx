@@ -102,8 +102,9 @@ export function GrowthFormEditor() {
     if (!barrackPath) return;
     if (hasChangesRef.current) return;
     try {
-      const content = await invoke<string>("read_file", {
-        filePath: `${barrackPath}/GROWTH.md`,
+      const content = await invoke<string>("read_barrack_file", {
+        barrackPath,
+        filename: "GROWTH.md",
       });
       setData(parseGrowth(content));
       setHasChanges(false);
@@ -125,8 +126,9 @@ export function GrowthFormEditor() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      await invoke("write_file", {
-        filePath: `${barrackPath}/GROWTH.md`,
+      await invoke("write_barrack_file", {
+        barrackPath,
+        filename: "GROWTH.md",
         content: buildGrowth(data),
       });
       setHasChanges(false);

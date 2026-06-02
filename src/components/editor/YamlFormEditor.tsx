@@ -140,8 +140,9 @@ export function YamlFormEditor() {
     if (!barrackPath) return;
     if (hasChangesRef.current) return;
     try {
-      const content = await invoke<string>("read_file", {
-        filePath: `${barrackPath}/agent.yaml`,
+      const content = await invoke<string>("read_barrack_file", {
+        barrackPath,
+        filename: "agent.yaml",
       });
       setConfig(parseYaml(content));
       setHasChanges(false);
@@ -165,8 +166,9 @@ export function YamlFormEditor() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      await invoke("write_file", {
-        filePath: `${barrackPath}/agent.yaml`,
+      await invoke("write_barrack_file", {
+        barrackPath,
+        filename: "agent.yaml",
         content: buildYaml(config),
       });
       setHasChanges(false);

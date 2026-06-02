@@ -89,8 +89,9 @@ export function FilesTab() {
     setSaving(true);
     setSaveMessage(null);
     try {
-      await invoke("write_file", {
-        filePath: selectedFile.path,
+      await invoke("write_barrack_file", {
+        barrackPath: barrackPath!,
+        filename: selectedFile.name,
         content: editContent,
       });
       setHasChanges(false);
