@@ -32,8 +32,10 @@ struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     reader_abort: Arc<AtomicBool>,
+    output_channel: Arc<Mutex<Option<Channel<TerminalOutput>>>>,
     output_buffer: Arc<Mutex<VecDeque<String>>>,
     is_connected: Arc<AtomicBool>,
+    has_exited: Arc<AtomicBool>,
     /// Everything needed to flush this session's scrollback to disk.
     scrollback: ScrollbackHandle,
 }
@@ -176,10 +178,11 @@ fn ensure_utf8_locale(cmd: &mut CommandBuilder) {
 /// Spawn a reader task that streams PTY output to the channel and buffer.
 fn spawn_reader(
     mut reader: Box<dyn Read + Send>,
-    on_output: Channel<TerminalOutput>,
+    output_channel: Arc<Mutex<Option<Channel<TerminalOutput>>>>,
     abort_flag: Arc<AtomicBool>,
     output_buffer: Arc<Mutex<VecDeque<String>>>,
     is_connected: Arc<AtomicBool>,
+    has_exited: Arc<AtomicBool>,
     scrollback_dirty: Arc<AtomicBool>,
 ) {
     is_connected.store(true, Ordering::Relaxed);
@@ -192,7 +195,12 @@ fn spawn_reader(
             }
             match reader.read(&mut buf) {
                 Ok(0) => {
-                    let _ = on_output.send(TerminalOutput::Exit { code: None });
+                    has_exited.store(true, Ordering::Release);
+                    send_to_current_channel(
+                        &output_channel,
+                        &is_connected,
+                        TerminalOutput::Exit { code: None },
+                    );
                     break;
                 }
                 Ok(n) => {
@@ -206,33 +214,22 @@ fn spawn_reader(
 
                     let data = String::from_utf8_lossy(&combined[..valid_len]).to_string();
                     if !data.is_empty() {
-                        // Store in buffer for reconnection replay
-                        if let Ok(mut buf) = output_buffer.lock() {
-                            buf.push_back(data.clone());
-                            while buf.len() > MAX_BUFFER_CHUNKS {
-                                buf.pop_front();
-                            }
-                        }
-                        // Mark scrollback dirty; the debounce task flushes it.
-                        scrollback_dirty.store(true, Ordering::Release);
-
-                        if on_output.send(TerminalOutput::Data { data }).is_err() {
-                            // Channel disconnected (webview reloaded)
-                            is_connected.store(false, Ordering::Relaxed);
-                            // Keep reading into buffer instead of breaking
-                            drain_to_buffer_only(
-                                reader,
-                                leftover,
-                                abort_flag,
-                                output_buffer,
-                                scrollback_dirty,
-                            );
-                            return;
-                        }
+                        record_and_send_chunk(
+                            &output_buffer,
+                            &output_channel,
+                            &is_connected,
+                            &scrollback_dirty,
+                            data,
+                        );
                     }
                 }
                 Err(_) => {
-                    let _ = on_output.send(TerminalOutput::Exit { code: None });
+                    has_exited.store(true, Ordering::Release);
+                    send_to_current_channel(
+                        &output_channel,
+                        &is_connected,
+                        TerminalOutput::Exit { code: None },
+                    );
                     break;
                 }
             }
@@ -241,44 +238,51 @@ fn spawn_reader(
     });
 }
 
-/// When channel disconnects, keep reading PTY output into the buffer
-/// so it can be replayed on reconnection.
-fn drain_to_buffer_only(
-    mut reader: Box<dyn Read + Send>,
-    mut leftover: Vec<u8>,
-    abort_flag: Arc<AtomicBool>,
-    output_buffer: Arc<Mutex<VecDeque<String>>>,
-    scrollback_dirty: Arc<AtomicBool>,
+fn record_and_send_chunk(
+    output_buffer: &Arc<Mutex<VecDeque<String>>>,
+    output_channel: &Arc<Mutex<Option<Channel<TerminalOutput>>>>,
+    is_connected: &Arc<AtomicBool>,
+    scrollback_dirty: &Arc<AtomicBool>,
+    data: String,
 ) {
-    let mut buf = [0u8; 4096];
-    loop {
-        if abort_flag.load(Ordering::Relaxed) {
-            break;
-        }
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                let mut combined = std::mem::take(&mut leftover);
-                combined.extend_from_slice(&buf[..n]);
+    scrollback_dirty.store(true, Ordering::Release);
 
-                let valid_len = find_utf8_boundary(&combined);
-                if valid_len < combined.len() {
-                    leftover = combined[valid_len..].to_vec();
-                }
+    let Ok(mut buffer) = output_buffer.lock() else {
+        send_to_current_channel(output_channel, is_connected, TerminalOutput::Data { data });
+        return;
+    };
 
-                let data = String::from_utf8_lossy(&combined[..valid_len]).to_string();
-                if !data.is_empty() {
-                    if let Ok(mut b) = output_buffer.lock() {
-                        b.push_back(data);
-                        while b.len() > MAX_BUFFER_CHUNKS {
-                            b.pop_front();
-                        }
-                    }
-                    scrollback_dirty.store(true, Ordering::Release);
-                }
-            }
-            Err(_) => break,
-        }
+    buffer.push_back(data.clone());
+    trim_output_buffer(&mut buffer);
+
+    // Hold the buffer lock while sending. terminal_reconnect takes the same
+    // lock before replaying and installing the new channel, so a chunk cannot
+    // be both replayed and sent live, nor can it fall between the two phases.
+    send_to_current_channel(output_channel, is_connected, TerminalOutput::Data { data });
+}
+
+fn trim_output_buffer(buffer: &mut VecDeque<String>) {
+    while buffer.len() > MAX_BUFFER_CHUNKS {
+        buffer.pop_front();
+    }
+}
+
+fn send_to_current_channel(
+    output_channel: &Arc<Mutex<Option<Channel<TerminalOutput>>>>,
+    is_connected: &Arc<AtomicBool>,
+    output: TerminalOutput,
+) {
+    let Ok(mut channel_slot) = output_channel.lock() else {
+        is_connected.store(false, Ordering::Release);
+        return;
+    };
+    let Some(channel) = channel_slot.as_ref() else {
+        is_connected.store(false, Ordering::Release);
+        return;
+    };
+    if channel.send(output).is_err() {
+        *channel_slot = None;
+        is_connected.store(false, Ordering::Release);
     }
 }
 
@@ -356,8 +360,10 @@ pub async fn terminal_create(
     }
 
     let abort_flag = Arc::new(AtomicBool::new(false));
+    let output_channel = Arc::new(Mutex::new(Some(on_output)));
     let output_buffer = Arc::new(Mutex::new(VecDeque::new()));
     let is_connected = Arc::new(AtomicBool::new(false));
+    let has_exited = Arc::new(AtomicBool::new(false));
     let scrollback_dirty = Arc::new(AtomicBool::new(false));
 
     let scrollback = ScrollbackHandle {
@@ -370,10 +376,11 @@ pub async fn terminal_create(
 
     spawn_reader(
         reader,
-        on_output,
+        output_channel.clone(),
         abort_flag.clone(),
         output_buffer.clone(),
         is_connected.clone(),
+        has_exited.clone(),
         scrollback_dirty.clone(),
     );
 
@@ -384,8 +391,10 @@ pub async fn terminal_create(
         master: pair.master,
         writer: Box::new(writer),
         reader_abort: abort_flag,
+        output_channel,
         output_buffer,
         is_connected,
+        has_exited,
         scrollback,
     };
 
@@ -533,32 +542,49 @@ pub async fn terminal_reconnect(
         .get(&terminal_id)
         .ok_or_else(|| format!("터미널 {} 없음", terminal_id))?;
 
-    // Replay buffered output
-    if let Ok(buf) = session.output_buffer.lock() {
-        for chunk in buf.iter() {
-            let _ = on_output.send(TerminalOutput::Data {
-                data: chunk.clone(),
-            });
-        }
+    // The original reader keeps running for the lifetime of the PTY. On
+    // reconnect we only swap the output channel after replaying the ring
+    // buffer; cloning another PTY reader would race for bytes with the drain
+    // reader and corrupt output.
+    let buffer = session
+        .output_buffer
+        .lock()
+        .map_err(|e| format!("Buffer lock 실패: {}", e))?;
+    let mut channel_slot = session
+        .output_channel
+        .lock()
+        .map_err(|e| format!("Channel lock 실패: {}", e))?;
+
+    if !replay_buffer(&buffer, |chunk| {
+        on_output.send(TerminalOutput::Data { data: chunk }).is_ok()
+    }) {
+        *channel_slot = None;
+        session.is_connected.store(false, Ordering::Release);
+        return Ok(terminal_id);
     }
 
-    // Try to get a new reader from the master
-    let new_reader = session
-        .master
-        .try_clone_reader()
-        .map_err(|e| format!("Reader 재생성 실패: {}", e))?;
-
-    // Spawn a new reader task (re-uses the same scrollback dirty flag).
-    spawn_reader(
-        new_reader,
-        on_output,
-        session.reader_abort.clone(),
-        session.output_buffer.clone(),
-        session.is_connected.clone(),
-        session.scrollback.dirty.clone(),
-    );
+    if session.has_exited.load(Ordering::Acquire) {
+        let _ = on_output.send(TerminalOutput::Exit { code: None });
+        *channel_slot = None;
+        session.is_connected.store(false, Ordering::Release);
+    } else {
+        *channel_slot = Some(on_output);
+        session.is_connected.store(true, Ordering::Release);
+    }
 
     Ok(terminal_id)
+}
+
+fn replay_buffer<F>(buffer: &VecDeque<String>, mut send_chunk: F) -> bool
+where
+    F: FnMut(String) -> bool,
+{
+    for chunk in buffer.iter() {
+        if !send_chunk(chunk.clone()) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Find the largest prefix of `bytes` that is valid UTF-8.
@@ -649,7 +675,11 @@ pub async fn list_archived_sessions(
 
 #[cfg(test)]
 mod tests {
-    use super::{find_utf8_boundary, is_utf8_locale, ScrollbackPayload};
+    use super::{
+        find_utf8_boundary, is_utf8_locale, replay_buffer, trim_output_buffer, ScrollbackPayload,
+        MAX_BUFFER_CHUNKS,
+    };
+    use std::collections::VecDeque;
 
     #[test]
     fn locale_detection_accepts_common_utf8_spellings() {
@@ -669,6 +699,40 @@ mod tests {
         let mut mixed = "a".as_bytes().to_vec();
         mixed.extend_from_slice(&bytes[..2]);
         assert_eq!(find_utf8_boundary(&mixed), 1);
+    }
+
+    #[test]
+    fn replay_buffer_preserves_order_and_reports_send_failure() {
+        let buffer = VecDeque::from(["one".to_string(), "two".to_string()]);
+        let mut seen = Vec::new();
+        assert!(replay_buffer(&buffer, |chunk| {
+            seen.push(chunk);
+            true
+        }));
+        assert_eq!(seen, ["one", "two"]);
+
+        let mut seen = Vec::new();
+        assert!(!replay_buffer(&buffer, |chunk| {
+            seen.push(chunk);
+            false
+        }));
+        assert_eq!(seen, ["one"]);
+    }
+
+    #[test]
+    fn output_buffer_trim_keeps_newest_chunks() {
+        let mut buffer = VecDeque::new();
+        for i in 0..(MAX_BUFFER_CHUNKS + 2) {
+            buffer.push_back(i.to_string());
+        }
+        trim_output_buffer(&mut buffer);
+        assert_eq!(buffer.len(), MAX_BUFFER_CHUNKS);
+        assert_eq!(buffer.front().map(String::as_str), Some("2"));
+        let expected_last = (MAX_BUFFER_CHUNKS + 1).to_string();
+        assert_eq!(
+            buffer.back().map(String::as_str),
+            Some(expected_last.as_str())
+        );
     }
 
     /// Guard against the Tauri-Serde-Rename bidirectional trap: the JSON the
