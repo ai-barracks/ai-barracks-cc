@@ -2,7 +2,11 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { OwnershipBanner } from "./OwnershipBanner";
-import type { RulesData } from "../../types";
+import {
+  parseRulesDocument,
+  patchRulesDocument,
+  type RulesData,
+} from "./rulesDocument";
 
 function RuleSection({
   title,
@@ -76,9 +80,17 @@ function RuleSection({
   );
 }
 
+function isMissingFileError(e: unknown): boolean {
+  const msg = String(e ?? "");
+  if (msg.includes("os error 2")) return true;
+  if (/no such file|not found/i.test(msg)) return true;
+  return false;
+}
+
 export function RulesEditor() {
   const { selectedBarrack, fetchBarracks } = useAppStore();
   const barrackPath = selectedBarrack?.path;
+  const [raw, setRaw] = useState<string | null>(null);
   const [rules, setRules] = useState<RulesData | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -92,11 +104,26 @@ export function RulesEditor() {
     if (!barrackPath) return;
     if (hasChangesRef.current) return;
     try {
-      const data = await invoke<RulesData>("get_rules", { barrackPath });
-      setRules(data);
+      const content = await invoke<string>("read_barrack_file", {
+        barrackPath,
+        filename: "RULES.md",
+      });
+      const doc = parseRulesDocument(content);
+      setRaw(doc.raw);
+      setRules(doc.data);
       setHasChanges(false);
+      setSaveMsg(null);
     } catch (e) {
-      console.error("Failed to load rules:", e);
+      if (isMissingFileError(e)) {
+        const doc = parseRulesDocument("");
+        setRaw(doc.raw);
+        setRules(doc.data);
+        setHasChanges(false);
+        setSaveMsg(null);
+        return;
+      }
+      console.error("Failed to load RULES.md:", e);
+      setSaveMsg(`불러오기 실패: ${e}`);
     }
   }, [barrackPath]);
 
@@ -110,14 +137,24 @@ export function RulesEditor() {
   };
 
   const handleSave = async () => {
-    if (!barrackPath || !rules) return;
+    if (!barrackPath || !rules || raw === null) return;
     setSaving(true);
     setSaveMsg(null);
+    const patched = patchRulesDocument(raw, rules);
+    if (!patched.ok) {
+      setSaveMsg(
+        `저장 실패: ${patched.failure.field} ${patched.failure.reason}`
+      );
+      setSaving(false);
+      return;
+    }
     try {
-      await invoke("save_rules", {
+      await invoke("write_barrack_file", {
         barrackPath,
-        rules,
+        filename: "RULES.md",
+        content: patched.raw,
       });
+      setRaw(patched.raw);
       setHasChanges(false);
       setSaveMsg("저장 완료");
       await fetchBarracks();
