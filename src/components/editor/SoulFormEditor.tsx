@@ -2,63 +2,11 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { OwnershipBanner } from "./OwnershipBanner";
-
-interface SoulData {
-  name: string;
-  expertise: string[];
-  personality: string[];
-  core_values: string[];
-  constraints: string[];
-}
-
-function parseSoul(content: string): SoulData {
-  const data: SoulData = {
-    name: "",
-    expertise: [],
-    personality: [],
-    core_values: [],
-    constraints: [],
-  };
-  let section = "";
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("## Name")) { section = "name"; continue; }
-    if (trimmed.startsWith("## Expertise")) { section = "expertise"; continue; }
-    if (trimmed.startsWith("## Personality")) { section = "personality"; continue; }
-    if (trimmed.startsWith("## Core Values")) { section = "core_values"; continue; }
-    if (trimmed.startsWith("## Constraints")) { section = "constraints"; continue; }
-    if (trimmed.startsWith("## ") || trimmed.startsWith("# ")) { section = ""; continue; }
-    if (trimmed.startsWith("<!--")) continue;
-
-    if (section === "name" && trimmed && !data.name) {
-      data.name = trimmed;
-    } else if (section && trimmed.startsWith("- ")) {
-      const item = trimmed.slice(2);
-      if (section === "expertise") data.expertise.push(item);
-      if (section === "personality") data.personality.push(item);
-      if (section === "core_values") data.core_values.push(item);
-      if (section === "constraints") data.constraints.push(item);
-    }
-  }
-  return data;
-}
-
-function buildSoul(data: SoulData): string {
-  let md = "<!-- AIB:SOUL:v1 — 이 구조를 유지하세요. 내용은 자유롭게 수정 가능합니다. -->\n";
-  md += "# Agent Identity\n\n";
-  md += `## Name\n${data.name}\n\n`;
-  md += "## Expertise\n";
-  for (const e of data.expertise) md += `- ${e}\n`;
-  md += "\n## Personality\n";
-  for (const p of data.personality) md += `- ${p}\n`;
-  md += "\n## Core Values\n";
-  for (const v of data.core_values) md += `- ${v}\n`;
-  md += "\n## Constraints\n";
-  for (const c of data.constraints) md += `- ${c}\n`;
-  md += "\n<!-- AIB:SOUL:END -->\n";
-  return md;
-}
+import {
+  parseSoulDocument,
+  patchSoulDocument,
+  type SoulData,
+} from "./soulDocument";
 
 function ListField({
   label,
@@ -124,6 +72,7 @@ function ListField({
 export function SoulFormEditor() {
   const { selectedBarrack, fetchBarracks } = useAppStore();
   const barrackPath = selectedBarrack?.path;
+  const [raw, setRaw] = useState<string | null>(null);
   const [data, setData] = useState<SoulData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -141,7 +90,9 @@ export function SoulFormEditor() {
         barrackPath,
         filename: "SOUL.md",
       });
-      setData(parseSoul(content));
+      const doc = parseSoulDocument(content);
+      setRaw(doc.raw);
+      setData(doc.data);
       setHasChanges(false);
     } catch (e) {
       console.error("Failed to load SOUL.md:", e);
@@ -157,15 +108,22 @@ export function SoulFormEditor() {
   };
 
   const handleSave = async () => {
-    if (!barrackPath || !data) return;
+    if (!barrackPath || !data || raw === null) return;
     setSaving(true);
     setSaveMsg(null);
+    const patched = patchSoulDocument(raw, data);
+    if (!patched.ok) {
+      setSaveMsg(`저장 실패: ${patched.failure.field} ${patched.failure.reason}`);
+      setSaving(false);
+      return;
+    }
     try {
       await invoke("write_barrack_file", {
         barrackPath,
         filename: "SOUL.md",
-        content: buildSoul(data),
+        content: patched.raw,
       });
+      setRaw(patched.raw);
       setHasChanges(false);
       setSaveMsg("저장 완료");
       await fetchBarracks();
