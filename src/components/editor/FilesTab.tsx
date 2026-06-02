@@ -9,6 +9,7 @@ import { YamlFormEditor } from "./YamlFormEditor";
 import { SoulFormEditor } from "./SoulFormEditor";
 import { GrowthFormEditor } from "./GrowthFormEditor";
 import type { FileInfo } from "../../types";
+import { aibCommand, getAibPath } from "../../utils/shellCommand";
 
 function RoleBadge({ role }: { role: string }) {
   const colors: Record<string, string> = {
@@ -97,12 +98,13 @@ export function FilesTab() {
       setHasChanges(false);
       setSaveMessage("저장 완료");
       // Auto-validate with aib sync --dry-run
+      const aib = await getAibPath();
       useTerminalStore.getState().addSession({
         id: crypto.randomUUID(),
         title: `Validate - ${selectedFile.name}`,
         barrackPath: barrackPath!,
         cwd: barrackPath!,
-        initialCommand: `/opt/homebrew/bin/aib sync --dry-run '${barrackPath!}'`,
+        initialCommand: aibCommand(aib, ["sync", "--dry-run", barrackPath!]),
         source: "terminal",
         autoCloseOnExit: true,
       });

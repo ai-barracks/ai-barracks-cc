@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { useTerminalStore } from "../../stores/terminalStore";
 import type { LaunchCommand } from "../../types";
+import { aibCommand, getAibPath, printfLine } from "../../utils/shellCommand";
 
 interface Command {
   label: string;
@@ -15,14 +16,20 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [aibPath, setAibPath] = useState("aib");
   const inputRef = useRef<HTMLInputElement>(null);
   const { selectedBarrack, barracks, setActiveTab } = useAppStore();
   const addTerminal = useTerminalStore((s) => s.addSession);
   const quickCommands = useTerminalStore((s) => s.quickCommands);
   const removeQuickCommand = useTerminalStore((s) => s.removeQuickCommand);
 
-  const aib = "/opt/homebrew/bin/aib";
   const b = selectedBarrack;
+
+  useEffect(() => {
+    getAibPath()
+      .then(setAibPath)
+      .catch((e) => console.error("Failed to resolve aib path:", e));
+  }, []);
 
   const commands = useMemo<Command[]>(() => {
     const cmds: Command[] = [];
@@ -67,7 +74,7 @@ export function CommandPalette() {
       description: "현재 배럭 상태 확인",
       category: "aib",
       action: () => {
-        addTerminal({ id: crypto.randomUUID(), title: `status - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: `${aib} status`, source: "terminal" });
+        addTerminal({ id: crypto.randomUUID(), title: `status - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: aibCommand(aibPath, ["status"]), source: "terminal" });
         setActiveTab("sessions");
       },
     });
@@ -76,7 +83,7 @@ export function CommandPalette() {
       description: "배럭 동기화 (dry-run 후 실행)",
       category: "aib",
       action: () => {
-        addTerminal({ id: crypto.randomUUID(), title: `Sync - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: `${aib} sync --dry-run '${b.path}'`, source: "terminal" });
+        addTerminal({ id: crypto.randomUUID(), title: `Sync - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: aibCommand(aibPath, ["sync", "--dry-run", b.path]), source: "terminal" });
         setActiveTab("sessions");
       },
     });
@@ -85,7 +92,7 @@ export function CommandPalette() {
       description: "���키 검증 (stale, 크기, 인덱스)",
       category: "aib",
       action: () => {
-        addTerminal({ id: crypto.randomUUID(), title: `Wiki Lint - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: `${aib} wiki lint`, source: "terminal" });
+        addTerminal({ id: crypto.randomUUID(), title: `Wiki Lint - ${b.name}`, barrackPath: b.path, cwd: b.path, initialCommand: aibCommand(aibPath, ["wiki", "lint"]), source: "terminal" });
         setActiveTab("sessions");
       },
     });
@@ -96,7 +103,7 @@ export function CommandPalette() {
       action: () => {
         const topic = prompt("Council 토�� 주제:");
         if (topic) {
-          addTerminal({ id: crypto.randomUUID(), title: `Council`, barrackPath: b.path, cwd: b.path, initialCommand: `${aib} council "${topic}"`, source: "council" });
+          addTerminal({ id: crypto.randomUUID(), title: `Council`, barrackPath: b.path, cwd: b.path, initialCommand: aibCommand(aibPath, ["council", topic]), source: "council" });
           setActiveTab("sessions");
         }
       },
@@ -147,7 +154,9 @@ export function CommandPalette() {
         description: `${barracks.length}개 배럭 순차 동기화`,
         category: "aib",
         action: () => {
-          const syncCmd = barracks.map((br) => `echo '=== ${br.name} ===' && ${aib} sync '${br.path}'`).join(" && ");
+          const syncCmd = barracks
+            .map((br) => `${printfLine(`=== ${br.name} ===`)} && ${aibCommand(aibPath, ["sync", br.path])}`)
+            .join(" && ");
           addTerminal({ id: crypto.randomUUID(), title: "Sync All", barrackPath: b.path, initialCommand: syncCmd, source: "terminal" });
           setActiveTab("sessions");
         },
@@ -157,7 +166,7 @@ export function CommandPalette() {
         description: "등록된 배럭 목록 확인",
         category: "aib",
         action: () => {
-          addTerminal({ id: crypto.randomUUID(), title: "barracks list", barrackPath: b.path, initialCommand: `${aib} barracks list`, source: "terminal", autoCloseOnExit: true });
+          addTerminal({ id: crypto.randomUUID(), title: "barracks list", barrackPath: b.path, initialCommand: aibCommand(aibPath, ["barracks", "list"]), source: "terminal", autoCloseOnExit: true });
           setActiveTab("sessions");
         },
       });
@@ -199,7 +208,7 @@ export function CommandPalette() {
     }
 
     return cmds;
-  }, [b, barracks, addTerminal, quickCommands, removeQuickCommand, setActiveTab]);
+  }, [b, barracks, aibPath, addTerminal, quickCommands, removeQuickCommand, setActiveTab]);
 
   const filtered = query
     ? commands.filter(

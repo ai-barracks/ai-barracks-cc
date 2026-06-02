@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { useTerminalStore } from "../../stores/terminalStore";
 import type { SyncResult } from "../../types";
+import { aibCommand, getAibPath, printfLine } from "../../utils/shellCommand";
 
 export function SystemView() {
   const { barracks, cliVersion, fetchBarracks } = useAppStore();
@@ -110,13 +111,13 @@ export function SystemView() {
                 : `Sync ${selected.size > 0 ? `(${selected.size})` : ""}`}
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (selected.size === 0) return;
-                const aib = "/opt/homebrew/bin/aib";
+                const aib = await getAibPath();
                 const paths = Array.from(selected);
                 const syncCmd = paths.map((p) => {
                   const name = p.split("/").pop();
-                  return `echo '\\n=== ${name} ===' && ${aib} sync '${p}'`;
+                  return `${printfLine(`\n=== ${name} ===`)} && ${aibCommand(aib, ["sync", p])}`;
                 }).join(" && ");
                 useTerminalStore.getState().addSession({
                   id: crypto.randomUUID(),

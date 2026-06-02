@@ -5,6 +5,7 @@ import {
 } from "../../stores/notificationStore";
 import { useTerminalStore } from "../../stores/terminalStore";
 import type { LaunchCommand } from "../../types";
+import { aibCommand, getAibPath } from "../../utils/shellCommand";
 
 function getClientKey(client: string): string {
   const lower = client.toLowerCase();
@@ -46,13 +47,14 @@ function NotificationItem({ notification }: { notification: AppNotification }) {
     dismiss(notification.id);
   };
 
-  const handleSync = () => {
+  const handleSync = async () => {
     const bp = (notification.data as { barrack_path?: string })?.barrack_path ?? "";
+    const aib = await getAibPath();
     addSession({
       id: crypto.randomUUID(),
       title: "Sync All",
       barrackPath: bp,
-      initialCommand: `${getAibPath()} barracks list`,
+      initialCommand: aibCommand(aib, ["barracks", "list"]),
       source: "terminal",
     });
     dismiss(notification.id);
@@ -97,10 +99,6 @@ function NotificationItem({ notification }: { notification: AppNotification }) {
       </div>
     </div>
   );
-}
-
-function getAibPath(): string {
-  return "/opt/homebrew/bin/aib";
 }
 
 export function NotificationToast() {

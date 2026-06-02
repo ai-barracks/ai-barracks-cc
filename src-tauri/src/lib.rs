@@ -52,6 +52,7 @@ pub fn run() {
             sync::launch_session,
             sync::continue_session,
             sync::refresh_barracks,
+            sync::get_aib_path,
             search::search_all,
             git::get_git_status,
             git::get_git_log,

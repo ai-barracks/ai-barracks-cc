@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { useAppStore } from "../../stores/appStore";
 import { useTerminalStore } from "../../stores/terminalStore";
 import type { WikiIndex } from "../../types";
+import { aibCommand, getAibPath } from "../../utils/shellCommand";
 
 export function WikiTab() {
   const { selectedBarrack } = useAppStore();
@@ -57,14 +58,15 @@ export function WikiTab() {
             Topics ({wikiIndex.topics.length})
           </h3>
           <button
-            onClick={() => {
+            onClick={async () => {
               if (selectedBarrack) {
+                const aib = await getAibPath();
                 useTerminalStore.getState().addSession({
                   id: crypto.randomUUID(),
                   title: `Wiki Lint - ${selectedBarrack.name}`,
                   barrackPath: selectedBarrack.path,
                   cwd: selectedBarrack.path,
-                  initialCommand: "/opt/homebrew/bin/aib wiki lint",
+                  initialCommand: aibCommand(aib, ["wiki", "lint"]),
                   source: "terminal",
                   autoCloseOnExit: true,
                 });

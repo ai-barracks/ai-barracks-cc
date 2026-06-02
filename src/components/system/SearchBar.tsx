@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { useTerminalStore } from "../../stores/terminalStore";
 import type { SearchResult } from "../../types";
+import { shellQuote } from "../../utils/shellCommand";
 
 const SOURCE_STYLES: Record<string, string> = {
   session: "text-orange-400",
@@ -88,7 +89,7 @@ export function SearchBar() {
                   title: `${r.source}: ${r.title}`,
                   barrackPath: bp,
                   cwd: r.file_path.substring(0, r.file_path.lastIndexOf("/")),
-                  initialCommand: `cat '${r.file_path}' | grep -n -C 2 '${query.replace(/'/g, "'\\''")}'`,
+                  initialCommand: `cat ${shellQuote(r.file_path)} | grep -n -C 2 -- ${shellQuote(query)}`,
                   source: "view",
                   autoCloseOnExit: true,
                 });

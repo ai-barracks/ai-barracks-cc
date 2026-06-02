@@ -1,5 +1,6 @@
 import { useAppStore } from "../../stores/appStore";
 import { useTerminalStore } from "../../stores/terminalStore";
+import { aibCommand, getAibPath, printfLine } from "../../utils/shellCommand";
 
 function StatCard({
   label,
@@ -44,14 +45,16 @@ export function BarrackOverview() {
   const totalRules =
     b.rules_count.must_always + b.rules_count.must_never + b.rules_count.learned;
 
-  const handleSync = () => {
-    const aib = "/opt/homebrew/bin/aib";
+  const handleSync = async () => {
+    const aib = await getAibPath();
+    const dryRun = aibCommand(aib, ["sync", "--dry-run", b.path]);
+    const apply = aibCommand(aib, ["sync", b.path]);
     useTerminalStore.getState().addSession({
       id: crypto.randomUUID(),
       title: `Sync - ${b.name}`,
       barrackPath: b.path,
       cwd: b.path,
-      initialCommand: `${aib} sync --dry-run '${b.path}' && echo '\\n--- Press enter to apply ---' && read && ${aib} sync '${b.path}'`,
+      initialCommand: `${dryRun} && ${printfLine("\n--- Press enter to apply ---")} && read && ${apply}`,
       source: "terminal",
     });
     setActiveTab("sessions");

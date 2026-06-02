@@ -7,6 +7,12 @@ import { SessionCard } from "./SessionCard";
 import { LiveTerminals } from "./LiveTerminals";
 import { useLiveStates } from "../../hooks/useLiveStates";
 import type { SessionInfo, SessionDetail, LaunchCommand } from "../../types";
+import {
+  aibCommand,
+  getAibPath,
+  printfLine,
+  shellQuote,
+} from "../../utils/shellCommand";
 
 type ClientFilter = "all" | "Claude Code" | "Gemini CLI" | "Codex CLI";
 type StatusFilter = "all" | "active" | "completed" | "interrupted";
@@ -141,7 +147,7 @@ export function SessionsTab() {
       title: `View - ${session.id.slice(0, 8)}`,
       barrackPath: selectedBarrack.path,
       cwd: selectedBarrack.path,
-      initialCommand: `cat '${sessionFile}' && [ -f '${violationFile}' ] && echo '\\n=== VIOLATIONS ===' && cat '${violationFile}' || true`,
+      initialCommand: `cat ${shellQuote(sessionFile)} && [ -f ${shellQuote(violationFile)} ] && ${printfLine("\n=== VIOLATIONS ===")} && cat ${shellQuote(violationFile)} || true`,
       source: "view",
       autoCloseOnExit: true,
     });
@@ -155,7 +161,7 @@ export function SessionsTab() {
       title: `Monitor - ${session.id.slice(0, 8)}`,
       barrackPath: selectedBarrack.path,
       cwd: selectedBarrack.path,
-      initialCommand: `echo '=== Monitoring ${session.id} ===' && echo 'Refreshes every 3s. Ctrl+C to stop.' && echo '' && while true; do clear; echo '=== ${session.id} ===' && tail -30 '${sessionFile}'; sleep 3; done`,
+      initialCommand: `${printfLine(`=== Monitoring ${session.id} ===`)} && ${printfLine("Refreshes every 3s. Ctrl+C to stop.")} && ${printfLine("")} && while true; do clear; ${printfLine(`=== ${session.id} ===`)}; tail -30 ${shellQuote(sessionFile)}; sleep 3; done`,
       source: "monitor",
     });
   };
@@ -188,14 +194,15 @@ export function SessionsTab() {
             </div>
             <div className="h-4 w-px bg-cc-border" />
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!selectedBarrack) return;
+                const aib = await getAibPath();
                 useTerminalStore.getState().addSession({
                   id: crypto.randomUUID(),
                   title: selectedBarrack.name,
                   barrackPath: selectedBarrack.path,
                   cwd: selectedBarrack.path,
-                  initialCommand: "/opt/homebrew/bin/aib status",
+                  initialCommand: aibCommand(aib, ["status"]),
                   source: "terminal",
                 });
               }}
@@ -204,16 +211,17 @@ export function SessionsTab() {
               Terminal
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!selectedBarrack) return;
                 const topic = prompt("Council 토론 주제를 입력하세요:");
                 if (topic) {
+                  const aib = await getAibPath();
                   useTerminalStore.getState().addSession({
                     id: crypto.randomUUID(),
                     title: `Council - ${topic.slice(0, 20)}`,
                     barrackPath: selectedBarrack.path,
                     cwd: selectedBarrack.path,
-                    initialCommand: `/opt/homebrew/bin/aib council "${topic}"`,
+                    initialCommand: aibCommand(aib, ["council", topic]),
                     source: "council",
                   });
                 }
