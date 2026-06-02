@@ -3,92 +3,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { OwnershipBanner } from "./OwnershipBanner";
 
-interface DecisionRow {
-  event: string;
-  location: string;
-  example: string;
-}
-
-interface GrowthData {
-  decision_table: DecisionRow[];
-  not_growth_worthy: string[];
-}
-
-function parseGrowth(content: string): GrowthData {
-  const data: GrowthData = { decision_table: [], not_growth_worthy: [] };
-  let inTable = false;
-  let inNotGrowth = false;
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-
-    // Decision Table
-    if (trimmed.includes("세션 중 이벤트") && trimmed.startsWith("|")) {
-      inTable = true;
-      inNotGrowth = false;
-      continue;
-    }
-    if (inTable && trimmed.startsWith("|") && trimmed.includes("---")) continue;
-    if (inTable && trimmed.startsWith("|")) {
-      const cols = trimmed.split("|").filter(Boolean);
-      if (cols.length >= 3) {
-        data.decision_table.push({
-          event: cols[0].trim(),
-          location: cols[1].trim(),
-          example: cols[2].trim(),
-        });
-      }
-      continue;
-    }
-    if (inTable && !trimmed.startsWith("|") && trimmed) {
-      inTable = false;
-    }
-
-    // NOT growth-worthy
-    if (trimmed.startsWith("**NOT growth-worthy**") || trimmed.includes("기록하지 않을 것")) {
-      inNotGrowth = true;
-      inTable = false;
-      continue;
-    }
-    if (inNotGrowth && trimmed.startsWith("- ")) {
-      data.not_growth_worthy.push(trimmed.slice(2));
-      continue;
-    }
-    if (inNotGrowth && trimmed.startsWith("##")) {
-      inNotGrowth = false;
-    }
-  }
-  return data;
-}
-
-function buildGrowth(data: GrowthData): string {
-  let md = "<!-- AIB:OWNERSHIP — [USER-OWNED] 사용자가 배럭에 맞게 커스터마이징하는 파일. 에이전트는 읽기만 합니다. -->\n";
-  md += "# Growth Protocol\n\n";
-  md += "> 에이전트가 세션 중 wiki/, RULES.md를 **자발적으로 성장시키기 위한 결정 규칙**.\n";
-  md += "> 이 파일은 배럭별로 자유롭게 커스터마이징 가능하다 (sync 시 덮어쓰지 않음).\n\n";
-  md += "## Decision Table — 발견 즉시 기록 (CRITICAL)\n\n";
-  md += "세션 **종료 시**가 아니라, **발견하는 즉시** 아래 표에 따라 기록한다.\n\n";
-  md += "| 세션 중 이벤트 | 기록 위치 | 예시 |\n";
-  md += "|---------------|-----------|------|\n";
-  for (const row of data.decision_table) {
-    md += `| ${row.event} | ${row.location} | ${row.example} |\n`;
-  }
-  md += "\n**NOT growth-worthy** — 기록하지 않을 것:\n";
-  for (const item of data.not_growth_worthy) {
-    md += `- ${item}\n`;
-  }
-  md += "\n## End-of-Session Audit\n\n";
-  md += "세션 종료 전, 위 Decision Table을 기준으로 누락을 점검한다.\n";
-  md += "종료 시점은 **저장 시점이 아니라 감사(audit) 시점**이다.\n\n";
-  md += "1. `## Decisions` 검토 → wiki/RULES에 반영할 것이 있는가?\n";
-  md += "2. `## Log` 검토 → 재사용 가능한 지식이 있는가?\n";
-  md += "3. 오류/수정 검토 → 학습한 규칙이 있는가?\n";
-  return md;
-}
-
+import {
+  parseGrowthDocument,
+  patchGrowthDocument,
+  type GrowthData,
+} from "./growthDocument";
 export function GrowthFormEditor() {
   const { selectedBarrack, fetchBarracks } = useAppStore();
   const barrackPath = selectedBarrack?.path;
+  const [raw, setRaw] = useState<string | null>(null);
   const [data, setData] = useState<GrowthData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -106,7 +29,9 @@ export function GrowthFormEditor() {
         barrackPath,
         filename: "GROWTH.md",
       });
-      setData(parseGrowth(content));
+      const doc = parseGrowthDocument(content);
+      setRaw(doc.raw);
+      setData(doc.data);
       setHasChanges(false);
     } catch (e) {
       console.error("Failed to load GROWTH.md:", e);
@@ -122,15 +47,22 @@ export function GrowthFormEditor() {
   };
 
   const handleSave = async () => {
-    if (!barrackPath || !data) return;
+    if (!barrackPath || !data || raw === null) return;
     setSaving(true);
     setSaveMsg(null);
+    const patched = patchGrowthDocument(raw, data);
+    if (!patched.ok) {
+      setSaveMsg(`저장 실패: ${patched.failure.field} ${patched.failure.reason}`);
+      setSaving(false);
+      return;
+    }
     try {
       await invoke("write_barrack_file", {
         barrackPath,
         filename: "GROWTH.md",
-        content: buildGrowth(data),
+        content: patched.raw,
       });
+      setRaw(patched.raw);
       setHasChanges(false);
       setSaveMsg("저장 완료");
       await fetchBarracks();
