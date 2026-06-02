@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { LiveState } from "../types";
 
+interface LiveChangedPayload {
+  barrackPath: string;
+  path: string;
+}
+
 /**
  * session_id -> LiveState for the given barrack.
  * Refreshed on `live-changed` (this barrack only, debounced ~250ms to absorb
@@ -40,8 +45,8 @@ export function useLiveStates(
     };
 
     refresh();
-    const unChanged = listen<string>("live-changed", (e) => {
-      if (typeof e.payload === "string" && e.payload.includes(barrackPath)) {
+    const unChanged = listen<LiveChangedPayload>("live-changed", (e) => {
+      if (e.payload?.barrackPath === barrackPath) {
         if (t) clearTimeout(t);
         t = setTimeout(refresh, 250);
       }

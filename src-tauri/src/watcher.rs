@@ -1,11 +1,19 @@
 use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WatchChangedPayload {
+    barrack_path: String,
+    path: String,
+}
 
 pub fn start_watcher(app: AppHandle) {
     thread::spawn(move || {
@@ -70,12 +78,17 @@ pub fn start_watcher(app: AppHandle) {
                         // Liveness sidecar writes route to a dedicated (debounced) channel.
                         // Check ALL event paths (rename events carry from+to) so a .live
                         // write isn't missed when it isn't the first path.
-                        let is_live = event
-                            .paths
-                            .iter()
-                            .any(|p| p.to_string_lossy().contains("/.live/"));
+                        let is_live = is_live_event(&event.paths);
                         if is_live {
-                            let _ = app.emit("live-changed", changed_path);
+                            if let Some(barrack_path) = event_barrack_path(&event.paths, &paths) {
+                                let _ = app.emit(
+                                    "live-changed",
+                                    WatchChangedPayload {
+                                        barrack_path,
+                                        path: changed_path,
+                                    },
+                                );
+                            }
                         } else {
                             let _ = app.emit("file-changed", changed_path);
                         }
@@ -85,6 +98,24 @@ pub fn start_watcher(app: AppHandle) {
             }
         }
     });
+}
+
+fn is_live_event(event_paths: &[PathBuf]) -> bool {
+    event_paths.iter().any(|p| {
+        p.components()
+            .any(|component| component.as_os_str() == ".live")
+    })
+}
+
+fn event_barrack_path(event_paths: &[PathBuf], barrack_paths: &[String]) -> Option<String> {
+    for event_path in event_paths {
+        for barrack_path in barrack_paths {
+            if event_path.starts_with(Path::new(barrack_path)) {
+                return Some(barrack_path.clone());
+            }
+        }
+    }
+    None
 }
 
 /// Periodic checks every 30 seconds for stale sessions, sync needs, etc.
@@ -174,24 +205,24 @@ fn check_stale_sessions(app: &AppHandle, notified: &mut HashMap<String, Instant>
                         let hours = elapsed.as_secs() / 3600;
 
                         // Emit in-app event with actionable data
-                        let _ = app.emit("stale-session", serde_json::json!({
-                            "barrack_path": barrack_path,
-                            "barrack_name": barrack_name,
-                            "session_id": session_id,
-                            "client": client,
-                            "task": task,
-                            "hours": hours,
-                        }));
+                        let _ = app.emit(
+                            "stale-session",
+                            serde_json::json!({
+                                "barrack_path": barrack_path,
+                                "barrack_name": barrack_name,
+                                "session_id": session_id,
+                                "client": client,
+                                "task": task,
+                                "hours": hours,
+                            }),
+                        );
 
                         // Also show system notification
                         let _ = app
                             .notification()
                             .builder()
                             .title(&format!("Stale: {}", barrack_name))
-                            .body(format!(
-                                "{} idle {}h — {}",
-                                client, hours, task
-                            ))
+                            .body(format!("{} idle {}h — {}", client, hours, task))
                             .show();
                         notified.insert(key, Instant::now());
                     }
@@ -242,10 +273,13 @@ fn check_sync_needed(app: &AppHandle) {
 
     if outdated_count > 0 {
         // Emit in-app event with actionable data
-        let _ = app.emit("sync-needed", serde_json::json!({
-            "outdated_count": outdated_count,
-            "cli_version": cli_version,
-        }));
+        let _ = app.emit(
+            "sync-needed",
+            serde_json::json!({
+                "outdated_count": outdated_count,
+                "cli_version": cli_version,
+            }),
+        );
 
         let _ = app
             .notification()
@@ -272,4 +306,41 @@ fn read_barrack_paths(registry_path: &PathBuf) -> Vec<String> {
         .iter()
         .filter_map(|e| e["path"].as_str().map(String::from))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{event_barrack_path, is_live_event};
+    use std::path::PathBuf;
+
+    #[test]
+    fn event_barrack_path_uses_component_boundaries_not_substrings() {
+        let barracks = vec!["/tmp/barrack".to_string(), "/tmp/barrack-extra".to_string()];
+        let event_paths = vec![PathBuf::from(
+            "/tmp/barrack-extra/sessions/.live/session.status",
+        )];
+        assert_eq!(
+            event_barrack_path(&event_paths, &barracks),
+            Some("/tmp/barrack-extra".to_string())
+        );
+    }
+
+    #[test]
+    fn event_barrack_path_rejects_prefix_overlap() {
+        let barracks = vec!["/tmp/barrack".to_string()];
+        let event_paths = vec![PathBuf::from(
+            "/tmp/barrack-extra/sessions/.live/session.status",
+        )];
+        assert_eq!(event_barrack_path(&event_paths, &barracks), None);
+    }
+
+    #[test]
+    fn is_live_event_checks_live_path_component() {
+        assert!(is_live_event(&[PathBuf::from(
+            "/tmp/b/sessions/.live/session.status"
+        )]));
+        assert!(!is_live_event(&[PathBuf::from(
+            "/tmp/b/sessions/not.live/session.status"
+        )]));
+    }
 }
