@@ -2,10 +2,12 @@ use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 
+const SNIPPET_CHARS: usize = 120;
+
 #[derive(Debug, Serialize)]
 pub struct SearchResult {
     pub barrack: String,
-    pub source: String,    // "session", "wiki", "rules", "config"
+    pub source: String, // "session", "wiki", "rules", "config"
     pub title: String,
     pub snippet: String,
     pub file_path: String,
@@ -20,11 +22,7 @@ fn search_in_file(path: &PathBuf, query_lower: &str) -> Vec<(String, String)> {
     let mut matches = Vec::new();
     for line in content.lines() {
         if line.to_lowercase().contains(query_lower) {
-            let snippet = if line.len() > 120 {
-                format!("{}...", &line[..120])
-            } else {
-                line.to_string()
-            };
+            let snippet = make_snippet(line);
             matches.push((snippet, path.to_string_lossy().to_string()));
             if matches.len() >= 3 {
                 break;
@@ -32,6 +30,16 @@ fn search_in_file(path: &PathBuf, query_lower: &str) -> Vec<(String, String)> {
         }
     }
     matches
+}
+
+fn make_snippet(line: &str) -> String {
+    let mut chars = line.chars();
+    let snippet: String = chars.by_ref().take(SNIPPET_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{}...", snippet)
+    } else {
+        line.to_string()
+    }
 }
 
 #[tauri::command]
@@ -145,4 +153,43 @@ pub fn search_all(query: String) -> Result<Vec<SearchResult>, String> {
     // Limit results
     results.truncate(50);
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{make_snippet, search_in_file, SNIPPET_CHARS};
+    use std::fs;
+
+    #[test]
+    fn snippet_truncates_by_char_boundary() {
+        let line = format!("{}needle", "가🙂".repeat(80));
+        let snippet = make_snippet(&line);
+        assert!(snippet.ends_with("..."));
+        assert_eq!(
+            snippet.trim_end_matches("...").chars().count(),
+            SNIPPET_CHARS
+        );
+        assert!(snippet.is_char_boundary(snippet.len()));
+    }
+
+    #[test]
+    fn search_long_unicode_line_does_not_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("unicode.md");
+        let line = format!("{}needle", "한글🙂".repeat(80));
+        fs::write(&file, line).unwrap();
+
+        let matches = search_in_file(&file, "needle");
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].0.ends_with("..."));
+        assert_eq!(
+            matches[0].0.trim_end_matches("...").chars().count(),
+            SNIPPET_CHARS
+        );
+    }
+
+    #[test]
+    fn short_snippet_is_unchanged() {
+        assert_eq!(make_snippet("short needle"), "short needle");
+    }
 }
