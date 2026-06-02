@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.4.1] - 2026-06-02
+
+### Fixed
+- **File and skill IPC writes are constrained to safe barrack paths**: legacy generic file commands were removed from frontend IPC, allowlisted file access is symlink-safe, and skill paths reject root/index symlink escapes.
+- **Form editors preserve user-authored documents**: SOUL.md, RULES.md, GROWTH.md, and agent.yaml saves now patch only managed fields/sections instead of regenerating the full file. Comments, custom sections, ordering, ownership markers, and EOL style are preserved.
+- **Terminal reconnect uses a single PTY reader** with swappable output channels, avoiding duplicate readers after reconnect.
+- **Terminal/session command execution quotes paths and arguments safely**, including custom `aib` binary paths and barrack/session paths.
+- **Search snippets truncate on UTF-8 character boundaries** so Korean/emoji snippets cannot panic or produce invalid slices.
+- **Live-state frontend events are scoped by exact barrack path** instead of broadcast to unrelated open barracks.
+- **Backend clippy warnings are resolved** and `cargo clippy --all-targets -- -D warnings` is clean.
+
+### Changed
+- Release build metadata is aligned by keeping `package-lock.json`, `Cargo.lock`, Cargo, Tauri, and package versions consistent.
+
+### Verification
+- Vitest 94 tests PASS.
+- `npm run build` PASS.
+- Cargo tests 108 PASS.
+- Cargo clippy `-D warnings` PASS.
+
 ## [1.4.0] - 2026-06-01
 
 ### Added — Agent liveness dot (Plan 2: aib-cc UI; pairs with aib ≥ 1.3.0 Plan 1)
