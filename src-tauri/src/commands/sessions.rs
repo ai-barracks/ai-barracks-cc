@@ -49,8 +49,8 @@ fn parse_section(content: &str, section: &str) -> Vec<String> {
         }
         if in_section {
             let trimmed = line.trim();
-            if trimmed.starts_with("- ") {
-                items.push(trimmed[2..].to_string());
+            if let Some(stripped) = trimmed.strip_prefix("- ") {
+                items.push(stripped.to_string());
             } else if !trimmed.is_empty() && !trimmed.starts_with("<!--") {
                 items.push(trimmed.to_string());
             }

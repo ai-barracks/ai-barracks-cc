@@ -63,38 +63,33 @@ pub fn start_watcher(app: AppHandle) {
             }
         }
 
-        loop {
-            match rx.recv() {
-                Ok(event) => {
-                    if matches!(
-                        event.kind,
-                        EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-                    ) {
-                        let changed_path = event
-                            .paths
-                            .first()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        // Liveness sidecar writes route to a dedicated (debounced) channel.
-                        // Check ALL event paths (rename events carry from+to) so a .live
-                        // write isn't missed when it isn't the first path.
-                        let is_live = is_live_event(&event.paths);
-                        if is_live {
-                            if let Some(barrack_path) = event_barrack_path(&event.paths, &paths) {
-                                let _ = app.emit(
-                                    "live-changed",
-                                    WatchChangedPayload {
-                                        barrack_path,
-                                        path: changed_path,
-                                    },
-                                );
-                            }
-                        } else {
-                            let _ = app.emit("file-changed", changed_path);
-                        }
+        while let Ok(event) = rx.recv() {
+            if matches!(
+                event.kind,
+                EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
+            ) {
+                let changed_path = event
+                    .paths
+                    .first()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                // Liveness sidecar writes route to a dedicated (debounced) channel.
+                // Check ALL event paths (rename events carry from+to) so a .live
+                // write isn't missed when it isn't the first path.
+                let is_live = is_live_event(&event.paths);
+                if is_live {
+                    if let Some(barrack_path) = event_barrack_path(&event.paths, &paths) {
+                        let _ = app.emit(
+                            "live-changed",
+                            WatchChangedPayload {
+                                barrack_path,
+                                path: changed_path,
+                            },
+                        );
                     }
+                } else {
+                    let _ = app.emit("file-changed", changed_path);
                 }
-                Err(_) => break,
             }
         }
     });
@@ -221,7 +216,7 @@ fn check_stale_sessions(app: &AppHandle, notified: &mut HashMap<String, Instant>
                         let _ = app
                             .notification()
                             .builder()
-                            .title(&format!("Stale: {}", barrack_name))
+                            .title(format!("Stale: {}", barrack_name))
                             .body(format!("{} idle {}h — {}", client, hours, task))
                             .show();
                         notified.insert(key, Instant::now());

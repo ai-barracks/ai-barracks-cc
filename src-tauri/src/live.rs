@@ -34,8 +34,12 @@ pub struct StatusFile {
     pub ts: i64,
     #[serde(default)]
     pub pid: i32,
+    // Present for diagnostics/backward compatibility in hook sidecars, but
+    // effective-state folding currently does not need to inspect them.
+    #[allow(dead_code)]
     #[serde(default)]
     pub event: String,
+    #[allow(dead_code)]
     #[serde(default)]
     pub reason: Option<String>,
 }
@@ -71,7 +75,7 @@ pub fn fold(
     let age = now - s.ts;
     // ack must match the run AND not predate this status (aib reuses run_id across a
     // session's turns; a later done than the ack is a new turn-end, not acknowledged).
-    let acked = ack.map_or(false, |a| a.acked_run_id == s.run_id && a.ack_ts >= s.ts);
+    let acked = ack.is_some_and(|a| a.acked_run_id == s.run_id && a.ack_ts >= s.ts);
     match s.state.as_str() {
         "done" => {
             if acked {
