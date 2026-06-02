@@ -16,3 +16,6 @@ src-tauri/target/
 
 # Tauri dev
 src-tauri/gen/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
