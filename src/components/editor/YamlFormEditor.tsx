@@ -3,97 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
 import { OwnershipBanner } from "./OwnershipBanner";
 
-interface AgentConfig {
-  name: string;
-  version: string;
-  description: string;
-  primary_model: string;
-  fallback_models: string[];
-  aib_version: string;
-  skills_raw: string;
-  raw: string;
-}
-
-function extractTopLevelBlock(content: string, key: string): string {
-  const lines = content.split("\n");
-  const captured: string[] = [];
-  let inBlock = false;
-  const headRe = new RegExp(`^${key}\\s*:`);
-  const topLevelRe = /^[a-zA-Z_][a-zA-Z0-9_-]*\s*:/;
-  for (const line of lines) {
-    if (!inBlock && headRe.test(line)) {
-      inBlock = true;
-      captured.push(line);
-      continue;
-    }
-    if (inBlock) {
-      if (topLevelRe.test(line)) break;
-      captured.push(line);
-    }
-  }
-  while (captured.length > 0 && captured[captured.length - 1].trim() === "") {
-    captured.pop();
-  }
-  return captured.join("\n");
-}
-
-function parseYaml(content: string): AgentConfig {
-  const config: AgentConfig = {
-    name: "",
-    version: "",
-    description: "",
-    primary_model: "",
-    fallback_models: [],
-    aib_version: "",
-    skills_raw: extractTopLevelBlock(content, "skills"),
-    raw: content,
-  };
-
-  let inFallback = false;
-  for (const line of content.split("\n")) {
-    if (line.startsWith("name:")) {
-      config.name = line.replace("name:", "").trim().replace(/"/g, "");
-    } else if (line.startsWith("version:")) {
-      config.version = line.replace("version:", "").trim().replace(/"/g, "");
-    } else if (line.startsWith("description:")) {
-      config.description = line.replace("description:", "").trim().replace(/"/g, "");
-    } else if (line.startsWith("aib_version:")) {
-      config.aib_version = line.replace("aib_version:", "").trim();
-    } else if (line.match(/^\s+primary:/)) {
-      config.primary_model = line.replace(/.*primary:/, "").trim();
-      inFallback = false;
-    } else if (line.match(/^\s+fallback:/)) {
-      inFallback = true;
-    } else if (inFallback && line.match(/^\s+- /)) {
-      config.fallback_models.push(line.replace(/^\s+- /, "").trim());
-    } else if (inFallback && !line.match(/^\s/)) {
-      inFallback = false;
-    }
-  }
-  return config;
-}
-
-const DEFAULT_SKILLS_BLOCK = "skills:\n  discovery: auto\n  enabled:\n    - council";
-
-function buildYaml(config: AgentConfig): string {
-  let yaml = `name: ${config.name}\n`;
-  yaml += `version: ${config.version}\n`;
-  yaml += `description: "${config.description}"\n`;
-  yaml += `\nmodels:\n`;
-  yaml += `  primary: ${config.primary_model}\n`;
-  if (config.fallback_models.length > 0) {
-    yaml += `  fallback:\n`;
-    for (const m of config.fallback_models) {
-      yaml += `    - ${m}\n`;
-    }
-  }
-  yaml += `\nmemory:\n  sessions: sessions/\n  wiki: wiki/\n`;
-  yaml += `\nhooks:\n  session_start: "aib hook start {client}"\n  session_end: "aib hook end {client}"\n`;
-  yaml += `\n${config.skills_raw || DEFAULT_SKILLS_BLOCK}\n`;
-  yaml += `\ncompliance:\n  session_retention: permanent\n  wiki_retention: permanent\n`;
-  yaml += `\naib_version: ${config.aib_version}\n`;
-  return yaml;
-}
+import {
+  parseAgentYamlDocument,
+  patchAgentYamlDocument,
+  type AgentConfig,
+} from "./yamlDocument";
 
 function Field({
   label,
@@ -128,6 +42,7 @@ export function YamlFormEditor() {
   const { selectedBarrack, fetchBarracks } = useAppStore();
   const barrackPath = selectedBarrack?.path;
   const [config, setConfig] = useState<AgentConfig | null>(null);
+  const [rawConfig, setRawConfig] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -144,7 +59,9 @@ export function YamlFormEditor() {
         barrackPath,
         filename: "agent.yaml",
       });
-      setConfig(parseYaml(content));
+      const doc = parseAgentYamlDocument(content);
+      setConfig(doc.data);
+      setRawConfig(doc.raw);
       setHasChanges(false);
     } catch (e) {
       console.error("Failed to load agent.yaml:", e);
@@ -165,12 +82,21 @@ export function YamlFormEditor() {
     if (!barrackPath || !config) return;
     setSaving(true);
     setSaveMsg(null);
+    const patched = patchAgentYamlDocument(rawConfig, config);
+    if (!patched.ok) {
+      setSaveMsg(`저장 실패: ${patched.failure.field} ${patched.failure.reason}`);
+      setSaving(false);
+      return;
+    }
     try {
       await invoke("write_barrack_file", {
         barrackPath,
         filename: "agent.yaml",
-        content: buildYaml(config),
+        content: patched.raw,
       });
+      const doc = parseAgentYamlDocument(patched.raw);
+      setConfig(doc.data);
+      setRawConfig(doc.raw);
       setHasChanges(false);
       setSaveMsg("저장 완료");
       await fetchBarracks();
