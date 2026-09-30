@@ -39,7 +39,9 @@ pub fn get_wiki_index(barrack_path: String) -> Result<WikiIndex, String> {
                 continue;
             }
             // Stop at next section
-            if in_table && (trimmed.starts_with('#') || (!trimmed.starts_with('|') && !trimmed.is_empty())) {
+            if in_table
+                && (trimmed.starts_with('#') || (!trimmed.starts_with('|') && !trimmed.is_empty()))
+            {
                 in_table = false;
                 continue;
             }

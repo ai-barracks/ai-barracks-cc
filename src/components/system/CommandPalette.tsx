@@ -1,3 +1,4 @@
+import { readProviderProfile } from "../../utils/providerProfile";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
@@ -55,7 +56,7 @@ export function CommandPalette() {
         category: "agent",
         action: async () => {
           const cmd = await invoke<LaunchCommand>("get_launch_command", {
-            barrackPath: b.path, client, skipPermissions: false,
+            barrackPath: b.path, client, skipPermissions: false, ...readProviderProfile(client),
           });
           addTerminal({
             id: crypto.randomUUID(),

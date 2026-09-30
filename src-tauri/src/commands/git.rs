@@ -128,8 +128,16 @@ pub fn get_git_status(barrack_path: String) -> Result<GitStatus, String> {
     // Last commit (filtered to barrack path if sub-path)
     let (last_commit, last_commit_time) = if is_sub_path {
         (
-            run_git(&git_root, &["log", "-1", "--format=%s", "--", &barrack_path]).unwrap_or_default(),
-            run_git(&git_root, &["log", "-1", "--format=%ar", "--", &barrack_path]).unwrap_or_default(),
+            run_git(
+                &git_root,
+                &["log", "-1", "--format=%s", "--", &barrack_path],
+            )
+            .unwrap_or_default(),
+            run_git(
+                &git_root,
+                &["log", "-1", "--format=%ar", "--", &barrack_path],
+            )
+            .unwrap_or_default(),
         )
     } else {
         (
@@ -173,11 +181,18 @@ pub fn get_git_log(barrack_path: String, count: usize) -> Result<Vec<GitLogEntry
     let output = match detect_git_root(&barrack_path) {
         Some((root, true)) => {
             // Sub-path: filter log to barrack directory
-            run_git(&root, &["log", &n, "--format=%H|||%s|||%an|||%ar", "--", &barrack_path])?
+            run_git(
+                &root,
+                &[
+                    "log",
+                    &n,
+                    "--format=%H|||%s|||%an|||%ar",
+                    "--",
+                    &barrack_path,
+                ],
+            )?
         }
-        _ => {
-            run_git(&barrack_path, &["log", &n, "--format=%H|||%s|||%an|||%ar"])?
-        }
+        _ => run_git(&barrack_path, &["log", &n, "--format=%H|||%s|||%an|||%ar"])?,
     };
 
     let entries = output

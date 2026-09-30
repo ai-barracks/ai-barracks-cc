@@ -243,7 +243,7 @@ CLI는 세션 시작 시점에 stale을 정리하지만, **CC는 stale이 *발�
 - **PTY와 분리** — CC 내장 터미널 *밖에서* 띄운 `claude`도 파일 기반으로 추적됩니다.
 - `.live/` 변경은 **250ms 디바운스**로 합치고, **30초 tick**으로 `working → working_stale` 같은 시간 전이도 반영합니다.
 - `done` 카드를 펼치면 해당 run을 ack → ⚪ idle. Continue로 새 run이 시작되면 `run_id`가 바뀌어 자동으로 다시 활성 표시됩니다.
-- *non-Claude(Gemini/Codex)·hook 없는 세션은 점이 없습니다* — 점의 부재를 idle로 오해하지 마세요.
+- *hook 없는 세션은 점이 없습니다 (Codex native hooks는 CLI v1.4에서 opt-in)* — 점의 부재를 idle로 오해하지 마세요.
 
 > sidecar 스키마와 fold 알고리즘의 레퍼런스는 어디까지나 `aib sessions state`이고, CC는 그 규칙을 그대로 따릅니다 (헤드리스 일관성).
 
@@ -487,3 +487,40 @@ xterm 팔레트, 창 테마, 알림 — 전부 macOS System color 기반. 시스
 *배럭에는 조종석이 필요합니다.*
 
 [⭐ Star on GitHub](https://github.com/ai-barracks/ai-barracks-cc)&nbsp;·&nbsp;[🐛 Report a bug](https://github.com/ai-barracks/ai-barracks-cc/issues)&nbsp;·&nbsp;[🏰 AI Barracks CLI](https://github.com/ai-barracks/ai-barracks)
+
+
+## 예약 활성화 (v1.5)
+
+사이드바 상단 **CommandCenter → System → Scheduled activation**에서 CLI를 선택하고 ON을 확인합니다. 기본값은 **OFF**입니다.
+
+- 시각: **06:00, 11:00, 16:00, 21:00 Asia/Seoul**, host timezone과 무관. Backend가 5초마다 확인하며 시각 직후 1분 안에 slot을 claim합니다.
+- 동작: 선택한 Claude Code/Codex에 고정된 짧은 `OK` 요청. 모델은 격리된 CLI runtime 기본값을 사용하며 저장된 project/user model preference를 적용하지 않습니다. 개발 작업·프로젝트 파일·aib session summary를 실행하지 않습니다.
+- 보호: CLI별 날짜/시각 claim을 **요청 전 디스크에 저장**하고 실패·crash에도 재전송하지 않습니다. 두 CLI는 순서대로 실행하므로 두 번째는 앞선 CLI의 종료 뒤 시작합니다. 인증 확인 20초, 모델 호출 120초 timeout.
+- 인증: `claude auth status --json` / `codex login status`의 알려진 account auth만 허용합니다. API-key/대체 provider 환경변수는 제외하며 알 수 없는 auth나 미지원 CLI flag는 실패로 기록합니다. 인증 원문·token·model output은 저장하지 않습니다.
+- ON/CLI 선택 변경/재시작은 **다음 미래 slot**부터 적용. OFF는 pending/in-flight subprocess를 중단하지만 이미 서버에 도착한 요청을 취소하거나 사용량을 되돌릴 수는 없습니다.
+- **CC와 Mac이 실행·각성 상태여야 합니다.** 창을 닫아 tray로 숨기는 것은 가능하지만 Quit, sleep, reboot 중에는 실행하지 않습니다. 잠자기 해제, 로그인 자동 실행, 놓친 slot catch-up은 제공하지 않습니다.
+- local app data의 `activation.json`/`activation.lock`에 설정과 최근 80개 기록을 보관합니다. 다른 CC instance가 lock을 가지거나 저장 파일이 손상되면 fail-closed로 비활성화합니다.
+
+### 비용·검증 한계
+
+짧은 요청도 사용량을 소모합니다. **사용량 window 시작/초기화 및 무료 실행은 보장되지 않습니다.** extra usage/credits가 켜져 있으면 account 로그인이라도 비용이 생길 수 있습니다. Scheduler는 CLI invocation을 slot당 한 번 시작할 뿐, provider/CLI 내부 transport retry 횟수까지 통제하지는 않습니다.
+
+실제 모델 요청 없이 stub으로 검증했습니다. 현재 설치 CLI는 Codex 0.139.0 / Claude Code 2.1.118이며 최신 CLI·계정 E2E는 별도 검증해야 합니다. 관리자가 강제한 policy는 CLI에서 별도로 적용될 수 있습니다. 비용이 발생하는 실제 확인은 사용자가 ON을 선택한 뒤 진행하세요.
+
+관련 공식 동작: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [Claude CLI reference](https://code.claude.com/docs/en/cli-reference).
+
+개발 회귀 검증:
+
+```bash
+npm test
+npm run build
+cd src-tauri
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+```
+
+## Provider / Model profiles (v1.5)
+
+System의 모델 목록 조회는 모델 turn을 보내지 않습니다. Codex는 설치된 app-server의 `initialize → initialized → model/list`를 사용하고, advertised models·effort를 표시합니다. 최대 12초/4 pages, unknown schema/timeout은 오류 표시 후 runtime/custom 선택을 유지합니다. Claude 목록은 문서상 `sonnet`/`opus`/`haiku` alias로, 계정별 availability를 보장하지 않습니다.
+
+빈 model/effort가 기본(runtime default)입니다. 저장된 profile은 Sessions·Command Palette의 **새 세션에만** 적용하며 기존 세션·Continue·예약 활성화에는 적용하지 않습니다. 이 launch 기능에는 `aib >= 1.4.0`이 필요합니다. model ID를 YAML 메타데이터나 전역 CLI 설정에 쓰지 않습니다.

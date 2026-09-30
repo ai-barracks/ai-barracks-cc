@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub struct FileInfo {
@@ -20,7 +20,10 @@ fn classify_ownership(filename: &str) -> (&'static str, &'static str) {
     match filename {
         "SOUL.md" => ("직접 편집", "에이전트의 이름, 전문성, 성격을 정의"),
         "GROWTH.md" => ("직접 편집", "에이전트 성장 트리거와 지식 기록 규칙"),
-        "RULES.md" => ("자동 축적", "세션에서 학습한 행동 규칙 (에이전트가 자동 추가)"),
+        "RULES.md" => (
+            "자동 축적",
+            "세션에서 학습한 행동 규칙 (에이전트가 자동 추가)",
+        ),
         "agent.yaml" => ("aib 관리", "배럭 메타데이터, 모델 설정, 버전 정보"),
         _ => ("시스템", ""),
     }
@@ -96,8 +99,7 @@ fn validate_basename(filename: &str) -> Result<(), String> {
 /// must already exist; this resolves symlinks so that subsequent containment
 /// checks operate against the real target.
 fn canonical_dir(path: &Path) -> Result<PathBuf, String> {
-    let canon = fs::canonicalize(path)
-        .map_err(|e| format!("디렉터리 정규화 실패: {}", e))?;
+    let canon = fs::canonicalize(path).map_err(|e| format!("디렉터리 정규화 실패: {}", e))?;
     if !canon.is_dir() {
         return Err(format!("경로가 디렉터리가 아닙니다: {}", canon.display()));
     }
@@ -120,8 +122,8 @@ pub fn read_barrack_file_impl(barrack: &Path, filename: &str) -> Result<String, 
     // would miss a broken symlink that fs::read_to_string would then resolve
     // to an outside path.
     if fs::symlink_metadata(&target).is_ok() {
-        let canon_target = fs::canonicalize(&target)
-            .map_err(|e| format!("파일 정규화 실패: {}", e))?;
+        let canon_target =
+            fs::canonicalize(&target).map_err(|e| format!("파일 정규화 실패: {}", e))?;
         if !canon_target.starts_with(&root) {
             return Err("경로가 배럭 루트를 벗어남".into());
         }
@@ -149,8 +151,8 @@ pub fn write_barrack_file_impl(
     // create the outside file. symlink_metadata catches that case; we then
     // require canonicalize to succeed and resolve inside the barrack root.
     if fs::symlink_metadata(&target).is_ok() {
-        let canon_target = fs::canonicalize(&target)
-            .map_err(|e| format!("파일 정규화 실패: {}", e))?;
+        let canon_target =
+            fs::canonicalize(&target).map_err(|e| format!("파일 정규화 실패: {}", e))?;
         if !canon_target.starts_with(&root) {
             return Err("경로가 배럭 루트를 벗어남".into());
         }
@@ -185,8 +187,7 @@ pub fn write_session_export_impl(
 
     let root = canonical_dir(barrack)?;
     let sessions_dir = root.join("sessions");
-    fs::create_dir_all(&sessions_dir)
-        .map_err(|e| format!("sessions 디렉터리 생성 실패: {}", e))?;
+    fs::create_dir_all(&sessions_dir).map_err(|e| format!("sessions 디렉터리 생성 실패: {}", e))?;
     let canon_sessions = canonical_dir(&sessions_dir)?;
     if !canon_sessions.starts_with(&root) {
         return Err("sessions 디렉터리가 배럭 루트를 벗어남".into());
@@ -198,16 +199,16 @@ pub fn write_session_export_impl(
     // follow the symlink and create the outside file. canonicalize must
     // succeed and resolve to a path under canon_sessions.
     if fs::symlink_metadata(&target).is_ok() {
-        let canon_target = fs::canonicalize(&target)
-            .map_err(|e| format!("파일 정규화 실패: {}", e))?;
+        let canon_target =
+            fs::canonicalize(&target).map_err(|e| format!("파일 정규화 실패: {}", e))?;
         if !canon_target.starts_with(&canon_sessions) {
             return Err("경로가 sessions 디렉터리를 벗어남".into());
         }
     }
     // Even when target doesn't exist, verify its parent is exactly the canonical sessions dir.
     if let Some(parent) = target.parent() {
-        let canon_parent = fs::canonicalize(parent)
-            .map_err(|e| format!("부모 디렉터리 정규화 실패: {}", e))?;
+        let canon_parent =
+            fs::canonicalize(parent).map_err(|e| format!("부모 디렉터리 정규화 실패: {}", e))?;
         if canon_parent != canon_sessions {
             return Err("경로가 sessions 디렉터리를 벗어남".into());
         }
@@ -279,8 +280,7 @@ pub fn get_rules(barrack_path: String) -> Result<RulesData, String> {
 /// Minimal RULES.md template used when the file is missing or empty. Must
 /// match the frontend `emptyRulesTemplate()` so a save from a fresh barrack
 /// produces the same shape as a save from the UI.
-const RULES_TEMPLATE: &str =
-    "# Rules\n\n## Must Always\n\n## Must Never\n\n## Learned\n";
+const RULES_TEMPLATE: &str = "# Rules\n\n## Must Always\n\n## Must Never\n\n## Learned\n";
 
 #[tauri::command]
 pub fn save_rules(barrack_path: String, rules: RulesData) -> Result<(), String> {
@@ -959,11 +959,8 @@ mod tests {
                 must_never: vec![],
                 learned: vec![],
             };
-            let err = save_rules(
-                barrack.path().to_string_lossy().to_string(),
-                rules,
-            )
-            .expect_err("save_rules must reject RULES.md symlink escape");
+            let err = save_rules(barrack.path().to_string_lossy().to_string(), rules)
+                .expect_err("save_rules must reject RULES.md symlink escape");
             assert!(err.contains("배럭 루트"), "got: {}", err);
 
             // The outside file must remain unchanged.
@@ -1063,9 +1060,8 @@ custom section content
         // Comments / preamble / unknown section / fenced code / end marker preserved.
         assert!(written.contains("<!-- AIB:RULES:v1 -->"));
         assert!(written.contains("preamble prose"));
-        assert!(written.contains(
-            "## Notes\ncustom section content\n```python\n- not a managed bullet\n```"
-        ));
+        assert!(written
+            .contains("## Notes\ncustom section content\n```python\n- not a managed bullet\n```"));
         assert!(written.contains("<!-- AIB:RULES:END -->"));
     }
 
@@ -1113,7 +1109,9 @@ custom prose
         let tmp = make_barrack();
         write_session_export_impl(tmp.path(), "terminal-x-2026-01-01.txt", "buf").unwrap();
         let written = test_fs::read_to_string(
-            tmp.path().join("sessions").join("terminal-x-2026-01-01.txt"),
+            tmp.path()
+                .join("sessions")
+                .join("terminal-x-2026-01-01.txt"),
         )
         .unwrap();
         assert_eq!(written, "buf");
@@ -1166,7 +1164,10 @@ custom prose
             use std::os::unix::fs::symlink;
             let outside = make_barrack();
             let outside_target = outside.path().join("not-yet-here.md");
-            assert!(!outside_target.exists(), "precondition: target must not exist");
+            assert!(
+                !outside_target.exists(),
+                "precondition: target must not exist"
+            );
 
             let barrack = make_barrack();
             symlink(&outside_target, barrack.path().join("RULES.md")).unwrap();
@@ -1192,7 +1193,10 @@ custom prose
             use std::os::unix::fs::symlink;
             let outside = make_barrack();
             let outside_target = outside.path().join("not-yet-here.txt");
-            assert!(!outside_target.exists(), "precondition: target must not exist");
+            assert!(
+                !outside_target.exists(),
+                "precondition: target must not exist"
+            );
 
             let barrack = make_barrack();
             test_fs::create_dir_all(barrack.path().join("sessions")).unwrap();

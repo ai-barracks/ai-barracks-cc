@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.0] - 2026-10-01
+
+### Added
+- Read-only Codex app-server initialize/model-list discovery with bounded pagination and advertised effort choices; Claude documented aliases/custom IDs. Runtime-first model profiles apply to new Sessions/Command Palette launches without rewriting provider settings.
+- System → Scheduled activation: default OFF, select Claude Code/Codex, explicit ON confirmation, KST 06/11/16/21 minimal “OK” requests.
+- Backend scheduling with private atomic persistence, exclusive instance lock, durable per-slot claims, bounded history, no catch-up/retries and restart interruption records.
+- Subscription-auth preflight, API/provider environment isolation, neutral temporary workspace, disabled tools/integrations, strict structured success checking, timeout and OFF/app-exit process-group cancellation.
+- Deterministic scheduler/CLI-stub regressions and frontend schedule helpers; macOS CI runs frontend tests/build plus Rust tests/clippy.
+
+### Changed
+- Patched npm build dependencies within compatible semver ranges and refreshed the Cargo lockfile to remove quick-xml security advisories.
+- Release workflow runs regression/security gates and builds a draft universal macOS release for asset verification before publishing.
+
+### Limitations
+- Requires the app and Mac to be awake; hiding to tray is supported but sleep/quit/reboot scheduling is not.
+- No guarantee of usage-window reset or free operation: plan credits/extra usage may still bill. CLI-internal transport retries are outside the scheduler's once-per-slot guarantee.
+- Latest CLI/account E2E and real model responses are intentionally untested. Unknown authentication/unsupported flags fail closed.
+
+
 ## [1.4.1] - 2026-06-02
 
 ### Fixed

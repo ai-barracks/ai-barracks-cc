@@ -1,3 +1,4 @@
+import { readProviderProfile } from "../../utils/providerProfile";
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -95,6 +96,7 @@ export function SessionsTab() {
       const cmd = await invoke<LaunchCommand>("get_launch_command", {
         barrackPath: selectedBarrack.path,
         client,
+        ...readProviderProfile(client),
         skipPermissions,
       });
       useTerminalStore.getState().addSession({

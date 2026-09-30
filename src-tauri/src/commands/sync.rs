@@ -130,8 +130,15 @@ pub fn get_launch_command(
     barrack_path: String,
     client: String,
     skip_permissions: bool,
+    model: Option<String>,
+    effort: Option<String>,
 ) -> Result<LaunchCommand, String> {
-    let command = build_start_command(&client, skip_permissions, None);
+    let command = build_profile_command(
+        &client,
+        skip_permissions,
+        model.as_deref(),
+        effort.as_deref(),
+    )?;
     Ok(LaunchCommand {
         cwd: barrack_path,
         command,
@@ -222,6 +229,39 @@ fn build_start_command(client: &str, skip_permissions: bool, prompt: Option<&str
     shell_join(&args)
 }
 
+fn build_profile_command(
+    client: &str,
+    skip: bool,
+    model: Option<&str>,
+    effort: Option<&str>,
+) -> Result<String, String> {
+    if !["claude", "codex", "gemini"].contains(&client) {
+        return Err("Unknown client".into());
+    }
+    let mut args = vec![aib_path(), "start".into(), client.into()];
+    if skip {
+        args.push("--skip-permissions".into());
+    }
+    if let Some(model) = model.filter(|s| !s.is_empty()) {
+        if model.len() > 200 || model.chars().any(char::is_control) {
+            return Err("Invalid model".into());
+        }
+        args.extend(["--model".into(), model.into()]);
+    }
+    if let Some(effort) = effort.filter(|s| !s.is_empty()) {
+        let valid = match client {
+            "claude" => ["low", "medium", "high", "max"].contains(&effort),
+            "codex" => ["none", "minimal", "low", "medium", "high", "xhigh"].contains(&effort),
+            _ => false,
+        };
+        if !valid {
+            return Err("Unsupported reasoning effort".into());
+        }
+        args.extend(["--effort".into(), effort.into()]);
+    }
+    Ok(shell_join(&args))
+}
+
 fn shell_join(args: &[String]) -> String {
     args.iter()
         .map(|arg| shell_quote(arg))
@@ -247,6 +287,17 @@ fn apple_script_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{apple_script_string, shell_join, shell_quote};
+
+    #[test]
+    fn profile_options_are_quoted_and_validated() {
+        let command =
+            super::build_profile_command("codex", false, Some("model'; echo pwned"), Some("high"))
+                .unwrap();
+        assert!(command.contains("'--model' 'model'\\''; echo pwned'"));
+        assert!(!command.contains("skip-permissions"));
+        assert!(super::build_profile_command("codex", false, None, Some("high\";x")).is_err());
+        assert!(super::build_profile_command("other", false, None, None).is_err());
+    }
 
     #[test]
     fn shell_quote_handles_empty_and_single_quotes() {

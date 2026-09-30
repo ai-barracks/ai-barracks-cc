@@ -76,8 +76,8 @@ pub fn get_sessions(barrack_path: String) -> Result<Vec<SessionInfo>, String> {
     let sessions_dir = PathBuf::from(&barrack_path).join("sessions");
     let mut sessions = Vec::new();
 
-    let entries = fs::read_dir(&sessions_dir)
-        .map_err(|e| format!("sessions 디렉토리 읽기 실패: {}", e))?;
+    let entries =
+        fs::read_dir(&sessions_dir).map_err(|e| format!("sessions 디렉토리 읽기 실패: {}", e))?;
 
     for entry in entries.flatten() {
         let filename = entry.file_name().to_string_lossy().to_string();
@@ -111,13 +111,16 @@ pub fn get_sessions(barrack_path: String) -> Result<Vec<SessionInfo>, String> {
 }
 
 #[tauri::command]
-pub fn get_session_detail(barrack_path: String, session_id: String) -> Result<SessionDetail, String> {
+pub fn get_session_detail(
+    barrack_path: String,
+    session_id: String,
+) -> Result<SessionDetail, String> {
     let file_path = PathBuf::from(&barrack_path)
         .join("sessions")
         .join(format!("{}.md", session_id));
 
-    let content = fs::read_to_string(&file_path)
-        .map_err(|e| format!("세션 파일 읽기 실패: {}", e))?;
+    let content =
+        fs::read_to_string(&file_path).map_err(|e| format!("세션 파일 읽기 실패: {}", e))?;
 
     let client_field = parse_field(&content, "Client");
     let client = if client_field.is_empty() {

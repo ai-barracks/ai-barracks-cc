@@ -266,27 +266,99 @@ mod tests {
     fn fold_matrix() {
         let now = 1_000_000i64;
         // blocked: alive/unknown -> blocked (any age); dead -> crashed
-        assert_eq!(fold(&st("blocked", now - 99999, "r"), None, now, Alive, STALE), Effective::Blocked);
-        assert_eq!(fold(&st("blocked", now, "r"), None, now, Unknown, STALE), Effective::Blocked);
-        assert_eq!(fold(&st("blocked", now, "r"), None, now, Dead, STALE), Effective::Crashed);
+        assert_eq!(
+            fold(&st("blocked", now - 99999, "r"), None, now, Alive, STALE),
+            Effective::Blocked
+        );
+        assert_eq!(
+            fold(&st("blocked", now, "r"), None, now, Unknown, STALE),
+            Effective::Blocked
+        );
+        assert_eq!(
+            fold(&st("blocked", now, "r"), None, now, Dead, STALE),
+            Effective::Crashed
+        );
         // working: dead -> interrupted; alive/unknown -> age-based (boundary: > STALE, not >=)
-        assert_eq!(fold(&st("working", now, "r"), None, now, Alive, STALE), Effective::Working);
-        assert_eq!(fold(&st("working", now - STALE, "r"), None, now, Alive, STALE), Effective::Working); // ==STALE stays working
-        assert_eq!(fold(&st("working", now - STALE - 1, "r"), None, now, Alive, STALE), Effective::WorkingStale); // >STALE
-        assert_eq!(fold(&st("working", now - STALE - 1, "r"), None, now, Unknown, STALE), Effective::WorkingStale);
-        assert_eq!(fold(&st("working", now, "r"), None, now, Dead, STALE), Effective::Interrupted);
+        assert_eq!(
+            fold(&st("working", now, "r"), None, now, Alive, STALE),
+            Effective::Working
+        );
+        assert_eq!(
+            fold(&st("working", now - STALE, "r"), None, now, Alive, STALE),
+            Effective::Working
+        ); // ==STALE stays working
+        assert_eq!(
+            fold(
+                &st("working", now - STALE - 1, "r"),
+                None,
+                now,
+                Alive,
+                STALE
+            ),
+            Effective::WorkingStale
+        ); // >STALE
+        assert_eq!(
+            fold(
+                &st("working", now - STALE - 1, "r"),
+                None,
+                now,
+                Unknown,
+                STALE
+            ),
+            Effective::WorkingStale
+        );
+        assert_eq!(
+            fold(&st("working", now, "r"), None, now, Dead, STALE),
+            Effective::Interrupted
+        );
         // done: unacked -> done (alive/dead/unknown); ack match -> idle; ack mismatch -> done
-        assert_eq!(fold(&st("done", now, "r"), None, now, Alive, STALE), Effective::Done);
-        assert_eq!(fold(&st("done", now, "r"), None, now, Dead, STALE), Effective::Done);
-        assert_eq!(fold(&st("done", now, "RID"), Some(&AckFile { acked_run_id: "RID".into(), ack_ts: now }), now, Alive, STALE), Effective::Idle);
-        assert_eq!(fold(&st("done", now, "RID"), Some(&AckFile { acked_run_id: "OTHER".into(), ack_ts: now }), now, Alive, STALE), Effective::Done);
+        assert_eq!(
+            fold(&st("done", now, "r"), None, now, Alive, STALE),
+            Effective::Done
+        );
+        assert_eq!(
+            fold(&st("done", now, "r"), None, now, Dead, STALE),
+            Effective::Done
+        );
+        assert_eq!(
+            fold(
+                &st("done", now, "RID"),
+                Some(&AckFile {
+                    acked_run_id: "RID".into(),
+                    ack_ts: now
+                }),
+                now,
+                Alive,
+                STALE
+            ),
+            Effective::Idle
+        );
+        assert_eq!(
+            fold(
+                &st("done", now, "RID"),
+                Some(&AckFile {
+                    acked_run_id: "OTHER".into(),
+                    ack_ts: now
+                }),
+                now,
+                Alive,
+                STALE
+            ),
+            Effective::Done
+        );
         // malformed state -> none
-        assert_eq!(fold(&st("weird", now, "r"), None, now, Alive, STALE), Effective::None);
+        assert_eq!(
+            fold(&st("weird", now, "r"), None, now, Alive, STALE),
+            Effective::None
+        );
     }
 
     #[test]
     fn effective_serializes_snake_case() {
-        assert_eq!(serde_json::to_string(&Effective::WorkingStale).unwrap(), "\"working_stale\"");
+        assert_eq!(
+            serde_json::to_string(&Effective::WorkingStale).unwrap(),
+            "\"working_stale\""
+        );
         assert_eq!(serde_json::to_string(&Effective::None).unwrap(), "\"none\"");
     }
 
@@ -310,7 +382,11 @@ mod tests {
             r#"{"version":1,"session_id":"claude-b","run_id":"RB","state":"done","event":"Stop","reason":"turn_complete","source":"claude_hook","confidence":"high","ts":1,"pid":0}"#,
         )
         .unwrap();
-        fs::write(live.join("claude-b.ack"), r#"{"version":1,"acked_run_id":"RB","ack_ts":2}"#).unwrap();
+        fs::write(
+            live.join("claude-b.ack"),
+            r#"{"version":1,"acked_run_id":"RB","ack_ts":2}"#,
+        )
+        .unwrap();
         let mut v = read_live_states(tmp.path().to_str().unwrap()).unwrap();
         v.sort_by(|a, b| a.session_id.cmp(&b.session_id));
         assert_eq!(v.len(), 2);
@@ -322,7 +398,9 @@ mod tests {
     #[test]
     fn read_states_missing_dir_is_empty() {
         let tmp = TempDir::new().unwrap();
-        assert!(read_live_states(tmp.path().to_str().unwrap()).unwrap().is_empty());
+        assert!(read_live_states(tmp.path().to_str().unwrap())
+            .unwrap()
+            .is_empty());
     }
 
     // REV3 B2: a .status missing a required field (ts) fails serde -> excluded (parity with bash 'none').
@@ -371,10 +449,25 @@ mod tests {
     #[test]
     fn ack_does_not_preack_later_done_same_run() {
         let now = 1_000_000i64;
-        let ack = AckFile { acked_run_id: "RID".into(), ack_ts: now };
+        let ack = AckFile {
+            acked_run_id: "RID".into(),
+            ack_ts: now,
+        };
         // the done that was acknowledged -> idle
-        assert_eq!(fold(&st("done", now, "RID"), Some(&ack), now, Alive, STALE), Effective::Idle);
+        assert_eq!(
+            fold(&st("done", now, "RID"), Some(&ack), now, Alive, STALE),
+            Effective::Idle
+        );
         // a NEW done in the same run, after the ack -> still Done (not pre-acked)
-        assert_eq!(fold(&st("done", now + 50, "RID"), Some(&ack), now + 50, Alive, STALE), Effective::Done);
+        assert_eq!(
+            fold(
+                &st("done", now + 50, "RID"),
+                Some(&ack),
+                now + 50,
+                Alive,
+                STALE
+            ),
+            Effective::Done
+        );
     }
 }
