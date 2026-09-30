@@ -486,7 +486,7 @@ impl ScrollbackStore {
         // 2) Global cap: evict oldest-first until under the cap.
         let mut total: u64 = items.iter().map(|it| it.bytes).sum();
         if total > self.global_max_bytes {
-            items.sort_by(|a, b| a.mtime.cmp(&b.mtime)); // oldest first
+            items.sort_by_key(|a| a.mtime); // oldest first
             for it in &items {
                 if total <= self.global_max_bytes {
                     break;
