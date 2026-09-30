@@ -48,7 +48,7 @@ export function ActivationSchedule() {
         <button type="button" role="switch" aria-checked={config.enabled} aria-label="Scheduled activation on/off"
           disabled={saving || !view || (!view.available && !config.enabled)}
           onClick={() => config.enabled ? void save({ ...config, enabled: false }) : setConfirming(true)}
-          className={`text-[12px] px-3 py-1 rounded-md border disabled:opacity-40 ${config.enabled ? "border-cc-success text-cc-success" : "border-cc-border text-cc-text-muted"}`}>
+          className={`text-[12px] px-3 py-1 rounded-md border disabled:opacity-40 ${config.enabled ? "border-cc-success text-cc-success" : "border-cc-border text-cc-text-dim"}`}>
           {saving ? "Saving…" : config.enabled ? "ON" : "OFF"}
         </button>
       </div>
@@ -62,12 +62,12 @@ export function ActivationSchedule() {
           </label>
         ))}
       </div>
-      <p className="text-[12px] text-cc-text-muted leading-relaxed">
+      <p className="text-[12px] text-cc-text-dim leading-relaxed">
         One “OK” request per selected CLI per slot. Subscription login required; no API-key fallback.
         Requests consume usage and do not guarantee a quota reset. Extra usage/credits may still be billed by your plan.
         Uses the isolated CLI default model, not a pinned model or your project settings.
       </p>
-      <p className="text-[12px] text-cc-text-muted mt-2 leading-relaxed">
+      <p className="text-[12px] text-cc-text-dim mt-2 leading-relaxed">
         Runs only while CommandCenter and your Mac are awake (hiding to tray is OK).
         No wake-from-sleep, missed-slot catch-up or automatic retries. Turning ON starts at the next future slot.
         OFF stops pending work; it cannot undo a request already sent.
@@ -78,7 +78,7 @@ export function ActivationSchedule() {
           <div className="flex gap-3 mt-2">
             <button type="button" disabled={disabled || !hasSelectedCli(config)} onClick={() => void save({ ...config, enabled: true })}
               className="px-3 py-1.5 rounded bg-cc-accent text-white disabled:opacity-40">Enable requests</button>
-            <button type="button" onClick={() => setConfirming(false)} className="text-cc-text-muted">Cancel</button>
+            <button type="button" onClick={() => setConfirming(false)} className="text-cc-text-dim">Cancel</button>
           </div>
           {!hasSelectedCli(config) && <p className="mt-2 text-cc-warning">Select at least one CLI.</p>}
         </div>
@@ -89,12 +89,12 @@ export function ActivationSchedule() {
       </p>
       {view && view.history.length > 0 && (
         <details className="mt-3 text-[12px]">
-          <summary className="cursor-pointer text-cc-text-muted">Recent activations ({view.history.length})</summary>
+          <summary className="cursor-pointer text-cc-text-dim">Recent activations ({view.history.length})</summary>
           <ul className="mt-2 space-y-2 max-h-48 overflow-y-auto">
             {view.history.map((run) => (
               <li key={`${run.provider}-${run.slot}`} className="border-t border-cc-border pt-2">
                 <span className="font-medium">{run.provider} · {formatKstSlot(run.slot)} · {run.status}</span>
-                <p className="text-cc-text-muted">{run.detail}</p>
+                <p className="text-cc-text-dim">{run.detail}</p>
               </li>
             ))}
           </ul>

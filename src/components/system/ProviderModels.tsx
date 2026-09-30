@@ -27,15 +27,15 @@ function Provider({ client }: { client: "claude" | "codex" }) {
     <label className="block text-xs">Reasoning effort
       <select aria-label={`${client} effort`} value={profile.effort} onChange={e => { setProfile({ ...profile, effort: e.target.value }); setSaved(false); }} className="ml-2 bg-cc-bg border border-cc-border rounded p-1"><option value="">runtime default</option>{efforts.map(e => <option key={e}>{e}</option>)}</select>
     </label>
-    <button onClick={() => { try { saveProviderProfile(client, profile); setSaved(true); } catch { setError("Profile 저장 실패"); } }} className="text-xs px-3 py-1 border border-cc-border rounded">새 세션에 적용</button>{saved && <span className="text-xs ml-2 text-cc-text-muted">저장됨</span>}
-    {info && <p className="text-xs text-cc-text-muted">{info.source}</p>}
+    <button onClick={() => { try { saveProviderProfile(client, profile); setSaved(true); } catch { setError("Profile 저장 실패"); } }} className="text-xs px-3 py-1 border border-cc-border rounded">새 세션에 적용</button>{saved && <span className="text-xs ml-2 text-cc-text-dim">저장됨</span>}
+    {info && <p className="text-xs text-cc-text-dim">{info.source}</p>}
     {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
   </div>;
 }
 export function ProviderModels() {
   return <section className="mb-5 p-4 bg-cc-panel border border-cc-border rounded-lg">
     <h2 className="font-semibold mb-2">Provider / Model profiles</h2>
-    <p className="text-xs text-cc-text-muted mb-3">조회는 모델 요청을 보내지 않습니다. Codex는 설치 CLI·계정이 광고하는 목록, Claude는 문서상 alias입니다. 지원 여부는 CLI가 최종 검증합니다. Sessions·Command Palette의 새 세션에만 적용하며 기존 세션과 예약 활성화에는 적용하지 않습니다.</p>
+    <p className="text-xs text-cc-text-dim mb-3">조회는 모델 요청을 보내지 않습니다. Codex는 설치 CLI·계정이 광고하는 목록, Claude는 문서상 alias입니다. 지원 여부는 CLI가 최종 검증합니다. Sessions·Command Palette의 새 세션에만 적용하며 기존 세션과 예약 활성화에는 적용하지 않습니다.</p>
     <div className="grid gap-3 md:grid-cols-2"><Provider client="codex" /><Provider client="claude" /></div>
   </section>;
 }
