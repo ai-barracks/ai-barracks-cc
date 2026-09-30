@@ -50,10 +50,10 @@ fn lookup_skills_root(barrack: &Path) -> Result<Option<PathBuf>, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(format!("skills 디렉터리 확인 실패: {}", e)),
     }
-    let canon_barrack = fs::canonicalize(barrack)
-        .map_err(|e| format!("barrack 정규화 실패: {}", e))?;
-    let canon_skills = fs::canonicalize(&skills_dir)
-        .map_err(|e| format!("skills 디렉터리 정규화 실패: {}", e))?;
+    let canon_barrack =
+        fs::canonicalize(barrack).map_err(|e| format!("barrack 정규화 실패: {}", e))?;
+    let canon_skills =
+        fs::canonicalize(&skills_dir).map_err(|e| format!("skills 디렉터리 정규화 실패: {}", e))?;
     if !canon_skills.starts_with(&canon_barrack) {
         return Err("skills 디렉터리가 barrack 루트를 벗어남".into());
     }
@@ -117,13 +117,13 @@ fn ensure_skill_md_inside(canon_skills: &Path, slug: &str) -> Result<(), String>
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(format!("SKILL.md 확인 실패: {}", e)),
     }
-    let canon_skill_dir = fs::canonicalize(&skill_dir)
-        .map_err(|e| format!("skill 디렉터리 정규화 실패: {}", e))?;
+    let canon_skill_dir =
+        fs::canonicalize(&skill_dir).map_err(|e| format!("skill 디렉터리 정규화 실패: {}", e))?;
     if !canon_skill_dir.starts_with(canon_skills) {
         return Err("skill 디렉터리가 skills 루트를 벗어남".into());
     }
-    let canon_md = fs::canonicalize(&skill_md)
-        .map_err(|e| format!("SKILL.md 정규화 실패: {}", e))?;
+    let canon_md =
+        fs::canonicalize(&skill_md).map_err(|e| format!("SKILL.md 정규화 실패: {}", e))?;
     if !canon_md.starts_with(&canon_skill_dir) {
         return Err("SKILL.md 경로가 skill 디렉터리를 벗어남".into());
     }
@@ -139,7 +139,11 @@ pub struct SkillCard {
     pub aib_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream: Option<String>,
-    #[serde(rename(deserialize = "argument-hint"), default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename(deserialize = "argument-hint"),
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub argument_hint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parse_error: Option<String>,
@@ -174,9 +178,17 @@ struct SkillFrontmatter {
 pub struct SkillFrontmatterWrite {
     pub name: String,
     pub description: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "argument-hint")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "argument-hint"
+    )]
     pub argument_hint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "allowed-tools")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "allowed-tools"
+    )]
     pub allowed_tools: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aib_version: Option<String>,
@@ -195,21 +207,36 @@ pub fn render_frontmatter_yaml(fm: &SkillFrontmatterWrite) -> String {
     use serde_yaml::Value;
     let mut map = serde_yaml::Mapping::new();
     map.insert(Value::String("name".into()), Value::String(fm.name.clone()));
-    map.insert(Value::String("description".into()), Value::String(fm.description.clone()));
+    map.insert(
+        Value::String("description".into()),
+        Value::String(fm.description.clone()),
+    );
     if let Some(v) = &fm.argument_hint {
-        map.insert(Value::String("argument-hint".into()), Value::String(v.clone()));
+        map.insert(
+            Value::String("argument-hint".into()),
+            Value::String(v.clone()),
+        );
     }
     if let Some(v) = &fm.allowed_tools {
-        map.insert(Value::String("allowed-tools".into()), Value::String(v.clone()));
+        map.insert(
+            Value::String("allowed-tools".into()),
+            Value::String(v.clone()),
+        );
     }
     if let Some(v) = &fm.aib_version {
-        map.insert(Value::String("aib_version".into()), Value::String(v.clone()));
+        map.insert(
+            Value::String("aib_version".into()),
+            Value::String(v.clone()),
+        );
     }
     if let Some(v) = &fm.upstream {
         map.insert(Value::String("upstream".into()), Value::String(v.clone()));
     }
     if let Some(v) = &fm.growth_origin {
-        map.insert(Value::String("growth_origin".into()), Value::String(v.clone()));
+        map.insert(
+            Value::String("growth_origin".into()),
+            Value::String(v.clone()),
+        );
     }
     for (k, v) in &fm.custom {
         map.insert(k.clone(), v.clone());
@@ -340,7 +367,8 @@ pub fn rename_skill_impl(barrack: &Path, old_slug: &str, new_slug: &str) -> Resu
         // Defense-in-depth: re-verify under the new slug post-rename in case
         // anything raced. (The pre-rename check already validated the file.)
         ensure_skill_md_inside(&canon_skills, new_slug)?;
-        let content = fs::read_to_string(&skill_md).map_err(|e| format!("read SKILL.md failed: {}", e))?;
+        let content =
+            fs::read_to_string(&skill_md).map_err(|e| format!("read SKILL.md failed: {}", e))?;
         let updated = update_name_in_frontmatter(&content, new_slug);
         fs::write(&skill_md, updated).map_err(|e| format!("write SKILL.md failed: {}", e))?;
     }
@@ -577,21 +605,31 @@ mod tests {
     #[test]
     fn parses_valid_frontmatter() {
         // slug와 name을 다르게 해서 name이 YAML에서 왔는지 / slug fallback인지 구분 가능하게 함
-        let input = "---\nname: pretty-name\ndescription: bar\naib_version: \"1.1\"\n---\nBody text\n";
+        let input =
+            "---\nname: pretty-name\ndescription: bar\naib_version: \"1.1\"\n---\nBody text\n";
         let card = parse_skill_md("my-slug", input);
         assert_eq!(card.slug, "my-slug");
-        assert_eq!(card.name, "pretty-name");  // YAML의 name이 사용됨 (slug fallback 아님)
+        assert_eq!(card.name, "pretty-name"); // YAML의 name이 사용됨 (slug fallback 아님)
         assert_eq!(card.description, "bar");
         assert_eq!(card.aib_version, Some("1.1".to_string()));
-        assert!(card.parse_error.is_none(), "expected no parse_error, got {:?}", card.parse_error);
+        assert!(
+            card.parse_error.is_none(),
+            "expected no parse_error, got {:?}",
+            card.parse_error
+        );
     }
 
     #[test]
     fn parses_argument_hint_with_hyphen_yaml_key() {
         // YAML의 'argument-hint' (hyphen)이 Rust의 argument_hint (underscore)로 매핑되는지 확인
-        let input = "---\nname: council\ndescription: x\nargument-hint: \"<topic> -m debate\"\n---\nbody\n";
+        let input =
+            "---\nname: council\ndescription: x\nargument-hint: \"<topic> -m debate\"\n---\nbody\n";
         let card = parse_skill_md("council", input);
-        assert!(card.parse_error.is_none(), "expected no parse_error, got {:?}", card.parse_error);
+        assert!(
+            card.parse_error.is_none(),
+            "expected no parse_error, got {:?}",
+            card.parse_error
+        );
         assert_eq!(card.argument_hint, Some("<topic> -m debate".to_string()));
     }
 
@@ -601,14 +639,22 @@ mod tests {
         let card = parse_skill_md("foo", input);
         assert_eq!(card.slug, "foo");
         assert_eq!(card.name, "foo"); // slug fallback
-        assert!(card.parse_error.as_deref().unwrap_or("").contains("frontmatter 블록 누락"));
+        assert!(card
+            .parse_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("frontmatter 블록 누락"));
     }
 
     #[test]
     fn flags_missing_closing_delimiter() {
         let input = "---\nname: foo\nBody\n";
         let card = parse_skill_md("foo", input);
-        assert!(card.parse_error.as_deref().unwrap_or("").contains("닫는 '---'"));
+        assert!(card
+            .parse_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("닫는 '---'"));
     }
 
     #[test]
@@ -618,7 +664,8 @@ mod tests {
         let card = parse_skill_md("foo", input);
         assert!(
             card.parse_error.as_deref().unwrap_or("").contains("YAML"),
-            "expected YAML parse error, got {:?}", card.parse_error
+            "expected YAML parse error, got {:?}",
+            card.parse_error
         );
     }
 
@@ -654,7 +701,11 @@ mod tests {
     fn finds_single_skill() {
         let tmp = TempDir::new().unwrap();
         let skills_dir = tmp.path().join("skills");
-        write_skill(&skills_dir, "council", "---\nname: council\ndescription: A skill\n---\nBody\n");
+        write_skill(
+            &skills_dir,
+            "council",
+            "---\nname: council\ndescription: A skill\n---\nBody\n",
+        );
         let cards = walk_skills_dir(&skills_dir);
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].slug, "council");
@@ -667,7 +718,11 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let skills_dir = tmp.path().join("skills");
         write_skill(&skills_dir, "zoo", "---\nname: zoo\ndescription: z\n---\n");
-        write_skill(&skills_dir, "alpha", "---\nname: alpha\ndescription: a\n---\n");
+        write_skill(
+            &skills_dir,
+            "alpha",
+            "---\nname: alpha\ndescription: a\n---\n",
+        );
         write_skill(&skills_dir, "mid", "---\nname: mid\ndescription: m\n---\n");
         let cards = walk_skills_dir(&skills_dir);
         let slugs: Vec<&str> = cards.iter().map(|c| c.slug.as_str()).collect();
@@ -678,7 +733,11 @@ mod tests {
     fn ignores_dirs_without_skill_md() {
         let tmp = TempDir::new().unwrap();
         let skills_dir = tmp.path().join("skills");
-        write_skill(&skills_dir, "council", "---\nname: council\ndescription: c\n---\n");
+        write_skill(
+            &skills_dir,
+            "council",
+            "---\nname: council\ndescription: c\n---\n",
+        );
         // SKILL.md 없는 디렉터리
         test_fs::create_dir_all(skills_dir.join("not_a_skill")).unwrap();
         let cards = walk_skills_dir(&skills_dir);
@@ -705,7 +764,10 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         test_fs::create_dir_all(skills_dir.join("noperm")).unwrap();
         let path = skills_dir.join("noperm").join("SKILL.md");
-        File::create(&path).unwrap().write_all(b"---\nname: x\n---\n").unwrap();
+        File::create(&path)
+            .unwrap()
+            .write_all(b"---\nname: x\n---\n")
+            .unwrap();
         let mut perms = test_fs::metadata(&path).unwrap().permissions();
         perms.set_mode(0o000);
         test_fs::set_permissions(&path, perms).unwrap();
@@ -721,7 +783,8 @@ mod tests {
         let err = cards[0].parse_error.as_deref().unwrap_or("");
         assert!(
             err.contains("읽기 실패"),
-            "expected '읽기 실패' in parse_error, got {:?}", cards[0].parse_error
+            "expected '읽기 실패' in parse_error, got {:?}",
+            cards[0].parse_error
         );
     }
 
@@ -764,11 +827,13 @@ mod tests {
         let json = serde_json::to_string(&card).unwrap();
         assert!(
             json.contains("\"argument_hint\""),
-            "JSON must use underscore key for TS compatibility, got: {}", json
+            "JSON must use underscore key for TS compatibility, got: {}",
+            json
         );
         assert!(
             !json.contains("\"argument-hint\""),
-            "hyphen key must NOT appear in serialized output (would break frontend), got: {}", json
+            "hyphen key must NOT appear in serialized output (would break frontend), got: {}",
+            json
         );
     }
 
@@ -788,10 +853,23 @@ mod tests {
             custom: Default::default(),
         };
         let yaml = render_frontmatter_yaml(&fm);
-        assert!(yaml.contains("argument-hint:"), "must use hyphen key for argument-hint, got:\n{}", yaml);
-        assert!(yaml.contains("allowed-tools:"), "must use hyphen key for allowed-tools");
-        assert!(!yaml.contains("argument_hint:"), "must NOT serialize underscore form");
-        assert!(!yaml.contains("allowed_tools:"), "must NOT serialize underscore form");
+        assert!(
+            yaml.contains("argument-hint:"),
+            "must use hyphen key for argument-hint, got:\n{}",
+            yaml
+        );
+        assert!(
+            yaml.contains("allowed-tools:"),
+            "must use hyphen key for allowed-tools"
+        );
+        assert!(
+            !yaml.contains("argument_hint:"),
+            "must NOT serialize underscore form"
+        );
+        assert!(
+            !yaml.contains("allowed_tools:"),
+            "must NOT serialize underscore form"
+        );
     }
 
     #[test]
@@ -815,9 +893,9 @@ mod tests {
         assert!(written.starts_with("---\n"));
         assert!(written.contains("name: kanban"));
         assert!(written.contains("description: Lightweight kanban"));
-        assert!(written.contains("argument-hint:"));  // hyphen key (Task 1 invariant)
-        assert!(written.contains("\n---\n"));          // closing fence
-        assert!(written.contains("# Kanban"));         // body
+        assert!(written.contains("argument-hint:")); // hyphen key (Task 1 invariant)
+        assert!(written.contains("\n---\n")); // closing fence
+        assert!(written.contains("# Kanban")); // body
     }
 
     #[test]
@@ -832,8 +910,13 @@ mod tests {
             description: "x".repeat(20),
             ..Default::default()
         };
-        let err = create_skill_impl(barrack, "kanban", &fm, "body").expect_err("must reject existing slug");
-        assert!(err.contains("already exists"), "expected 'already exists' in error, got: {}", err);
+        let err = create_skill_impl(barrack, "kanban", &fm, "body")
+            .expect_err("must reject existing slug");
+        assert!(
+            err.contains("already exists"),
+            "expected 'already exists' in error, got: {}",
+            err
+        );
     }
 
     #[test]
@@ -873,7 +956,8 @@ mod tests {
             description: "Ghost skill must not be writable as update.".into(),
             ..Default::default()
         };
-        let err = update_skill_impl(barrack, "ghost", &fm, "body").expect_err("must reject missing slug");
+        let err =
+            update_skill_impl(barrack, "ghost", &fm, "body").expect_err("must reject missing slug");
         assert!(err.contains("not found"));
     }
 
@@ -889,13 +973,17 @@ mod tests {
 
         delete_skill_impl(barrack, "oldskill").unwrap();
 
-        assert!(!skill_dir.exists(), "skill dir should be removed recursively");
+        assert!(
+            !skill_dir.exists(),
+            "skill dir should be removed recursively"
+        );
     }
 
     #[test]
     fn delete_skill_errors_on_missing_slug() {
         let tmp = tempfile::tempdir().unwrap();
-        let err = delete_skill_impl(tmp.path(), "nonexistent").expect_err("must reject missing slug");
+        let err =
+            delete_skill_impl(tmp.path(), "nonexistent").expect_err("must reject missing slug");
         assert!(err.contains("not found"));
     }
 
@@ -913,12 +1001,27 @@ mod tests {
 
         rename_skill_impl(barrack, "oldname", "newname").unwrap();
 
-        assert!(!barrack.join("skills/oldname").exists(), "old dir should be gone");
-        assert!(barrack.join("skills/newname/SKILL.md").exists(), "new dir should exist");
+        assert!(
+            !barrack.join("skills/oldname").exists(),
+            "old dir should be gone"
+        );
+        assert!(
+            barrack.join("skills/newname/SKILL.md").exists(),
+            "new dir should exist"
+        );
         let content = test_fs::read_to_string(barrack.join("skills/newname/SKILL.md")).unwrap();
-        assert!(content.contains("name: newname"), "name field must be updated");
-        assert!(!content.contains("name: oldname"), "old name must be replaced");
-        assert!(content.contains("argument-hint:"), "other frontmatter fields preserved");
+        assert!(
+            content.contains("name: newname"),
+            "name field must be updated"
+        );
+        assert!(
+            !content.contains("name: oldname"),
+            "old name must be replaced"
+        );
+        assert!(
+            content.contains("argument-hint:"),
+            "other frontmatter fields preserved"
+        );
         assert!(content.contains("body content"), "body preserved");
     }
 
@@ -934,10 +1037,14 @@ mod tests {
         create_skill_impl(barrack, "a", &fm, "body").unwrap();
         create_skill_impl(barrack, "b", &fm, "body").unwrap();
 
-        let err = rename_skill_impl(barrack, "a", "b").expect_err("must reject existing target slug");
+        let err =
+            rename_skill_impl(barrack, "a", "b").expect_err("must reject existing target slug");
         assert!(err.contains("already exists") || err.contains("collision"));
         // Source preserved on error
-        assert!(barrack.join("skills/a").exists(), "source must remain on error");
+        assert!(
+            barrack.join("skills/a").exists(),
+            "source must remain on error"
+        );
     }
 
     #[test]
@@ -955,9 +1062,18 @@ mod tests {
             "argument-hint":"<a>",
             "allowed-tools":"Bash(*)"
         }"#;
-        let fm: SkillFrontmatterWrite = serde_json::from_str(json).expect("deserialize must succeed");
-        assert_eq!(fm.argument_hint.as_deref(), Some("<a>"), "argument-hint must deserialize into Rust argument_hint");
-        assert_eq!(fm.allowed_tools.as_deref(), Some("Bash(*)"), "allowed-tools must deserialize into Rust allowed_tools");
+        let fm: SkillFrontmatterWrite =
+            serde_json::from_str(json).expect("deserialize must succeed");
+        assert_eq!(
+            fm.argument_hint.as_deref(),
+            Some("<a>"),
+            "argument-hint must deserialize into Rust argument_hint"
+        );
+        assert_eq!(
+            fm.allowed_tools.as_deref(),
+            Some("Bash(*)"),
+            "allowed-tools must deserialize into Rust allowed_tools"
+        );
     }
 
     // ---- AIBCC-002: slug validation + traversal defense-in-depth ----
@@ -972,19 +1088,19 @@ mod tests {
     #[test]
     fn validate_slug_rejects_malformed() {
         let bad = [
-            "",          // empty
-            ".hidden",   // dot prefix
-            "..",        // dotdot
-            "../evil",   // traversal
-            "a/b",       // slash
-            "a\\b",      // backslash
-            "Aupper",    // uppercase first
-            "abC",       // uppercase mid
-            "-bad",      // leading hyphen
-            "1bad",      // leading digit
-            "name_us",   // underscore
-            "name space",// space
-            "name.ext",  // dot
+            "",           // empty
+            ".hidden",    // dot prefix
+            "..",         // dotdot
+            "../evil",    // traversal
+            "a/b",        // slash
+            "a\\b",       // backslash
+            "Aupper",     // uppercase first
+            "abC",        // uppercase mid
+            "-bad",       // leading hyphen
+            "1bad",       // leading digit
+            "name_us",    // underscore
+            "name space", // space
+            "name.ext",   // dot
         ];
         for slug in bad {
             assert!(
@@ -1095,8 +1211,7 @@ mod tests {
     fn update_skill_rejects_skill_md_symlink_escape() {
         #[cfg(unix)]
         {
-            let (barrack, _outside, outside_file) =
-                setup_skill_with_md_symlink_escape("council");
+            let (barrack, _outside, outside_file) = setup_skill_with_md_symlink_escape("council");
             let fm = SkillFrontmatterWrite {
                 name: "council".into(),
                 description: "x".repeat(20),
@@ -1115,8 +1230,7 @@ mod tests {
     fn get_skill_content_rejects_skill_md_symlink_escape() {
         #[cfg(unix)]
         {
-            let (barrack, _outside, outside_file) =
-                setup_skill_with_md_symlink_escape("council");
+            let (barrack, _outside, outside_file) = setup_skill_with_md_symlink_escape("council");
             let err = get_skill_content_impl(barrack.path(), "council")
                 .expect_err("get must reject SKILL.md symlink escape");
             assert!(err.contains("벗어남"), "got: {}", err);
@@ -1130,8 +1244,7 @@ mod tests {
     fn rename_skill_rejects_skill_md_symlink_escape() {
         #[cfg(unix)]
         {
-            let (barrack, _outside, outside_file) =
-                setup_skill_with_md_symlink_escape("oldname");
+            let (barrack, _outside, outside_file) = setup_skill_with_md_symlink_escape("oldname");
             let err = rename_skill_impl(barrack.path(), "oldname", "newname")
                 .expect_err("rename must reject SKILL.md symlink escape");
             assert!(err.contains("벗어남"), "got: {}", err);
@@ -1304,8 +1417,7 @@ mod tests {
                 "---\nname: legit\ndescription: legitimate skill description here.\n---\n",
             );
 
-            let result =
-                get_skills_index(barrack.path().to_string_lossy().to_string()).unwrap();
+            let result = get_skills_index(barrack.path().to_string_lossy().to_string()).unwrap();
 
             // Only the legit skill appears — symlinked entries are skipped.
             let slugs: Vec<&str> = result.skills.iter().map(|c| c.slug.as_str()).collect();

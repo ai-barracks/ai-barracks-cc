@@ -49,6 +49,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
+          components: clippy
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -58,6 +59,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Release regression gates (no model calls)
+        run: |
+          npm test
+          npm run build
+          npm audit --audit-level=high
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
       - name: Build Tauri app (universal binary)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -65,6 +74,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           args: --target universal-apple-darwin

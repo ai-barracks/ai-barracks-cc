@@ -1,3 +1,5 @@
+import { ProviderModels } from "./ProviderModels";
+import { ActivationSchedule } from "./ActivationSchedule";
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../stores/appStore";
@@ -85,6 +87,8 @@ export function SystemView() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 max-w-4xl">
+        <ProviderModels />
+        <ActivationSchedule />
         {/* Version Dashboard */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3">

@@ -654,9 +654,7 @@ pub async fn delete_scrollback(
 
 /// Delete every persisted scrollback file (settings "전체 지우기").
 #[tauri::command]
-pub async fn clear_all_scrollback(
-    state: tauri::State<'_, TerminalManager>,
-) -> Result<(), String> {
+pub async fn clear_all_scrollback(state: tauri::State<'_, TerminalManager>) -> Result<(), String> {
     state
         .scrollback_store()
         .clear_all()

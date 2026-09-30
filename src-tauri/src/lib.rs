@@ -1,5 +1,7 @@
+mod activation;
 mod commands;
 mod live;
+mod providers;
 mod watcher;
 
 use commands::{barracks, files, git, search, sessions, skills, sync, terminal, wiki};
@@ -27,6 +29,9 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(terminal::TerminalManager::new())
         .invoke_handler(tauri::generate_handler![
+            providers::get_provider_models,
+            activation::get_activation_schedule,
+            activation::save_activation_schedule,
             barracks::get_barracks,
             barracks::get_cli_version,
             files::get_barrack_files,
@@ -83,6 +88,16 @@ pub fn run() {
                     .init_scrollback(&data_dir);
             }
 
+            // Backend clock remains active while the window is hidden. Default OFF.
+            let scheduler = match app.path().app_data_dir() {
+                Ok(dir) => activation::ActivationScheduler::new(&dir),
+                Err(_) => {
+                    activation::ActivationScheduler::unavailable("App data directory unavailable")
+                }
+            };
+            scheduler.start();
+            app.manage(scheduler);
+
             // --- System Tray ---
             let show = MenuItemBuilder::with_id("show", "Show CommandCenter").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -102,6 +117,7 @@ pub fn run() {
                         }
                     }
                     "quit" => {
+                        app.state::<activation::ActivationScheduler>().stop();
                         let manager = app.state::<terminal::TerminalManager>();
                         manager.close_all_sync();
                         app.exit(0);
@@ -129,6 +145,14 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                app.state::<activation::ActivationScheduler>().stop();
+            }
+        });
 }

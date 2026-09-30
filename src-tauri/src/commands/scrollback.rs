@@ -212,10 +212,7 @@ impl ScrollbackStore {
 
     /// Borrow (creating if needed) the per-session write mutex for `pty_id`.
     fn write_lock_for(&self, pty_id: &str) -> Arc<Mutex<()>> {
-        let mut map = self
-            .write_locks
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut map = self.write_locks.lock().unwrap_or_else(|p| p.into_inner());
         map.entry(pty_id.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(())))
             .clone()
@@ -489,7 +486,7 @@ impl ScrollbackStore {
         // 2) Global cap: evict oldest-first until under the cap.
         let mut total: u64 = items.iter().map(|it| it.bytes).sum();
         if total > self.global_max_bytes {
-            items.sort_by(|a, b| a.mtime.cmp(&b.mtime)); // oldest first
+            items.sort_by_key(|a| a.mtime); // oldest first
             for it in &items {
                 if total <= self.global_max_bytes {
                     break;
@@ -526,10 +523,7 @@ impl ScrollbackStore {
                         let _ = remove_if_exists(&path);
                     }
                 } else if let Some(stem) = name.strip_suffix(".meta.json") {
-                    let bin_exists = self
-                        .path_bin(stem)
-                        .map(|p| p.exists())
-                        .unwrap_or(false);
+                    let bin_exists = self.path_bin(stem).map(|p| p.exists()).unwrap_or(false);
                     if !bin_exists {
                         let _ = remove_if_exists(&path);
                     }
@@ -743,7 +737,12 @@ mod tests {
         let (_d, store) = tmp_store();
         let payload = "hello \x1b[31mred\x1b[0m world\n가나다 🙂\n";
         store
-            .save("pty-1", payload.as_bytes(), Some("/tmp".into()), Some("T".into()))
+            .save(
+                "pty-1",
+                payload.as_bytes(),
+                Some("/tmp".into()),
+                Some("T".into()),
+            )
             .unwrap();
 
         let loaded = store.load("pty-1").unwrap().expect("archive must exist");
@@ -765,7 +764,10 @@ mod tests {
 
         let loaded = store.load("keep").unwrap().unwrap();
         let body = strip_preamble(&loaded);
-        assert_eq!(body, payload, "first line must be preserved when not truncated");
+        assert_eq!(
+            body, payload,
+            "first line must be preserved when not truncated"
+        );
         assert!(body.starts_with("FIRST line"));
     }
 
@@ -847,9 +849,7 @@ mod tests {
         for i in 0..400 {
             payload.push_str(&format!("line {i} 가나다 🙂\n"));
         }
-        store
-            .save("big", payload.as_bytes(), None, None)
-            .unwrap();
+        store.save("big", payload.as_bytes(), None, None).unwrap();
 
         // On-disk .bin must be within the cap.
         let bin = _d.path().join("big.bin");
@@ -862,7 +862,11 @@ mod tests {
 
         // Loaded content must be valid UTF-8 and end with the freshest tail.
         let loaded = store.load("big").unwrap().unwrap();
-        assert!(payload.contains(strip_preamble(&loaded).trim_end()) || loaded.contains("🙂") || !loaded.is_empty());
+        assert!(
+            payload.contains(strip_preamble(&loaded).trim_end())
+                || loaded.contains("🙂")
+                || !loaded.is_empty()
+        );
         // The last logical line must be the newest one we wrote.
         assert!(payload.ends_with("line 399 가나다 🙂\n"));
     }
@@ -881,7 +885,10 @@ mod tests {
         // Simulate a truncated archive (was_truncated = true): the broken head is
         // dropped up to the first newline.
         let replay = sanitize_for_replay(&raw, true);
-        assert!(replay.starts_with("\x1b[0m"), "replay must start with SGR reset");
+        assert!(
+            replay.starts_with("\x1b[0m"),
+            "replay must start with SGR reset"
+        );
         // Broken head is gone; the clean body remains.
         assert!(replay.contains("after "));
         assert!(!replay.contains("broken-head-no-esc"));
@@ -1093,7 +1100,10 @@ mod tests {
         let removed = store.gc();
         assert!(removed >= 1, "expected global-cap eviction");
         // The newer one should survive; the older one evicted.
-        assert!(store.load("older").unwrap().is_none(), "oldest must be evicted first");
+        assert!(
+            store.load("older").unwrap().is_none(),
+            "oldest must be evicted first"
+        );
     }
 
     // ---- Codex critical #1: path-traversal defense ----
@@ -1126,7 +1136,10 @@ mod tests {
 
         // delete must be a safe no-op (Ok) and must NOT remove the outside file.
         store.delete("../victim").unwrap();
-        assert!(victim.exists(), "traversal delete must not escape the scrollback dir");
+        assert!(
+            victim.exists(),
+            "traversal delete must not escape the scrollback dir"
+        );
         assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
     }
 
@@ -1184,7 +1197,10 @@ mod tests {
 
         // File must be intact and exactly the converged payload (not interleaved).
         let on_disk = std::fs::read(dir.path().join("race.bin")).unwrap();
-        assert_eq!(on_disk, payload, "concurrent saves must not corrupt the .bin");
+        assert_eq!(
+            on_disk, payload,
+            "concurrent saves must not corrupt the .bin"
+        );
         // Meta must round-trip and the load must succeed.
         let loaded = store.load("race").unwrap().unwrap();
         assert!(loaded.contains("KEEP"));
@@ -1194,7 +1210,10 @@ mod tests {
             .flatten()
             .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
             .count();
-        assert_eq!(leftover_tmp, 0, "no .tmp files should leak after concurrent saves");
+        assert_eq!(
+            leftover_tmp, 0,
+            "no .tmp files should leak after concurrent saves"
+        );
     }
 
     // ---- Codex minor #4/#5: periodic GC from save + orphan cleanup ----
@@ -1206,16 +1225,22 @@ mod tests {
         // two do not, making "evict oldest, keep newest" deterministic.
         let one_session_bytes = {
             let probe = ScrollbackStore::with_dir(dir.path().to_path_buf());
-            probe.save("probe", b"\npayload-line\n", None, None).unwrap();
-            let bin = std::fs::metadata(dir.path().join("probe.bin")).unwrap().len();
-            let meta = std::fs::metadata(dir.path().join("probe.meta.json")).unwrap().len();
+            probe
+                .save("probe", b"\npayload-line\n", None, None)
+                .unwrap();
+            let bin = std::fs::metadata(dir.path().join("probe.bin"))
+                .unwrap()
+                .len();
+            let meta = std::fs::metadata(dir.path().join("probe.meta.json"))
+                .unwrap()
+                .len();
             probe.delete("probe").unwrap();
             bin + meta
         };
         let store = {
             let mut s = ScrollbackStore::with_dir(dir.path().to_path_buf());
             s.retention_days = 3650; // isolate the global-cap path
-            // Room for one session, not two.
+                                     // Room for one session, not two.
             s.global_max_bytes = one_session_bytes + (one_session_bytes / 2);
             s
         };
@@ -1233,7 +1258,10 @@ mod tests {
 
         // Global cap was enforced mid-operation (not just at startup): the oldest
         // session is gone, the newest survives.
-        assert!(store.load("old").unwrap().is_none(), "in-save GC must evict oldest over cap");
+        assert!(
+            store.load("old").unwrap().is_none(),
+            "in-save GC must evict oldest over cap"
+        );
         assert!(store.load("new").unwrap().is_some());
     }
 
@@ -1254,7 +1282,8 @@ mod tests {
         std::fs::write(&orphan_tmp, b"partial").unwrap();
         // Age the .tmp past the grace window so the (age-gated) sweep reclaims it;
         // brand-new temps from concurrent writes are intentionally preserved.
-        let stale = std::time::SystemTime::now() - (GC_MIN_INTERVAL + std::time::Duration::from_secs(5));
+        let stale =
+            std::time::SystemTime::now() - (GC_MIN_INTERVAL + std::time::Duration::from_secs(5));
         let _ = filetime_set(&orphan_tmp, stale);
         let orphan_meta = dir.path().join("ghost.meta.json");
         std::fs::write(&orphan_meta, b"{}").unwrap();
@@ -1262,7 +1291,10 @@ mod tests {
         store.gc();
 
         assert!(!orphan_tmp.exists(), "stale orphan .tmp must be reclaimed");
-        assert!(!orphan_meta.exists(), "orphan .meta.json (no .bin) must be reclaimed");
+        assert!(
+            !orphan_meta.exists(),
+            "orphan .meta.json (no .bin) must be reclaimed"
+        );
         // The live session's meta (it HAS a .bin) must be untouched.
         assert!(dir.path().join("live.meta.json").exists());
         assert!(dir.path().join("live.bin").exists());

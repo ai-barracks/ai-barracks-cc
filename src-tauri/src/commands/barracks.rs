@@ -101,11 +101,7 @@ fn count_wiki_topics(barrack_path: &str) -> usize {
         .map(|entries| {
             entries
                 .flatten()
-                .filter(|e| {
-                    e.file_name()
-                        .to_string_lossy()
-                        .ends_with(".md")
-                })
+                .filter(|e| e.file_name().to_string_lossy().ends_with(".md"))
                 .count()
         })
         .unwrap_or(0)
@@ -212,8 +208,8 @@ fn parse_agent_yaml(barrack_path: &str) -> AgentYaml {
 #[tauri::command]
 pub fn get_barracks() -> Result<Vec<BarrackInfo>, String> {
     let path = registry_path();
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("barracks.json 읽기 실패: {}", e))?;
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("barracks.json 읽기 실패: {}", e))?;
 
     let entries: Vec<BarrackEntry> =
         serde_json::from_str(&content).map_err(|e| format!("JSON 파싱 실패: {}", e))?;
@@ -229,8 +225,16 @@ pub fn get_barracks() -> Result<Vec<BarrackInfo>, String> {
             let yaml = parse_agent_yaml(&e.path);
 
             // agent.yaml values take priority over stale barracks.json
-            let name = if yaml.name.is_empty() { e.name } else { yaml.name };
-            let description = if yaml.description.is_empty() { e.description } else { yaml.description };
+            let name = if yaml.name.is_empty() {
+                e.name
+            } else {
+                yaml.name
+            };
+            let description = if yaml.description.is_empty() {
+                e.description
+            } else {
+                yaml.description
+            };
 
             BarrackInfo {
                 path: e.path,
