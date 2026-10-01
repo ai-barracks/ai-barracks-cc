@@ -77,20 +77,23 @@ CC는 [AI Barracks CLI](https://github.com/ai-barracks/ai-barracks) 없이는 �
 ### Prerequisites
 
 ```bash
-# 1. AI Barracks CLI 먼저 설치 (필수, ≥ 1.0.1 권장)
+# 1. AI Barracks CLI 먼저 설치 (v1.5 model profile launch에는 ≥ 1.4.0 필요)
 brew tap ai-barracks/ai-barracks
-brew install ai-barracks
+brew install ai-barracks/ai-barracks/ai-barracks
+aib version
 
 # 2. 배럭 하나 이상 초기화
 cd ~/my-project
 aib init
 
 # 3. CC 내장 터미널에서 띄울 LLM CLI를 PATH에 두기 (사용하는 것만)
-#    - Claude Code: brew install --cask claude-code  또는  claude install latest
-#    - Gemini CLI:  npm install -g @google/gemini-cli
-#    - Codex CLI:   npm install -g @openai/codex-cli  (≥ 0.128 권장)
-#    설치 후 `which claude/gemini/codex`로 PATH 확인
+#    설치·업데이트는 아래 provider 공식 안내를 따릅니다.
+#    설치 후 사용하는 CLI의 경로와 버전을 확인합니다.
+command -v claude codex gemini
+# 사용하는 것만 실행: claude --version / codex --version / gemini --version
 ```
+
+[Codex CLI 공식 설치 안내](https://learn.chatgpt.com/docs/codex/cli)와 [Claude Code 공식 설치 안내](https://code.claude.com/docs/en/quickstart)를 참고하세요. 문서 검증을 위해 provider CLI나 전역 설정을 자동 업그레이드하지 않습니다. 미지원 Homebrew/CLT 환경의 AIB 수동 배치는 [CLI 설치 안내](https://github.com/ai-barracks/ai-barracks/blob/main/docs/installation.md)를 확인하세요.
 
 #### 알려진 함정 (반드시 확인)
 
@@ -100,18 +103,26 @@ aib init
   bad=[x for x in allow if isinstance(x,str) and x.startswith("Bash(") and x.endswith(")") and (x[5:-1].count("\"")%2 or x[5:-1].count("'\''")%2)]
   print("\n".join(bad) or "OK")' .claude/settings.local.json
   ```
-- **Codex CLI 0.128+**: `--full-auto` 플래그가 제거되고 `--dangerously-bypass-approvals-and-sandbox`로 대체됨. aib ≥ 1.0.1에서 자동 매핑.
+- **Provider CLI flag 호환성**: 권한 우회를 기본 설치 해결책으로 사용하지 마세요. 설치 버전의 help·공식 문서와 project trust를 확인하고, 지원하지 않는 isolated-call flag는 오류로 처리합니다. model profile availability와 새 세션 실행 여부는 CLI가 최종 검증합니다.
 - **첫 Claude 실행 시 workspace trust 다이얼로그**: 새 디렉토리에서 첫 실행 시 신뢰 확인이 필요. 외부 Terminal에서 한 번 `claude`로 trust 한 뒤 CC에서 사용 권장.
 
 ### Install CommandCenter
 
-> GitHub Releases의 서명된 `.dmg` 배포는 Roadmap에 있습니다.
-> 현재는 소스에서 빌드합니다:
+[v1.5.0 GitHub Releases](https://github.com/ai-barracks/ai-barracks-cc/releases/tag/v1.5.0)에 universal macOS `.dmg`, app archive 및 `SHA256SUMS`가 게시되어 있습니다.
+
+1. Release의 자산을 내려받고 `SHA256SUMS`와 대조합니다.
+2. 기존 앱의 작업을 저장하고 Quit한 뒤 이전 앱·사용자 데이터를 백업합니다. 새 app bundle을 Applications에 설치하고 실행합니다.
+3. System에서 **CC v1.5.0 / CLI v1.4.0 이상**이 표시되는지 확인합니다. CLI 설치와 기존 배럭 템플릿 동기화는 별개입니다.
+4. Scheduled activation은 기본 OFF입니다. 비용·실행 조건을 읽고 실제 요청을 원할 때만 ON을 확인합니다.
+
+**Signing 제한:** Mach-O executable에는 linker의 ad-hoc signature가 있지만 Info.plist가 signature에 bound되지 않고 resources도 sealed되지 않았습니다. 완전한 Apple Developer app signing·notarization은 제공하지 않습니다. Checksum 일치는 archive 무결성 검사이며 Apple notarization을 대신하지 않습니다. OS 경고를 자동 우회하거나 Gatekeeper/quarantine을 비활성화하는 절차는 제공하지 않습니다.
+
+소스 빌드·개발이 필요한 경우:
 
 ```bash
 git clone https://github.com/ai-barracks/ai-barracks-cc.git
 cd ai-barracks-cc
-npm install
+npm ci
 npm run tauri build    # 배포용 빌드
 npm run tauri dev      # 개발 모드
 ```
@@ -476,7 +487,7 @@ xterm 팔레트, 창 테마, 알림 — 전부 macOS System color 기반. 시스
 
 ## 📜 License
 
-[MIT](LICENSE)
+[MIT](https://opensource.org/license/mit)
 
 ---
 
@@ -505,7 +516,9 @@ xterm 팔레트, 창 테마, 알림 — 전부 macOS System color 기반. 시스
 
 짧은 요청도 사용량을 소모합니다. **사용량 window 시작/초기화 및 무료 실행은 보장되지 않습니다.** extra usage/credits가 켜져 있으면 account 로그인이라도 비용이 생길 수 있습니다. Scheduler는 CLI invocation을 slot당 한 번 시작할 뿐, provider/CLI 내부 transport retry 횟수까지 통제하지는 않습니다.
 
-실제 모델 요청 없이 stub으로 검증했습니다. 현재 설치 CLI는 Codex 0.139.0 / Claude Code 2.1.118이며 최신 CLI·계정 E2E는 별도 검증해야 합니다. 관리자가 강제한 policy는 CLI에서 별도로 적용될 수 있습니다. 비용이 발생하는 실제 확인은 사용자가 ON을 선택한 뒤 진행하세요.
+실제 모델 요청 없이 stub으로 회귀 검증했고, **2026-10-01 native macOS UI smoke**도 통과했습니다. 공개 CC v1.5.0에서 모델 metadata 조회, profile 저장/재시작, 예약 확인→ON→다음 KST slot 표시→OFF, provider 미선택 차단을 확인했습니다. 검증에 사용한 설치 CLI는 Codex 0.139.0 / Claude Code 2.1.118이며 이 버전들이 항상 최신이거나 모든 계정에서 지원된다고 주장하지 않습니다.
+
+최종 상태는 두 model/effort profile runtime default, 두 provider 선택, 예약 OFF, activation history 0, 실제 model prompts 0입니다. **실제 slot 발송·모델 response/quality·PTY/IME 전체 E2E는 미실행**입니다. 관리자가 강제한 policy는 CLI에서 별도로 적용될 수 있습니다. 비용이 발생하는 실제 확인은 사용자가 ON을 선택한 뒤 진행하세요. 자세한 범위와 설치 제약은 [release validation](docs/release-validation-1.5.md)을 참고하세요.
 
 관련 공식 동작: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [Claude CLI reference](https://code.claude.com/docs/en/cli-reference).
 

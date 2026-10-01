@@ -1,5 +1,12 @@
 # Changelog
 
+## Documentation follow-up - 2026-10-01
+
+- Added published-package native macOS UI smoke and restored-OFF evidence; distinguished it from unperformed live-model/actual-slot and full PTY/IME E2E.
+- Updated installation instructions for published universal assets, CLI v1.4.0 model-profile requirements, provider official setup links and local Homebrew/CLT limitations.
+- Clarified executable-only linker ad-hoc signing versus Apple Developer app signing/notarization, without security-bypass instructions.
+- Release tags and assets are unchanged; this section records post-release documentation, not a new executable release.
+
 ## [1.5.0] - 2026-10-01
 
 ### Added
