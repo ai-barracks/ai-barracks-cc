@@ -43,6 +43,9 @@ export interface SessionInfo {
   continues: string;
 }
 
+/** Ended-session seal check against `sessions/.seals/<id>.sha256` written by `aib`. */
+export type SealStatus = "unsealed" | "intact" | "modified" | "invalid";
+
 export interface SessionDetail {
   info: SessionInfo;
   log: string[];
@@ -51,6 +54,7 @@ export interface SessionDetail {
   wiki_extractions: string[];
   identity_suggestions: string[];
   raw_content: string;
+  seal_status: SealStatus;
 }
 
 export interface WikiTopic {

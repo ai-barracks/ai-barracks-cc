@@ -1,4 +1,5 @@
 import type { SessionInfo, SessionDetail, LiveState } from "../../types";
+import { sealWarning } from "../../utils/sessionSeal";
 
 const CLIENT_BADGES: Record<string, string> = {
   "Claude Code": "bg-orange-500/15 text-orange-400 border-orange-500/20",
@@ -76,6 +77,7 @@ export function SessionCard({
 }: SessionCardProps) {
   const canContinue = session.status === "completed" || session.status === "interrupted";
   const isActive = session.status === "active";
+  const seal = detail ? sealWarning(detail.seal_status, detail.info.id) : null;
 
   // Ack-on-open: opening a `done` card acknowledges its run (-> idle). Never auto-ack blocked.
   const handleToggle = () => {
@@ -147,6 +149,15 @@ export function SessionCard({
 
       {isExpanded && detail && (
         <div className="border-t border-cc-border px-4 py-3 bg-cc-panel/50 space-y-3">
+          {seal && (
+            <div
+              role="alert"
+              className="px-3 py-2 bg-cc-warning/10 border border-cc-warning/20 rounded-lg text-[12px] text-cc-warning"
+            >
+              <span className="font-medium">⚠ {seal.title}</span>
+              <span className="text-cc-text-dim"> — {seal.message}</span>
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-3 text-xs">
             <div>
               <span className="text-cc-text-muted">Started: </span>

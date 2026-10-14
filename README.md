@@ -152,7 +152,7 @@ CC의 기능들은 **해결하는 문제** 기준으로 묶여 있습니다.
 
 한눈에 정리해서 보여줍니다.
 
-**Sessions Tab**은 모든 세션을 카드 리스트로 표시하며, 각 카드에 **Continue 버튼**이 있어 다른 CLI에서 이어받기를 원클릭으로 실행합니다. 상세 뷰에서는 `Log`, `Decisions`, `Blockers`, `Wiki Extractions`, `Identity Suggestions`를 **섹션별로 파싱한 구조화된 UI**로 보여줍니다 — raw 마크다운을 직접 읽을 필요가 없습니다.
+**Sessions Tab**은 모든 세션을 카드 리스트로 표시하며, 각 카드에 **Continue 버튼**이 있어 다른 CLI에서 이어받기를 원클릭으로 실행합니다. 상세 뷰에서는 `Log`, `Decisions`, `Blockers`, `Wiki Extractions`, `Identity Suggestions`를 **섹션별로 파싱한 구조화된 UI**로 보여줍니다 — raw 마크다운을 직접 읽을 필요가 없습니다. 종료된 세션 파일이 `aib` 봉인(`sessions/.seals/<id>.sha256`, aib CLI가 세션 종료 시 기록) 이후 바뀌었거나 봉인을 검증할 수 없으면 상세 뷰 상단에 **⚠ 경고 배너**가 뜹니다. 승인은 터미널에서 `aib sessions seal <id>`로 합니다.
 
 ---
 

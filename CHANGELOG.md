@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Session detail shows a warning banner when an ended session file differs from its `aib` seal (`sessions/.seals/<id>.sha256`) or the seal cannot be verified. `get_session_detail` returns `seal_status` (`unsealed` / `intact` / `modified` / `invalid`), hashing the same bytes it parses. Requires aib CLI with session seals; older barracks stay `unsealed` and show nothing.
+
 ## Documentation follow-up - 2026-10-01
 
 - Added published-package native macOS UI smoke and restored-OFF evidence; distinguished it from unperformed live-model/actual-slot and full PTY/IME E2E.
