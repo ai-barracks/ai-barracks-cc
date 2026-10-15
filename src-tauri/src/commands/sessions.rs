@@ -2,6 +2,7 @@ use regex::Regex;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize, Clone)]
@@ -35,25 +36,53 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// Compare an ended session file against the seal `aib` writes at SessionEnd:
-/// `sessions/.seals/<id>.sha256` = one `shasum -a 256` line "<hex>  sessions/<id>.md".
-/// A seal that exists but cannot be read or parsed is "invalid", never "unsealed",
-/// so breaking the seal file does not hide a change.
-fn seal_status(barrack: &Path, session_id: &str, file_bytes: &[u8]) -> &'static str {
-    let seal_path = barrack
-        .join("sessions")
-        .join(".seals")
-        .join(format!("{}.sha256", session_id));
-    let Ok(meta) = fs::symlink_metadata(&seal_path) else {
-        return "unsealed";
+/// The seal `aib` writes at SessionEnd: `sessions/.seals/<id>.sha256`.
+#[derive(Debug, PartialEq)]
+enum SealRead {
+    Missing,
+    /// Exists but cannot be trusted or read: symlinked/non-directory `.seals`, symlinked
+    /// or non-regular seal (a FIFO would block the read), or an I/O error.
+    Unusable,
+    Record(String),
+}
+
+fn read_seal(barrack: &Path, session_id: &str) -> SealRead {
+    let seals_dir = barrack.join("sessions").join(".seals");
+    match fs::symlink_metadata(&seals_dir) {
+        Err(e) if e.kind() == ErrorKind::NotFound => return SealRead::Missing,
+        Err(_) => return SealRead::Unusable,
+        Ok(meta) if !meta.file_type().is_dir() => return SealRead::Unusable,
+        Ok(_) => {}
+    }
+    let path = seals_dir.join(format!("{}.sha256", session_id));
+    match fs::symlink_metadata(&path) {
+        Err(e) if e.kind() == ErrorKind::NotFound => SealRead::Missing,
+        Err(_) => SealRead::Unusable,
+        Ok(meta) if !meta.file_type().is_file() => SealRead::Unusable,
+        Ok(_) => fs::read_to_string(&path)
+            .map(SealRead::Record)
+            .unwrap_or(SealRead::Unusable),
+    }
+}
+
+/// Compare an ended session file against its seal, one `shasum -a 256` line
+/// "<hex>  sessions/<id>.md". A seal that exists but cannot be used is "invalid",
+/// never "unsealed", so breaking the seal does not hide a change. Mirrors
+/// `aib sessions verify`, which also rejects a symlinked session file.
+fn seal_status(
+    seal: &SealRead,
+    session_id: &str,
+    file_bytes: &[u8],
+    md_is_symlink: bool,
+) -> &'static str {
+    let record = match seal {
+        SealRead::Missing => return "unsealed",
+        SealRead::Unusable => return "invalid",
+        SealRead::Record(content) => content.trim_end_matches('\n'),
     };
-    if meta.file_type().is_symlink() {
+    if md_is_symlink {
         return "invalid";
     }
-    let Ok(content) = fs::read_to_string(&seal_path) else {
-        return "invalid";
-    };
-    let record = content.trim_end_matches('\n');
     let expected_path = format!("sessions/{}.md", session_id);
     let sealed_hex = match record.split_once("  ") {
         Some((hex, path))
@@ -166,9 +195,21 @@ pub fn get_session_detail(
     let barrack = PathBuf::from(&barrack_path);
     let file_path = barrack.join("sessions").join(format!("{}.md", session_id));
 
-    // Read once: the same bytes feed the seal hash and the parsed/raw content.
-    let bytes = fs::read(&file_path).map_err(|e| format!("세션 파일 읽기 실패: {}", e))?;
-    let seal_status = seal_status(&barrack, &session_id, &bytes).to_string();
+    // The same bytes feed the seal hash and the parsed/raw content. The seal is read
+    // before and after: if SessionEnd completed + sealed in between, comparing the old
+    // bytes with the new seal would be a false "modified", so re-read the file once.
+    let read_file = || fs::read(&file_path).map_err(|e| format!("세션 파일 읽기 실패: {}", e));
+    let mut seal = read_seal(&barrack, &session_id);
+    let mut bytes = read_file()?;
+    let seal_after = read_seal(&barrack, &session_id);
+    if seal_after != seal {
+        seal = seal_after;
+        bytes = read_file()?;
+    }
+    let md_is_symlink = fs::symlink_metadata(&file_path)
+        .map(|meta| meta.file_type().is_symlink())
+        .unwrap_or(false);
+    let seal_status = seal_status(&seal, &session_id, &bytes, md_is_symlink).to_string();
     let content = String::from_utf8_lossy(&bytes).into_owned();
 
     let client_field = parse_field(&content, "Client");
@@ -265,6 +306,37 @@ mod tests {
         let two_records = format!("{}{}", seal_line(BODY), seal_line(BODY));
         let multi = barrack_with(BODY, Some(&two_records));
         assert_eq!(status_of(&multi), "invalid");
+    }
+
+    #[test]
+    fn seal_status_invalid_when_seals_dir_is_symlink() {
+        let tmp = barrack_with(BODY, None);
+        let elsewhere = TempDir::new().unwrap();
+        fs::write(elsewhere.path().join(format!("{SID}.sha256")), seal_line(BODY)).unwrap();
+        let seals = tmp.path().join("sessions").join(".seals");
+        fs::remove_dir(&seals).unwrap();
+        std::os::unix::fs::symlink(elsewhere.path(), &seals).unwrap();
+        assert_eq!(status_of(&tmp), "invalid");
+    }
+
+    #[test]
+    fn seal_status_invalid_for_non_regular_seal_without_blocking() {
+        let tmp = barrack_with(BODY, None);
+        let fifo = tmp.path().join("sessions/.seals").join(format!("{SID}.sha256"));
+        let made = std::process::Command::new("mkfifo").arg(&fifo).status().unwrap();
+        assert!(made.success());
+        assert_eq!(status_of(&tmp), "invalid"); // would block forever if the FIFO were read
+    }
+
+    #[test]
+    fn seal_status_invalid_when_sealed_session_file_is_symlink() {
+        let tmp = barrack_with(BODY, Some(&seal_line(BODY)));
+        let real = tmp.path().join("real.md");
+        fs::write(&real, BODY).unwrap();
+        let md = tmp.path().join("sessions").join(format!("{SID}.md"));
+        fs::remove_file(&md).unwrap();
+        std::os::unix::fs::symlink(&real, &md).unwrap();
+        assert_eq!(status_of(&tmp), "invalid");
     }
 
     #[test]

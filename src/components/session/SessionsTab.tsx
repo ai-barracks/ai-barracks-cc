@@ -75,7 +75,9 @@ export function SessionsTab() {
       return;
     }
     setExpandedId(id);
-    if (!details[id] && selectedBarrack) {
+    // Refetch on every open: a cached detail would keep a stale seal_status (and log),
+    // so a change after the first open — or its approval — would never show.
+    if (selectedBarrack) {
       try {
         const detail = await invoke<SessionDetail>("get_session_detail", {
           barrackPath: selectedBarrack.path,
