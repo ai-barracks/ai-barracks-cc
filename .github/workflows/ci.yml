@@ -18,8 +18,7 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
-      - name: npm audit gate tests
-        run: bash scripts/npm-audit-gate.test.sh
+      # Runs first so the full report is collected before any other gate can stop the job.
       - name: npm audit gate (production high/critical blocks; listed build-tool advisories warn, see #18)
         run: bash scripts/npm-audit-gate.sh
       - uses: actions/upload-artifact@v4
@@ -27,7 +26,9 @@ jobs:
         with:
           name: npm-audit-full
           path: npm-audit-full.json
-          if-no-files-found: ignore
+          if-no-files-found: warn
+      - name: npm audit gate tests
+        run: bash scripts/npm-audit-gate.test.sh
       - run: npm test
       - run: npm run build
       - run: cargo test --locked

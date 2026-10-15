@@ -60,4 +60,34 @@ STUB_FULL_JSON="$TMP/clean.json" NPM_AUDIT_TODAY=2026-10-15 run_gate || fail "cl
 grep -q '::warning' "$TMP/out.log" && fail "clean tree must not warn"
 pass "clean tree passes without warnings"
 
+meta() {  # meta <moderate> <high>
+    printf '"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":%s,"high":%s,"critical":0,"total":%s}}' "$1" "$2" "$(( $1 + $2 ))"
+}
+blocks() {  # blocks <name> <json>
+    printf '%s' "$2" > "$TMP/case.json"
+    if STUB_FULL_JSON="$TMP/case.json" NPM_AUDIT_TODAY=2026-10-15 run_gate; then fail "$1 must block"; fi
+}
+
+blocks "high advisory without url" "{\"vulnerabilities\":{\"x\":{\"severity\":\"high\",\"via\":[{\"severity\":\"high\",\"title\":\"no url\"}]}},$(meta 0 1)}"
+blocks "high package via a missing package" "{\"vulnerabilities\":{\"x\":{\"severity\":\"high\",\"via\":[\"ghost\"]}},$(meta 0 1)}"
+blocks "high package with no via" "{\"vulnerabilities\":{\"x\":{\"severity\":\"high\",\"via\":[]}},$(meta 0 1)}"
+pass "unexplained high/critical entries block"
+
+blocks "non-numeric counts" "{\"vulnerabilities\":{},\"metadata\":{\"vulnerabilities\":{\"high\":\"one\",\"critical\":0}}}"
+blocks "empty metadata" '{"vulnerabilities":{},"metadata":{"vulnerabilities":{}}}'
+blocks "counts disagree with entries" "{\"vulnerabilities\":{},$(meta 0 1)}"
+pass "malformed or inconsistent metadata blocks"
+
+printf '%s' "{\"vulnerabilities\":{\"braces\":{\"severity\":\"high\",\"via\":[{\"url\":\"$KNOWN_URL\",\"severity\":\"high\"},{\"url\":\"https://github.com/advisories/GHSA-mod0-0000-0000\",\"severity\":\"moderate\"}]}},$(meta 0 1)}" > "$TMP/mixed.json"
+STUB_FULL_JSON="$TMP/mixed.json" NPM_AUDIT_TODAY=2026-10-15 run_gate || fail "an unlisted moderate advisory beside a listed high must not block"
+pass "only advisories that are themselves high/critical need listing"
+
+rm -f "$TMP/report.json"
+if STUB_PROD_RC=1 STUB_FULL_JSON="$TMP/known.json" NPM_AUDIT_TODAY=2026-10-15 run_gate; then fail "production failure must block"; fi
+[ -s "$TMP/report.json" ] || fail "full report must exist even when the production audit blocks"
+rm -f "$TMP/report.json"
+if STUB_FULL_JSON="$TMP/known.json" NPM_AUDIT_TODAY=2027-02-01 run_gate; then fail "expired exception must block"; fi
+[ -s "$TMP/report.json" ] || fail "full report must exist even when the exception expired"
+pass "full report is written before any blocking decision"
+
 echo "All npm audit gate tests passed."
