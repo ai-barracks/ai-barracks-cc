@@ -1,12 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [1.6.0] - 2026-10-15
 
 ### Added
 - Session detail shows a warning banner when an ended session file differs from its `aib` seal (`sessions/.seals/<id>.sha256`) or the seal cannot be verified. `get_session_detail` returns `seal_status` (`unsealed` / `intact` / `modified` / `invalid`), hashing the same bytes it parses. Requires aib CLI with session seals; older barracks stay `unsealed` and show nothing. A symlinked or unreadable seal store, a non-regular seal file (never read, so a FIFO cannot block) and a symlinked session file are `invalid`, matching `aib sessions verify`.
 
 ### Changed
 - Session detail is refetched on every open, so a change after the first open (or its approval) shows without restarting the app.
+- CI/release npm audit gate (`scripts/npm-audit-gate.sh`, #18): production dependencies still block on high/critical. In the full tree, only advisories listed by URL warn until 2027-01-15; currently that is GHSA-vfj7-8cjw-p6xm (`braces`, no patched release, Tailwind 3 build chain only, not bundled). Unlisted high/critical advisories, untraceable entries, inconsistent reports or a passed expiry block. The full JSON report is kept as a workflow artifact.
+
+### Security
+- `source-map-js` 1.2.2 and `@tailwindcss/typography` 0.5.20 (patch updates via `npm audit fix`).
 
 ## Documentation follow-up - 2026-10-01
 
