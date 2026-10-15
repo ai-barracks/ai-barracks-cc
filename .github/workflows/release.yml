@@ -59,11 +59,24 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Runs before the other gates so the full report is always collected.
+      # Production high/critical blocks; listed build-tool advisories warn until expiry (#18).
+      - name: npm audit gate
+        run: bash scripts/npm-audit-gate.sh
+
+      - name: Keep full npm audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-full
+          path: npm-audit-full.json
+          if-no-files-found: warn
+
       - name: Release regression gates (no model calls)
         run: |
+          bash scripts/npm-audit-gate.test.sh
           npm test
           npm run build
-          npm audit --audit-level=high
           cargo test --locked --manifest-path src-tauri/Cargo.toml
           cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
