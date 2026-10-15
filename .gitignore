@@ -19,3 +19,4 @@ src-tauri/gen/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+npm-audit-full.json
