@@ -116,8 +116,8 @@ export function AgentTerminalPanel() {
   const updateSettings = useTerminalStore((s) => s.updateSettings);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const terminalEl = document.querySelector(".xterm");
-      if (!terminalEl?.contains(document.activeElement)) return;
+      const terminalEl = document.activeElement?.closest(".xterm");
+      if (!terminalEl) return;
 
       if (e.metaKey && (e.key === "=" || e.key === "+")) {
         e.preventDefault();
