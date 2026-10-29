@@ -6,6 +6,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { useTerminalStore, appendToBuffer } from "../stores/terminalStore";
 import { useAppStore } from "../stores/appStore";
 import { createSerialWriter } from "../utils/ptyWriter";
+import { createPtyResizeScheduler } from "../utils/ptyResize";
 import { INITIAL_IME_STATE, stepIme, type ImeEvent } from "../utils/terminalInput";
 import type { TerminalSettings } from "../types";
 
@@ -374,10 +375,13 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       sendToPty(data);
     });
 
-    // Handle resize — send to PTY
+    // Serialize resize invokes so an older async command cannot finish last.
+    const resizeScheduler = createPtyResizeScheduler(({ cols, rows }) =>
+      invoke("terminal_resize", { terminalId: terminalIdRef.current, cols, rows }),
+    );
     const resizeDisposable = term.onResize(({ cols, rows }) => {
       if (terminalIdRef.current && !isDisposedRef.current) {
-        invoke("terminal_resize", { terminalId: terminalIdRef.current, cols, rows });
+        void resizeScheduler.request({ cols, rows });
       }
     });
 
@@ -407,6 +411,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       if (fitTimeout) clearTimeout(fitTimeout);
       inputDisposable.dispose();
       resizeDisposable.dispose();
+      resizeScheduler.dispose();
       if (terminalIdRef.current) {
         invoke("terminal_close", { terminalId: terminalIdRef.current });
       }
