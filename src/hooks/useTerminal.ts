@@ -5,7 +5,12 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { useTerminalStore, appendToBuffer } from "../stores/terminalStore";
 import { useAppStore } from "../stores/appStore";
+import { createSerialWriter } from "../utils/ptyWriter";
+import { INITIAL_IME_STATE, stepIme, type ImeEvent } from "../utils/terminalInput";
 import type { TerminalSettings } from "../types";
+
+/** Toggled on xterm's helper textarea while an IME composition is in progress (see index.css). */
+const IME_COMPOSING_CLASS = "cc-ime-composing";
 
 interface TerminalOutputData {
   type: "Data";
@@ -148,16 +153,31 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     // **first syllable of any new Korean burst arrives as 2-3 standalone jamo
     // instead of a composed syllable.** Subsequent syllables compose correctly.
     // Trade-off accepted because the alternative (revert) loses Korean entirely.
+    //
+    // Which keystroke text is sent by whom is decided in `stepIme`
+    // (utils/terminalInput.ts). In particular keypress-handled keys (Space,
+    // Shift+letters) are sent by xterm; their trailing `input` (a lone space
+    // arrives as U+00A0) must not be forwarded again.
     const enableProbe =
       typeof window !== "undefined" && window.localStorage?.getItem("cc-ime-debug") === "1";
 
-    let lastSent: { data: string; t: number } | null = null;
+    const writePty = createSerialWriter((data) => {
+      const terminalId = terminalIdRef.current;
+      return terminalId ? invoke("terminal_write", { terminalId, data }) : Promise.resolve();
+    });
     const sendToPty = (data: string) => {
       if (!data || !terminalIdRef.current) return;
-      const now = performance.now();
-      if (lastSent && lastSent.data === data && now - lastSent.t < 50) return;
-      lastSent = { data, t: now };
-      invoke("terminal_write", { terminalId: terminalIdRef.current, data });
+      void writePty(data);
+    };
+
+    let ime = INITIAL_IME_STATE;
+    const applyIme = (event: ImeEvent) => {
+      const step = stepIme(ime, event);
+      ime = step.state;
+      if (enableProbe && event.type !== "xtermData") {
+        console.debug("[IME] step", event.type, JSON.stringify(step.send));
+      }
+      if (step.send !== null) sendToPty(step.send);
     };
 
     let imeInstalled = false;
@@ -200,12 +220,21 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
         );
       }
 
-      let imeComposing = false;
-      let lastCompositionEnd = 0;
+      // xterm's own composition view is bypassed, so the helper textarea itself
+      // shows the pre-edit text — but only while a composition is in progress.
+      const showPreedit = (visible: boolean) => {
+        ta.classList.toggle(IME_COMPOSING_CLASS, visible);
+        if (visible) {
+          ta.style.color = term.options.theme?.foreground ?? "";
+          ta.style.fontFamily = term.options.fontFamily ?? "";
+          ta.style.fontSize = `${term.options.fontSize ?? 14}px`;
+        }
+      };
 
       ta.addEventListener("compositionstart", (e: Event) => {
-        imeComposing = true;
         e.stopImmediatePropagation();
+        showPreedit(true);
+        applyIme({ type: "compositionstart" });
       }, { capture: true });
 
       ta.addEventListener("compositionupdate", (e: Event) => {
@@ -213,57 +242,40 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       }, { capture: true });
 
       ta.addEventListener("compositionend", (e: Event) => {
-        imeComposing = false;
-        lastCompositionEnd = performance.now();
         e.stopImmediatePropagation();
-        const composed = (e as CompositionEvent).data;
-        if (composed) {
-          // Drop pure-jamo "compositions" (uncomposed pre-state from fragmented cycles).
-          // Composed syllables (U+AC00-U+D7AF) pass through.
-          if (!/^[ᄀ-ᇿㄱ-ㆎ]+$/.test(composed)) {
-            sendToPty(composed);
-          } else if (enableProbe) {
-            console.debug("[IME] DROP jamo at compositionend", JSON.stringify(composed));
-          }
-        }
+        showPreedit(false);
+        applyIme({ type: "compositionend", data: (e as CompositionEvent).data ?? "", now: performance.now() });
         ta.value = "";
       }, { capture: true });
 
+      // Every textarea `input` is decided here; xterm's `_inputEvent` never runs.
+      // Paste: xterm's native paste handler already sent the clipboard through
+      // onData, so the textarea copy is only cleared.
       ta.addEventListener("input", (e: Event) => {
-        const inputEvent = e as InputEvent;
-        if (inputEvent.inputType === "insertFromPaste") {
-          // xterm's native paste handler already forwards ClipboardEvent data
-          // through onData. The browser may still insert the clipboard text into
-          // the helper textarea afterwards, which would make this IME bypass
-          // send the same payload a second time. Keep the helper textarea clean
-          // without interfering with the already-handled xterm paste path.
-          e.stopImmediatePropagation();
-          ta.value = "";
-          return;
-        }
-        if (imeComposing) {
-          e.stopImmediatePropagation();
-          return;
-        }
-        const data = ta.value;
         e.stopImmediatePropagation();
-        ta.value = "";
-        if (!data) return;
-        if (/[ᄀ-ᇿㄱ-ㆎ]/.test(data)) {
-          if (enableProbe) console.debug("[IME] DROP jamo at input", JSON.stringify(data));
-          return;
-        }
-        if (performance.now() - lastCompositionEnd < 50) return;
-        sendToPty(data);
+        const composing = ime.composing;
+        applyIme({ type: "input", inputType: (e as InputEvent).inputType, value: ta.value, now: performance.now() });
+        if (!composing) ta.value = "";
       }, { capture: true });
 
       ta.addEventListener("keydown", (e: KeyboardEvent) => {
+        applyIme({ type: "keydown", keyCode: e.keyCode });
         if (e.keyCode === 229) {
           // Block xterm's CompositionHelper.keydown(229), which schedules a
           // 0ms `_handleAnyTextareaChanges` that would re-send pre-composition jamo.
           e.stopImmediatePropagation();
         }
       }, { capture: true });
+
+      // Runs before xterm's `_keyPress`, which sends the key itself.
+      ta.addEventListener("keypress", () => applyIme({ type: "keypress" }), { capture: true });
+
+      // A composition abandoned by focus loss may never get its compositionend;
+      // without this the stuck `composing` flag would swallow all later input.
+      ta.addEventListener("blur", () => {
+        showPreedit(false);
+        if (ime.composing) applyIme({ type: "compositionend", data: "", now: performance.now() });
+      });
     };
 
     const origAddEventListener = HTMLTextAreaElement.prototype.addEventListener;
@@ -354,10 +366,13 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       }
     });
 
-    // Handle input — routed through sendToPty so xterm's onData (e.g. ASCII via
-    // keypress, special key ANSI sequences) shares the dedup window with our
-    // IME bypass listener.
-    const inputDisposable = term.onData((data) => sendToPty(data));
+    // Handle input — xterm's onData (keydown/keypress keys, ANSI sequences, paste)
+    // shares the serial write queue with the IME bypass so order is preserved.
+    // `xtermData` lets stepIme know xterm itself sent a keypress-handled key.
+    const inputDisposable = term.onData((data) => {
+      applyIme({ type: "xtermData" });
+      sendToPty(data);
+    });
 
     // Handle resize — send to PTY
     const resizeDisposable = term.onResize(({ cols, rows }) => {

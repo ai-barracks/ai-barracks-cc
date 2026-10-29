@@ -86,14 +86,20 @@
 }
 
 /*
- * macOS WKWebView IME composition safety net (v1.2.2).
- * xterm.js renders helper-textarea with opacity:0 + z-index:-5. macOS WKWebView
- * IME engagement isn't strictly blocked by these CSS values (proven via
- * cloneNode test where same CSS class but no listeners → composition fires),
- * but elevating the textarea is harmless and avoids any compositor edge case.
- * Real fix is the pre-open listener interception in src/hooks/useTerminal.ts.
+ * IME pre-edit display (src/hooks/useTerminal.ts). The pre-open listener
+ * interception bypasses xterm's composition view, so the helper textarea shows
+ * the in-progress syllable — only while composing. Outside a composition it
+ * keeps xterm's stock opacity:0, otherwise WebKit paints its white field and
+ * focus ring over the cursor cell. (IME engagement does not depend on opacity:
+ * the 2026-05-10 cloneNode test showed the listeners were the cause.)
  */
-.xterm-helper-textarea {
+.xterm .xterm-helper-textarea.cc-ime-composing {
   opacity: 1 !important;
   z-index: 9999 !important;
+  width: auto !important;
+  min-width: 2ch;
+  background: transparent !important;
+  outline: none !important;
+  caret-color: transparent;
+  pointer-events: none;
 }
