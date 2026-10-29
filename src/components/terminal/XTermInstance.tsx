@@ -4,6 +4,8 @@ import { useTerminalStore } from "../../stores/terminalStore";
 import { ArchiveTermView } from "./ArchiveTermView";
 import type { TerminalSession } from "../../types";
 
+const TERMINAL_INSET = "4px 8px";
+
 interface XTermInstanceProps {
   session: TerminalSession;
   visible: boolean;
@@ -49,12 +51,14 @@ function LiveXTermInstance({ session, visible }: XTermInstanceProps) {
 
   return (
     <div
-      ref={containerRef}
-      className="w-full h-full"
+      className="w-full h-full min-h-0 min-w-0"
       style={{
         display: visible ? "block" : "none",
-        padding: "4px 8px",
+        padding: TERMINAL_INSET,
       }}
-    />
+    >
+      {/* FitAddon reads the parent's border-box size, so keep its padding outside. */}
+      <div ref={containerRef} className="w-full h-full min-h-0 min-w-0" />
+    </div>
   );
 }
