@@ -118,3 +118,14 @@ it("discards pending and future PTY resizes when disposed", async () => {
   await scheduler.request(TALLER_SIZE);
   expect(resize.mock.calls).toEqual([[INITIAL_SIZE]]);
 });
+
+it("retries the same PTY size after its invoke failed", async () => {
+  const resize = vi.fn().mockRejectedValueOnce(new Error("resize failed")).mockResolvedValue(undefined);
+  const scheduler = createPtyResizeScheduler(resize);
+
+  await scheduler.request(WIDER_SIZE);
+  await scheduler.request(WIDER_SIZE);
+
+  expect(resize).toHaveBeenCalledTimes(2);
+  expect(resize).toHaveBeenLastCalledWith(WIDER_SIZE);
+});

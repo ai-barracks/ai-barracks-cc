@@ -24,7 +24,9 @@ export function createPtyResizeScheduler(resize: (size: PtySize) => Promise<unkn
       try {
         await resize(size);
       } catch {
-        // A failed invoke must not block the latest pending size.
+        // A failed invoke must not block the latest pending size, and the
+        // PTY never got this size, so a later identical request must resend it.
+        lastSent = null;
       }
     }
     running = false;
