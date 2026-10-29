@@ -7,11 +7,14 @@ import { useTerminalStore, appendToBuffer } from "../stores/terminalStore";
 import { useAppStore } from "../stores/appStore";
 import { createSerialWriter } from "../utils/ptyWriter";
 import { createPtyResizeScheduler } from "../utils/ptyResize";
+import { createTerminalFitScheduler } from "../utils/terminalFit";
 import { INITIAL_IME_STATE, stepIme, type ImeEvent } from "../utils/terminalInput";
 import type { TerminalSettings } from "../types";
 
 /** Toggled on xterm's helper textarea while an IME composition is in progress (see index.css). */
 const IME_COMPOSING_CLASS = "cc-ime-composing";
+
+const MIN_TERMINAL_FIT_SIZE_PX = 10;
 
 interface TerminalOutputData {
   type: "Data";
@@ -385,30 +388,25 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       }
     });
 
-    // ResizeObserver — skip fit() during active panel drag or when off-screen
-    let fitTimeout: ReturnType<typeof setTimeout> | null = null;
-    const observer = new ResizeObserver((entries) => {
-      if (isDisposedRef.current) return;
-      // Skip fit when container is invisible or too small (off-screen panel)
-      const entry = entries[0];
-      if (entry && (entry.contentRect.width < 10 || entry.contentRect.height < 10)) return;
-      if (fitTimeout) clearTimeout(fitTimeout);
-      const check = () => {
-        if (isDisposedRef.current) return;
-        if (useTerminalStore.getState().isResizing) {
-          fitTimeout = setTimeout(check, 200);
-        } else {
-          fitAddon.fit();
-        }
-      };
-      fitTimeout = setTimeout(check, 100);
+    // Check geometry at fit time in case the container has since become hidden.
+    const fitScheduler = createTerminalFitScheduler(
+      () => fitAddon.fit(),
+      () => !isDisposedRef.current && !useTerminalStore.getState().isResizing
+        && container.clientWidth >= MIN_TERMINAL_FIT_SIZE_PX
+        && container.clientHeight >= MIN_TERMINAL_FIT_SIZE_PX,
+    );
+    const observer = new ResizeObserver(() => fitScheduler.request());
+    // Drag end must schedule the final fit even if no further observer event fires.
+    const unsubscribeResize = useTerminalStore.subscribe((state, previous) => {
+      if (previous.isResizing && !state.isResizing) fitScheduler.request();
     });
     observer.observe(container);
 
     return () => {
       isDisposedRef.current = true;
       observer.disconnect();
-      if (fitTimeout) clearTimeout(fitTimeout);
+      unsubscribeResize();
+      fitScheduler.dispose();
       inputDisposable.dispose();
       resizeDisposable.dispose();
       resizeScheduler.dispose();
