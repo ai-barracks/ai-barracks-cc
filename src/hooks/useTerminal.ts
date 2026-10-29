@@ -346,6 +346,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
         }).then((id) => {
           if (isDisposedRef.current) return;
           terminalIdRef.current = id;
+          syncPtySize();
         }).catch(() => {
           // PTY no longer exists — show message
           term.write("\r\n\x1b[90m[PTY disconnected — session expired]\x1b[0m\r\n");
@@ -365,6 +366,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
           }
           terminalIdRef.current = id;
           ptyStartTimeRef.current = Date.now();
+          syncPtySize();
           onPtyCreated?.(id);
         });
       }
@@ -382,6 +384,10 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     const resizeScheduler = createPtyResizeScheduler(({ cols, rows }) =>
       invoke("terminal_resize", { terminalId: terminalIdRef.current, cols, rows }),
     );
+    // A reconnected PTY keeps the size of its previous view, and a fit that ran
+    // while terminal_create was pending had no PTY id to resize. Push the
+    // current size once the id is known (an unchanged size raises no SIGWINCH).
+    const syncPtySize = () => void resizeScheduler.request({ cols: term.cols, rows: term.rows });
     const resizeDisposable = term.onResize(({ cols, rows }) => {
       if (terminalIdRef.current && !isDisposedRef.current) {
         void resizeScheduler.request({ cols, rows });
