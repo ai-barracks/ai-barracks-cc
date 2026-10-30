@@ -108,11 +108,11 @@ command -v claude codex gemini
 
 ### Install CommandCenter
 
-[v1.6.0 GitHub Releases](https://github.com/ai-barracks/ai-barracks-cc/releases/tag/v1.6.0)에 universal macOS `.dmg`, app archive 및 `SHA256SUMS`가 게시되어 있습니다.
+[v1.6.1 GitHub Releases](https://github.com/ai-barracks/ai-barracks-cc/releases/tag/v1.6.1)에 universal macOS `.dmg`, app archive 및 `SHA256SUMS`가 게시되어 있습니다.
 
 1. Release의 자산을 내려받고 `SHA256SUMS`와 대조합니다.
 2. 기존 앱의 작업을 저장하고 Quit한 뒤 이전 앱·사용자 데이터를 백업합니다. 새 app bundle을 Applications에 설치하고 실행합니다.
-3. System에서 **CC v1.6.0 / CLI v1.4.0 이상**이 표시되는지 확인합니다(세션 봉인 경고에는 CLI v1.5.0 이상이 필요합니다). CLI 설치와 기존 배럭 템플릿 동기화는 별개입니다.
+3. System에서 **CC v1.6.1 / CLI v1.4.0 이상**이 표시되는지 확인합니다(세션 봉인 경고에는 CLI v1.5.0 이상이 필요합니다). CLI 설치와 기존 배럭 템플릿 동기화는 별개입니다.
 4. Scheduled activation은 기본 OFF입니다. 비용·실행 조건을 읽고 실제 요청을 원할 때만 ON을 확인합니다.
 
 **Signing 제한:** Mach-O executable에는 linker의 ad-hoc signature가 있지만 Info.plist가 signature에 bound되지 않고 resources도 sealed되지 않았습니다. 완전한 Apple Developer app signing·notarization은 제공하지 않습니다. Checksum 일치는 archive 무결성 검사이며 Apple notarization을 대신하지 않습니다. OS 경고를 자동 우회하거나 Gatekeeper/quarantine을 비활성화하는 절차는 제공하지 않습니다.

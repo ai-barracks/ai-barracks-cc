@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.6.1] - unreleased
+## [1.6.1] - 2026-10-30
 
 ### Fixed
 - Embedded terminal: every Space reached the PTY twice (" " plus U+00A0 NBSP), which showed as double spaces and broke shell arguments (`python3  /tmp/x.py` → "can't open file"). The v1.2.2 IME bypass re-sent text that xterm had already sent from `keypress`; text ownership per keystroke is now decided by a tested reducer (`src/utils/terminalInput.ts`).

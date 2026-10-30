@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "ai-barracks-cc"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "chrono",
  "dirs 6.0.0",
