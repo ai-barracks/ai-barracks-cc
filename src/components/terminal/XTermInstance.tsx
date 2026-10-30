@@ -2,6 +2,7 @@ import { useRef, useCallback } from "react";
 import { useTerminal } from "../../hooks/useTerminal";
 import { useTerminalStore } from "../../stores/terminalStore";
 import { ArchiveTermView } from "./ArchiveTermView";
+import { TERMINAL_INSET } from "./terminalLayout";
 import type { TerminalSession } from "../../types";
 
 interface XTermInstanceProps {
@@ -49,12 +50,14 @@ function LiveXTermInstance({ session, visible }: XTermInstanceProps) {
 
   return (
     <div
-      ref={containerRef}
-      className="w-full h-full"
+      className="w-full h-full min-h-0 min-w-0"
       style={{
         display: visible ? "block" : "none",
-        padding: "4px 8px",
+        padding: TERMINAL_INSET,
       }}
-    />
+    >
+      {/* FitAddon reads the parent's border-box size, so keep its padding outside. */}
+      <div ref={containerRef} className="w-full h-full min-h-0 min-w-0" />
+    </div>
   );
 }
