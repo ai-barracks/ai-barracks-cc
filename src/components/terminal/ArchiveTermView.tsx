@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTerminalStore } from "../../stores/terminalStore";
 import { useAppStore } from "../../stores/appStore";
 import { getTerminalTheme } from "../../hooks/useTerminal";
+import { TERMINAL_INSET } from "./terminalLayout";
 import type { ScrollbackPayload, TerminalSession } from "../../types";
 
 interface ArchiveTermViewProps {
@@ -202,11 +203,9 @@ export function ArchiveTermView({ session, visible }: ArchiveTermViewProps) {
 
       {/* Read-only terminal */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
-        <div
-          ref={containerRef}
-          className="w-full h-full"
-          style={{ padding: "4px 8px" }}
-        />
+        <div className="w-full h-full min-h-0 min-w-0" style={{ padding: TERMINAL_INSET }}>
+          <div ref={containerRef} className="w-full h-full min-h-0 min-w-0" />
+        </div>
         {(empty || loadError) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <span className="text-xs text-cc-text-muted">

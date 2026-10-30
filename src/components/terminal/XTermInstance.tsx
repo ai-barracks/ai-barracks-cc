@@ -2,9 +2,8 @@ import { useRef, useCallback } from "react";
 import { useTerminal } from "../../hooks/useTerminal";
 import { useTerminalStore } from "../../stores/terminalStore";
 import { ArchiveTermView } from "./ArchiveTermView";
+import { TERMINAL_INSET } from "./terminalLayout";
 import type { TerminalSession } from "../../types";
-
-const TERMINAL_INSET = "4px 8px";
 
 interface XTermInstanceProps {
   session: TerminalSession;
