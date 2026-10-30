@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.1] - unreleased
+
+### Fixed
+- Embedded terminal: every Space reached the PTY twice (" " plus U+00A0 NBSP), which showed as double spaces and broke shell arguments (`python3  /tmp/x.py` → "can't open file"). The v1.2.2 IME bypass re-sent text that xterm had already sent from `keypress`; text ownership per keystroke is now decided by a tested reducer (`src/utils/terminalInput.ts`).
+- Fast double letters and key repeat were dropped by a 50 ms identical-string dedup (`aibcc` → `aibc`); the dedup is gone and PTY writes are serialized per terminal instead.
+- A dead key followed by a non-combining key sent the dead character twice and dropped the second key in WKWebView (`~/` → `~~`, xtermjs/xterm.js#5894).
+- A white box and focus ring were painted over the cursor cell; the IME helper textarea is now visible only while composing.
+- Terminal rows/columns were over-estimated by the view's own padding, so after a resize the last row could be cut off (e.g. 12 rows in a 223 px split pane) and the right-most column sat under the scrollbar. Applies to live and archive terminals.
+- PTY resizes are serialized with only the latest size kept, identical sizes are skipped and a failed size is retried; container fits are debounced (180 ms) with a guaranteed final fit after a panel drag. Created/reconnected PTYs get the measured size once the view is visible.
+- Cmd+= / Cmd+- now work in whichever terminal has focus, not only the first one.
+
+### Known limitations
+- Korean IME composition keeps its v1.2.2 behaviour (first syllable of a burst may split into jamo; standalone jamo such as `ㅋㅋ` are dropped). It could not be exercised by automated GUI input, which bypasses the macOS IME.
+- Inline TUIs (e.g. Claude Code) can leave reflowed remnants of their previous frame when the terminal gets narrower; fewer intermediate resizes reduce but do not remove this.
+
 ## [1.6.0] - 2026-10-15
 
 ### Added
