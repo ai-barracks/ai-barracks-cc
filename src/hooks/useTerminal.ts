@@ -8,7 +8,7 @@ import { useAppStore } from "../stores/appStore";
 import { createSerialWriter } from "../utils/ptyWriter";
 import { createPtyResizeScheduler } from "../utils/ptyResize";
 import { createTerminalFitScheduler } from "../utils/terminalFit";
-import { INITIAL_IME_STATE, stepIme, type ImeEvent } from "../utils/terminalInput";
+import { INITIAL_IME_STATE, stepIme, type ImeEvent, type ImeStep } from "../utils/terminalInput";
 import type { TerminalSettings } from "../types";
 
 /** Toggled on xterm's helper textarea while an IME composition is in progress (see index.css). */
@@ -99,6 +99,8 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
   const terminalIdRef = useRef<string | null>(null);
   const isDisposedRef = useRef(false);
   const ptyStartTimeRef = useRef<number | null>(null);
+  /** Runs a PTY size sync that was deferred because the view was hidden. */
+  const flushPendingSizeSyncRef = useRef<(() => void) | null>(null);
 
   const settings = useTerminalStore((s) => s.settings);
   const theme = useAppStore((s) => s.theme);
@@ -175,13 +177,14 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     };
 
     let ime = INITIAL_IME_STATE;
-    const applyIme = (event: ImeEvent) => {
+    const applyIme = (event: ImeEvent): ImeStep => {
       const step = stepIme(ime, event);
       ime = step.state;
       if (enableProbe && event.type !== "xtermData") {
-        console.debug("[IME] step", event.type, JSON.stringify(step.send));
+        console.debug("[IME] step", event.type, JSON.stringify(step.send), step.blockXterm ? "blockXterm" : "");
       }
       if (step.send !== null) sendToPty(step.send);
+      return step;
     };
 
     let imeInstalled = false;
@@ -255,10 +258,14 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       // Every textarea `input` is decided here; xterm's `_inputEvent` never runs.
       // Paste: xterm's native paste handler already sent the clipboard through
       // onData, so the textarea copy is only cleared.
+      // insertText carries exactly the inserted text in `data` (a lone space is " "
+      // there but U+00A0 in the textarea); other input types fall back to the value.
       ta.addEventListener("input", (e: Event) => {
         e.stopImmediatePropagation();
+        const { inputType, data } = e as InputEvent;
         const composing = ime.composing;
-        applyIme({ type: "input", inputType: (e as InputEvent).inputType, value: ta.value, now: performance.now() });
+        const value = inputType === "insertText" && data !== null ? data : ta.value;
+        applyIme({ type: "input", inputType, value, now: performance.now() });
         if (!composing) ta.value = "";
       }, { capture: true });
 
@@ -271,8 +278,13 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
         }
       }, { capture: true });
 
-      // Runs before xterm's `_keyPress`, which sends the key itself.
-      ta.addEventListener("keypress", () => applyIme({ type: "keypress" }), { capture: true });
+      // Runs before xterm's `_keyPress`, which sends the key itself — unless this is
+      // WebKit's synthetic keypress repeating a just-committed composition.
+      ta.addEventListener("keypress", (e: KeyboardEvent) => {
+        const char = e.charCode ? String.fromCharCode(e.charCode) : "";
+        const step = applyIme({ type: "keypress", char, now: performance.now() });
+        if (step.blockXterm) e.stopImmediatePropagation();
+      }, { capture: true });
 
       // A composition abandoned by focus loss may never get its compositionend;
       // without this the stuck `composing` flag would swallow all later input.
@@ -387,7 +399,18 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     // A reconnected PTY keeps the size of its previous view, and a fit that ran
     // while terminal_create was pending had no PTY id to resize. Push the
     // current size once the id is known (an unchanged size raises no SIGWINCH).
-    const syncPtySize = () => void resizeScheduler.request({ cols: term.cols, rows: term.rows });
+    // A hidden view has never been measured (xterm still holds its default
+    // size), so its sync waits until the view is shown and fitted.
+    const hasMeasurableGeometry = () =>
+      container.clientWidth >= MIN_TERMINAL_FIT_SIZE_PX && container.clientHeight >= MIN_TERMINAL_FIT_SIZE_PX;
+    let sizeSyncPending = false;
+    const syncPtySize = () => {
+      sizeSyncPending = !hasMeasurableGeometry();
+      if (!sizeSyncPending) void resizeScheduler.request({ cols: term.cols, rows: term.rows });
+    };
+    flushPendingSizeSyncRef.current = () => {
+      if (sizeSyncPending) syncPtySize();
+    };
     const resizeDisposable = term.onResize(({ cols, rows }) => {
       if (terminalIdRef.current && !isDisposedRef.current) {
         void resizeScheduler.request({ cols, rows });
@@ -397,9 +420,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     // Check geometry at fit time in case the container has since become hidden.
     const fitScheduler = createTerminalFitScheduler(
       () => fitAddon.fit(),
-      () => !isDisposedRef.current && !useTerminalStore.getState().isResizing
-        && container.clientWidth >= MIN_TERMINAL_FIT_SIZE_PX
-        && container.clientHeight >= MIN_TERMINAL_FIT_SIZE_PX,
+      () => !isDisposedRef.current && !useTerminalStore.getState().isResizing && hasMeasurableGeometry(),
     );
     const observer = new ResizeObserver(() => fitScheduler.request());
     // Drag end must schedule the final fit even if no further observer event fires.
@@ -413,6 +434,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
       observer.disconnect();
       unsubscribeResize();
       fitScheduler.dispose();
+      flushPendingSizeSyncRef.current = null;
       inputDisposable.dispose();
       resizeDisposable.dispose();
       resizeScheduler.dispose();
@@ -434,6 +456,7 @@ export function useTerminal({ sessionId, containerRef, cwd, initialCommand, visi
     const raf = requestAnimationFrame(() => {
       if (isDisposedRef.current) return;
       fitAddonRef.current?.fit();
+      flushPendingSizeSyncRef.current?.();
       terminalRef.current?.focus();
     });
     return () => cancelAnimationFrame(raf);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_IME_STATE, stepIme, type ImeEvent, type ImeState } from "./terminalInput";
+import { INITIAL_IME_STATE, stepIme, type ImeEvent, type ImeState, type ImeStep } from "./terminalInput";
 
 /** Feed a recorded DOM event sequence through the reducer; collect what it would send to the PTY. */
 function run(events: ImeEvent[], start: ImeState = INITIAL_IME_STATE): { sent: string[]; state: ImeState } {
@@ -19,7 +19,7 @@ describe("stepIme — keypress-owned keystrokes (xterm already sends them)", () 
   it("does not re-send the NBSP WebKit inserts after a space keypress", () => {
     const { sent } = run([
       { type: "keydown", keyCode: 32 },
-      { type: "keypress" },
+      { type: "keypress", char: "?", now: 0 },
       { type: "xtermData" },
       { type: "input", inputType: "insertText", value: "\u00a0", now: 1000 },
     ]);
@@ -29,7 +29,7 @@ describe("stepIme — keypress-owned keystrokes (xterm already sends them)", () 
   it("does not re-send uppercase letters that xterm handles in keypress", () => {
     const { sent } = run([
       { type: "keydown", keyCode: 65 },
-      { type: "keypress" },
+      { type: "keypress", char: "?", now: 0 },
       { type: "xtermData" },
       { type: "input", inputType: "insertText", value: "A", now: 1000 },
     ]);
@@ -39,7 +39,7 @@ describe("stepIme — keypress-owned keystrokes (xterm already sends them)", () 
   it("handles every space of a typed sentence exactly once (none from the bypass)", () => {
     const space = (now: number): ImeEvent[] => [
       { type: "keydown", keyCode: 32 },
-      { type: "keypress" },
+      { type: "keypress", char: "?", now: 0 },
       { type: "xtermData" },
       { type: "input", inputType: "insertText", value: "\u00a0", now },
     ];
@@ -65,7 +65,7 @@ describe("stepIme — text that only arrives through the textarea", () => {
   it("forwards keypress text that xterm did not send itself", () => {
     const { sent } = run([
       { type: "keydown", keyCode: 88 },
-      { type: "keypress" },
+      { type: "keypress", char: "?", now: 0 },
       { type: "input", inputType: "insertText", value: "x", now: 1000 },
     ]);
     expect(sent).toEqual(["x"]);
@@ -83,7 +83,7 @@ describe("stepIme — text that only arrives through the textarea", () => {
   it("forgets the keypress flag at the next keydown", () => {
     const { sent } = run([
       { type: "keydown", keyCode: 32 },
-      { type: "keypress" },
+      { type: "keypress", char: "?", now: 0 },
       { type: "xtermData" },
       { type: "input", inputType: "insertText", value: "\u00a0", now: 1000 },
       { type: "keydown", keyCode: 229 },
@@ -152,10 +152,21 @@ describe("stepIme — Korean IME composition (behaviour preserved from v1.2.2)",
   it("forwards the same syllable typed again after the echo window", () => {
     const { sent } = run([
       { type: "compositionstart" },
-      { type: "compositionend", data: "ㅋ가", now: 1000 },
-      { type: "input", inputType: "insertText", value: "ㅋ가", now: 1200 },
+      { type: "compositionend", data: "가", now: 1000 },
+      { type: "input", inputType: "insertText", value: "가", now: 1200 },
     ]);
-    expect(sent).toEqual(["ㅋ가"]);
+    expect(sent).toEqual(["가", "가"]);
+  });
+
+  it("sends back-to-back compositions of the same syllable twice", () => {
+    const { sent } = run([
+      { type: "compositionstart" },
+      { type: "compositionend", data: "가", now: 1000 },
+      { type: "keydown", keyCode: 229 },
+      { type: "compositionstart" },
+      { type: "compositionend", data: "가", now: 1010 },
+    ]);
+    expect(sent).toEqual(["가", "가"]);
   });
 
   it("drops the echo input WebKit fires right after compositionend", () => {
@@ -177,5 +188,60 @@ describe("stepIme — abandoned composition", () => {
     ]);
     expect(sent).toEqual(["😀"]);
     expect(state.composing).toBe(false);
+  });
+});
+
+describe("stepIme — WebKit synthetic keypress after a composition commit", () => {
+  // xtermjs/xterm.js#5894 (WKWebView, dead tilde then "/"): after compositionend("~")
+  // WebKit fires keypress(charCode=126 "~") for the "/" key, then input(insertText "/").
+  it("blocks the synthetic keypress from xterm and forwards the real key", () => {
+    const steps: ImeStep[] = [];
+    const events: ImeEvent[] = [
+      { type: "keydown", keyCode: 78 },
+      { type: "compositionstart" },
+      { type: "input", inputType: "insertCompositionText", value: "~", now: 1000 },
+      { type: "compositionend", data: "~", now: 1100 },
+      { type: "keypress", char: "~", now: 1101 },
+      { type: "input", inputType: "insertText", value: "/", now: 1102 },
+    ];
+    events.reduce((state, event) => {
+      const step = stepIme(state, event);
+      steps.push(step);
+      return step.state;
+    }, INITIAL_IME_STATE);
+    expect(steps.map((step) => step.send).filter((sent) => sent !== null)).toEqual(["~", "/"]);
+    expect(steps[4].blockXterm).toBe(true);
+  });
+
+  it("treats a keypress carrying the committed syllable the same way (space after 녕)", () => {
+    const { sent } = run([
+      { type: "compositionstart" },
+      { type: "compositionend", data: "녕", now: 1000 },
+      { type: "keypress", char: "녕", now: 1001 },
+      { type: "input", inputType: "insertText", value: " ", now: 1002 },
+    ]);
+    expect(sent).toEqual(["녕", " "]);
+  });
+
+  it("lets a real keypress after a commit through to xterm (space typed after 녕)", () => {
+    const steps = [
+      { type: "compositionstart" },
+      { type: "compositionend", data: "녕", now: 1000 },
+      { type: "keypress", char: " ", now: 1001 },
+      { type: "xtermData" },
+      { type: "input", inputType: "insertText", value: " ", now: 1002 },
+    ] satisfies ImeEvent[];
+    const { sent } = run(steps);
+    expect(sent).toEqual(["녕"]);
+    expect(stepIme({ ...INITIAL_IME_STATE, pendingEcho: "녕", lastCompositionEnd: 1000 }, steps[2]).blockXterm).toBe(false);
+  });
+
+  it("does not block a matching keypress once a new keystroke started", () => {
+    const step = stepIme(
+      stepIme({ ...INITIAL_IME_STATE, pendingEcho: "~", lastCompositionEnd: 1000 }, { type: "keydown", keyCode: 192 }).state,
+      { type: "keypress", char: "~", now: 1010 },
+    );
+    expect(step.blockXterm).toBe(false);
+    expect(step.state.keypressSeen).toBe(true);
   });
 });

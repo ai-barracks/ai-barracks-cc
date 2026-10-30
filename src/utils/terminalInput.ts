@@ -16,7 +16,11 @@
  *   ignored — otherwise every space reaches the PTY twice (" " + NBSP);
  * - IME commits → `compositionend` (xterm's CompositionHelper is bypassed); WebKit
  *   may echo the committed text as one more `input`, which is consumed only if it
- *   is that same text;
+ *   is that same text. When the commit was caused by a non-combining key, WebKit
+ *   also fires a synthetic keypress whose charCode is the *committed* text and only
+ *   delivers the real key as `insertText` (xtermjs/xterm.js#5894: dead "~" then
+ *   "/" became "~~"). That keypress must not reach xterm (`blockXterm`), and the
+ *   following insertText is forwarded;
  * - everything else that only lands in the textarea (emoji/character palette) →
  *   forwarded from `input`.
  * No rule drops input because it repeats earlier input: key repeat and fast
@@ -32,7 +36,8 @@ const COMPOSITION_ECHO_WINDOW_MS = 50;
 
 export type ImeEvent =
   | { type: "keydown"; keyCode: number }
-  | { type: "keypress" }
+  /** `char` is String.fromCharCode(event.charCode). */
+  | { type: "keypress"; char: string; now: number }
   /** xterm emitted data through `onData` (fires synchronously inside its handlers). */
   | { type: "xtermData" }
   | { type: "compositionstart" }
@@ -53,6 +58,8 @@ export interface ImeState {
 export interface ImeStep {
   readonly state: ImeState;
   readonly send: string | null;
+  /** Stop xterm from handling this event (true only for WebKit's synthetic keypress). */
+  readonly blockXterm: boolean;
 }
 
 export const INITIAL_IME_STATE: ImeState = {
@@ -71,6 +78,14 @@ function isCompositionEcho(state: ImeState, value: string, now: number): boolean
     && now - state.lastCompositionEnd < COMPOSITION_ECHO_WINDOW_MS;
 }
 
+/** WebKit's post-commit keypress: no keydown since compositionend and it repeats the commit. */
+function isSyntheticCommitKeypress(state: ImeState, char: string, now: number): boolean {
+  return state.pendingEcho !== null
+    && char !== ""
+    && state.pendingEcho.endsWith(char)
+    && now - state.lastCompositionEnd < COMPOSITION_ECHO_WINDOW_MS;
+}
+
 function inputDecision(state: ImeState, inputType: string, value: string, now: number): string | null {
   if (inputType === "insertFromPaste" || state.composing || !value) return null;
   if (state.keypressSent && inputType === "insertText") return null;
@@ -82,24 +97,28 @@ function inputDecision(state: ImeState, inputType: string, value: string, now: n
 export function stepIme(state: ImeState, event: ImeEvent): ImeStep {
   switch (event.type) {
     case "keydown":
-      return { state: { ...state, ...KEYSTROKE_RESET }, send: null };
+      return { state: { ...state, ...KEYSTROKE_RESET }, send: null, blockXterm: false };
     case "keypress":
-      return { state: { ...state, keypressSeen: true }, send: null };
+      return isSyntheticCommitKeypress(state, event.char, event.now)
+        ? { state, send: null, blockXterm: true }
+        : { state: { ...state, keypressSeen: true }, send: null, blockXterm: false };
     case "xtermData":
-      return { state: state.keypressSeen ? { ...state, keypressSent: true } : state, send: null };
+      return { state: state.keypressSeen ? { ...state, keypressSent: true } : state, send: null, blockXterm: false };
     case "compositionstart":
-      return { state: { ...state, ...KEYSTROKE_RESET, composing: true }, send: null };
+      return { state: { ...state, ...KEYSTROKE_RESET, composing: true }, send: null, blockXterm: false };
     case "compositionend": {
       const committed = event.data && !ONLY_JAMO.test(event.data) ? event.data : null;
       return {
         state: { ...state, composing: false, pendingEcho: committed, lastCompositionEnd: event.now },
         send: committed,
+        blockXterm: false,
       };
     }
     case "input":
       return {
         state: state.composing ? state : { ...state, ...KEYSTROKE_RESET },
         send: inputDecision(state, event.inputType, event.value, event.now),
+        blockXterm: false,
       };
   }
 }
