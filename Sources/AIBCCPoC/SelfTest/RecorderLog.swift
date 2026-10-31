@@ -2,11 +2,13 @@ import Foundation
 
 /// One line written by Fixtures/pty_recorder.py.
 struct RecorderEvent: Decodable, Sendable {
-    let t: Double
+    let t: Double?
     let kind: String
     let hex: String?
     let rows: Int?
     let cols: Int?
+    /// Wall-clock seconds (flood fixture only).
+    let wall: Double?
 }
 
 /// Reader for the recorder's JSONL log — the ground truth of what the PTY
@@ -48,6 +50,13 @@ struct RecorderLog: Sendable {
               let rows = last.rows, let cols = last.cols
         else { return nil }
         return (rows, cols)
+    }
+
+    /// Wall-clock arrival time of every input byte (flood fixture only).
+    func byteArrivals(since mark: Int) -> [(byte: UInt8, wall: Double)] {
+        events().dropFirst(mark)
+            .filter { $0.kind == "bytes" }
+            .flatMap { event in Self.decode(hex: event.hex ?? "").map { (byte: $0, wall: event.wall ?? 0) } }
     }
 
     private static func decode(hex: String) -> [UInt8] {

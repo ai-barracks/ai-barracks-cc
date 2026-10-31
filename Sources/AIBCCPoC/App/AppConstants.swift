@@ -9,6 +9,7 @@ enum AppConstants {
         static let rendererEntry = "index.html"
         static let fixturesDirectory = "Fixtures"
         static let recorderScript = "pty_recorder.py"
+        static let floodScript = "flood_recorder.py"
         static let selectionScript = "selection_text.sh"
         static let python = "/usr/bin/python3"
         static let shell = "/bin/sh"
@@ -78,6 +79,10 @@ enum AppConstants {
         /// tests are never counted as one double/triple click.
         static let clickReset: Duration = .milliseconds(700)
         static let minimumChildRuntime: Duration = .seconds(1)
+        /// ST-02 pre-registered candidate (final value after the v1.6.1 baseline).
+        static let latencyP95BudgetMs = 50.0
+        static let latencySamples = 40
+        static let latencyKeyInterval: Duration = .milliseconds(25)
         static let readyTimeout: Duration = .seconds(10)
         static let settleTimeout: Duration = .seconds(3)
         static let stableWindow: Duration = .milliseconds(150)

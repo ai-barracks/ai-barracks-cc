@@ -39,7 +39,31 @@ struct InputSuite {
             await paneClickWhileComposing(primary, secondary, window),
             await syntheticKoreanPath(primary, window),
         ]
-        return measured + [await bracketedPaste(window), await controlC(window)]
+        return measured + [await bracketedPaste(window), await controlC(window), await quadCore(window)]
+    }
+
+    /// ST-01b: the core input checks (space byte, Hangul composition
+    /// contract, paste) repeated in every pane of a 2x2 grid, each pane
+    /// focused through a real click.
+    private func quadCore(_ window: NSWindow) async -> TestResult {
+        let start = ContinuousClock.now
+        let recorders = (1...4).compactMap { harness.makeRecorderPane(name: "quadcore-\($0)") }
+        guard recorders.count == 4 else { return setupFailure("quad recorders", start) }
+        await harness.install(recorders.map(\.pane), layout: .quad)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorders.allSatisfy { $0.log.isReady } }
+        var failures: [String] = []
+        for (index, rec) in recorders.enumerated() {
+            await harness.click(row: 3, column: 2, in: rec.pane)
+            let checks = [
+                await spaceKey(rec, window),
+                await contractHangulWithSpace(rec, window),
+                await paste("ST-01b-paste", "", text: "붙여넣기 \(index + 1)", rec, window),
+            ]
+            failures = failures + checks.filter { $0.status != .pass }.map { "pane\(index + 1):\($0.id)" }
+        }
+        return .make("ST-01b", "4분할 각 pane: 스페이스·한글 조합 계약·붙여넣기",
+                     status: failures.isEmpty ? .pass : .fail,
+                     evidence: ["failures": failures.joined(separator: ", ")], startedAt: start)
     }
 
     // MARK: - Plain keys (ASCII baseline input source)
@@ -339,6 +363,10 @@ struct InputSuite {
             FileManager.default.fileExists(atPath: ready.path)
         }
         harness.focus(pane)
+        // Let the pane swap's pending events (old surface teardown) drain
+        // before pressing; record focus so a lost key can be attributed.
+        await harness.drain()
+        let focusedBeforePress = harness.isFirstResponder(pane.probeView)
         Synth.press(key, in: window)
         let hit = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
             FileManager.default.fileExists(atPath: signalled.path)
@@ -346,7 +374,8 @@ struct InputSuite {
         let trace = pane.probeView?.callLog.suffix(8).map { "\($0.kind.rawValue):\($0.text ?? "")" } ?? []
         return .make("IN-09a", "Ctrl+C → foreground 프로세스 그룹 SIGINT (trap 실행)",
                      status: hit ? .pass : .fail,
-                     evidence: ["probe_trace": trace.joined(separator: " | ")], startedAt: start)
+                     evidence: ["probe_trace": trace.joined(separator: " | "),
+                                "focused_before_press": "\(focusedBeforePress)"], startedAt: start)
     }
 
     // MARK: - Helpers

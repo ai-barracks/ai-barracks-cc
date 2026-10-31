@@ -24,10 +24,14 @@ struct SelfTestHarness {
         let log: RecorderLog
     }
 
-    func makeRecorderPane(name: String, environment: [String: String] = [:]) -> RecorderPane? {
+    func makeRecorderPane(
+        name: String,
+        environment: [String: String] = [:],
+        script recorderScript: String = AppConstants.Paths.recorderScript
+    ) -> RecorderPane? {
         guard let fixtures = fixturesDirectory else { return nil }
         let log = RecorderLog.makeTemporary(name: name)
-        let script = fixtures.appendingPathComponent(AppConstants.Paths.recorderScript).path
+        let script = fixtures.appendingPathComponent(recorderScript).path
         let command = [AppConstants.Paths.python, script, log.url.path].map(shellQuote).joined(separator: " ")
         let pane = workspace.makePane(title: "recorder-\(name)", command: command, environment: environment)
         return RecorderPane(pane: pane, log: log)

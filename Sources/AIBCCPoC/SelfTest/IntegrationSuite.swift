@@ -23,6 +23,7 @@ struct IntegrationSuite {
             await reloadsOnChange(store, sandbox),
             await renderCapture(),
             await terminalKeepsFirstKeystroke(),
+            await viewerClickAndScrollThenType(),
         ]
         return results
     }
@@ -90,6 +91,35 @@ struct IntegrationSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["viewer_had_focus": "\(viewerHadFocus)", "terminal_focus_after_click": "\(terminalHasFocus)",
                                 "hex": Hex.string(bytes)],
+                     startedAt: start)
+    }
+
+    /// MD-04b: click inside the rendered document and scroll it, then click
+    /// back into the terminal — the first keystroke must reach the PTY.
+    private func viewerClickAndScrollThenType() async -> TestResult {
+        let start = ContinuousClock.now
+        guard let window = harness.window, let rec = harness.makeRecorderPane(name: "md-click") else {
+            return failure("MD-04b", "뷰어 클릭·스크롤 후 터미널 복귀", reason: "setup", start)
+        }
+        await harness.install([rec.pane], layout: .single)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { rec.log.isReady }
+        guard let webView = findWebView(in: window.contentView),
+              let terminalPoint = harness.windowPoint(row: 3, column: 2, in: rec.pane)
+        else { return failure("MD-04b", "뷰어 클릭·스크롤 후 터미널 복귀", reason: "web view or geometry", start) }
+        let viewerPoint = webView.convert(NSPoint(x: webView.bounds.midX, y: webView.bounds.midY), to: nil)
+        EventSynthesizer.click(at: viewerPoint, count: 1, in: window)
+        await harness.drain()
+        let viewerFocused = harness.isFirstResponder(webView)
+        _ = try? await webView.evaluateJavaScript("window.scrollTo(0, document.body.scrollHeight)")
+        EventSynthesizer.click(at: terminalPoint, count: 1, in: window)
+        await harness.drain()
+        let mark = rec.log.mark()
+        EventSynthesizer.type("x", in: window)
+        let bytes = await harness.settledBytes(rec.log, since: mark)
+        let ok = viewerFocused && bytes == [0x78]
+        return .make("MD-04b", "뷰어 클릭·스크롤 후 터미널 클릭 복귀 첫 글자 유실 0",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["viewer_focused_by_click": "\(viewerFocused)", "hex": Hex.string(bytes)],
                      startedAt: start)
     }
 

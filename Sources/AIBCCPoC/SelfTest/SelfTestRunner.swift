@@ -50,11 +50,10 @@ struct SelfTestRunner {
 
         GhosttyDebugCapture.enable(writingTo: output.appendingPathComponent("ghostty-debug.log"))
         let only = Self.requestedSuites()
-        let measured = (only.contains("input") ? await InputSuite(harness: harness).run() : [])
-            + (only.contains("resize") ? await ResizeSuite(harness: harness).run() : [])
-            + (only.contains("selection") ? await SelectionSuite(harness: harness).run() : [])
-            + (only.contains("lifecycle") ? await LifecycleSuite(harness: harness).run() : [])
-            + (only.contains("integration") ? await IntegrationSuite(harness: harness).run() : [])
+        var measured: [TestResult] = []
+        for name in Self.suiteOrder where only.contains(name) {
+            measured = measured + (await runSuite(name, harness: harness))
+        }
         let subs = measured + CriteriaCatalog.pendingSubResults(excluding: Set(measured.map(\.id)))
         let parents = CriteriaCatalog.aggregate(subs)
         let report = SelfTestReport(startedAt: startedAt, finishedAt: Date(), environment: environment,
@@ -68,7 +67,20 @@ struct SelfTestRunner {
         return verdict(parents, measured: measured)
     }
 
-    static let allSuites: Set<String> = ["input", "resize", "selection", "lifecycle", "integration"]
+    static let suiteOrder = ["input", "resize", "selection", "lifecycle", "load", "integration"]
+    static let allSuites = Set(suiteOrder)
+
+    private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {
+        switch name {
+        case "input": return await InputSuite(harness: harness).run()
+        case "resize": return await ResizeSuite(harness: harness).run()
+        case "selection": return await SelectionSuite(harness: harness).run()
+        case "lifecycle": return await LifecycleSuite(harness: harness).run()
+        case "load": return await LoadSuite(harness: harness).run()
+        case "integration": return await IntegrationSuite(harness: harness).run()
+        default: return []
+        }
+    }
 
     /// `--selftest-only=input,lifecycle` runs a subset (diagnosis only; a
     /// partial run can never produce exit 0 because criteria stay unverified).

@@ -11,3 +11,5 @@ Codex code review r1 (2026-10-31) 반영 후에도 남는 제약. 제품 전환 
 7. **자동화 미완 하위 항목** — ST-01b(4분할에서 IN/SC 핵심 재실행), MD-04b(뷰어 클릭·스크롤 후 복귀)는 `unverified`로 보고된다.
 8. **settle timeout과 정상 종료 구분 없음**(Codex r2 #17 잔여) — 바이트 비교가 기대값과 어긋나면 fail로 드러나므로 판정은 안전하지만, evidence에 timeout 여부가 따로 남지 않는다.
 9. **이 Mac의 Command Line Tools 손상** — `usr/lib/swift/pm/{ManifestAPI,PluginAPI}`에 2024-02 CLT의 `*.private.swiftinterface`가 남아 있어 swiftc가 옛 PackageDescription API로 manifest를 컴파일하고, 현재 `libPackageDescription.dylib`와 링크하다 실패한다(`Undefined symbols ... Package.__allocating_init`). **모든 SwiftPM 패키지가 영향**. 시스템 파일은 건드리지 않고 `scripts/make-toolchain-fix.sh`가 공개 인터페이스만 담은 미러를 `.toolchain-fix/`에 만들고 `SWIFTPM_CUSTOM_LIBS_DIR`로 지정한다(`package-app.sh`가 자동 적용). 근본 해결은 CLT 재설치 또는 관리자 권한으로 stale 파일 4개 삭제.
+10. **pane 교체 직후 같은 이벤트 루프 턴의 키 입력 유실 가능성** — self-test에서 pane을 교체한 직후 바로 누른 Ctrl+C의 press가 2/5회 사라졌다(keyEquivalent 이후 keyDown 미도달). 이벤트 큐를 비운 뒤 누르면 3/3 통과. 실사용 영향은 낮지만 제품 단계에서 "pane 생성·교체 직후 입력" 재현 테스트로 원인을 확정한다.
+11. **macOS 창 크기 복원** — 기본 창 크기(1440×900)는 저장된 창 상태가 없을 때만 적용된다.
