@@ -8,6 +8,8 @@ Puts the tty in raw mode and appends one JSON object per line to OUT:
 After every resize it redraws corner markers (TL at row 1 col 1, BR ending
 at the last column of the last row) so a screenshot shows whether the last
 row/column is actually visible. Exits on byte 0x04 (Ctrl+D).
+Set AIBCC_MOUSE_REPORT=1 to enable SGR mouse reporting (a TUI that captures
+the mouse) and AIBCC_BRACKETED_PASTE=1 to enable bracketed paste.
 """
 
 import fcntl
@@ -22,6 +24,22 @@ import tty
 
 CTRL_D = 0x04
 READ_CHUNK = 4096
+MOUSE_ON = "\x1b[?1000h\x1b[?1002h\x1b[?1006h"
+MOUSE_OFF = "\x1b[?1006l\x1b[?1002l\x1b[?1000l"
+BRACKETED_ON = "\x1b[?2004h"
+BRACKETED_OFF = "\x1b[?2004l"
+
+
+def enabled(name):
+    return os.environ.get(name) == "1"
+
+
+def set_modes(on):
+    if enabled("AIBCC_MOUSE_REPORT"):
+        sys.stdout.write(MOUSE_ON if on else MOUSE_OFF)
+    if enabled("AIBCC_BRACKETED_PASTE"):
+        sys.stdout.write(BRACKETED_ON if on else BRACKETED_OFF)
+    sys.stdout.flush()
 
 
 def winsize(fd):
@@ -61,8 +79,9 @@ def main():
         tty.setraw(fd)
         try:
             rows, cols = winsize(fd)
-            log(out, "ready", rows=rows, cols=cols)
             draw_markers(rows, cols)
+            set_modes(True)
+            log(out, "ready", rows=rows, cols=cols)
             while True:
                 data = os.read(fd, READ_CHUNK)
                 if not data:
@@ -71,6 +90,7 @@ def main():
                 if CTRL_D in data:
                     break
         finally:
+            set_modes(False)
             termios.tcsetattr(fd, termios.TCSADRAIN, saved)
     return 0
 

@@ -15,4 +15,5 @@ while [ "$i" -lt 30 ]; do
 done
 printf '\r\n'
 printf 'READY-SELECTION\r\n'
+if [ -n "${AIBCC_READY_FILE:-}" ]; then : > "$AIBCC_READY_FILE"; fi
 exec sleep 3600
