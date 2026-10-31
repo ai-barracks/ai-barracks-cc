@@ -17,6 +17,9 @@ struct AIBCCPoCApp: App {
                     minHeight: AppConstants.Layout.minWindowHeight
                 )
         }
+        // The terminal is the main work surface (P0): open wide enough for a
+        // readable single pane next to the sidebar and the artifact panel.
+        .defaultSize(width: AppConstants.Layout.defaultWindowWidth, height: AppConstants.Layout.defaultWindowHeight)
         .commands {
             // SwiftUI's default pasteboard items stay disabled when the first
             // responder is an AppKit view (the terminal), and a disabled

@@ -8,10 +8,15 @@ struct ArtifactPanel: View {
 
     var body: some View {
         VSplitView {
+            // The document is what the user reads; the list stays compact.
             fileList
-                .frame(minHeight: 120, idealHeight: 200)
+                .frame(
+                    minHeight: AppConstants.Layout.artifactListMinHeight,
+                    idealHeight: AppConstants.Layout.artifactListIdealHeight,
+                    maxHeight: AppConstants.Layout.artifactListMaxHeight
+                )
             documentView
-                .frame(minHeight: 200)
+                .frame(minHeight: AppConstants.Layout.artifactDocumentMinHeight, maxHeight: .infinity)
         }
         // Opening another document retries the renderer (r2 #9).
         .onChange(of: store.selected?.url) { rendererFailure = nil }

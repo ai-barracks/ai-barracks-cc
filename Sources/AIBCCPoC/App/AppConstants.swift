@@ -39,8 +39,14 @@ enum AppConstants {
         static let minWindowWidth: CGFloat = 960
         static let minWindowHeight: CGFloat = 600
         static let sidebarMinWidth: CGFloat = 200
-        static let inspectorMinWidth: CGFloat = 320
-        static let inspectorIdealWidth: CGFloat = 420
+        static let defaultWindowWidth: CGFloat = 1440
+        static let defaultWindowHeight: CGFloat = 900
+        static let inspectorMinWidth: CGFloat = 300
+        static let inspectorIdealWidth: CGFloat = 360
+        static let artifactListMinHeight: CGFloat = 90
+        static let artifactListIdealHeight: CGFloat = 150
+        static let artifactListMaxHeight: CGFloat = 260
+        static let artifactDocumentMinHeight: CGFloat = 240
         static let paneSpacing: CGFloat = 1
         static let dividerHitWidth: CGFloat = 8
         static let splitRatioRange: ClosedRange<CGFloat> = 0.2...0.8

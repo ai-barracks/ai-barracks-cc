@@ -26,12 +26,18 @@ struct SelectionSuite {
 
     func run() async -> [TestResult] {
         let start = ContinuousClock.now
-        let ready = FileManager.default.temporaryDirectory
-            .appendingPathComponent("aibcc-selection-ready-\(UUID().uuidString)")
+        let temp = FileManager.default.temporaryDirectory
+        let ready = temp.appendingPathComponent("aibcc-selection-ready-\(UUID().uuidString)")
+        let go = temp.appendingPathComponent("aibcc-selection-go-\(UUID().uuidString)")
         guard let window = harness.window,
-              let pane = harness.makeScriptPane(name: "selection", script: AppConstants.Paths.selectionScript, readyFile: ready)
+              let pane = harness.makeScriptPane(
+                  name: "selection", script: AppConstants.Paths.selectionScript, readyFile: ready,
+                  environment: ["AIBCC_GO_FILE": go.path]
+              )
         else { return [setupFailure("window or fixtures missing", start)] }
         await harness.install([pane], layout: .single)
+        await waitForStableGrid(pane)
+        FileManager.default.createFile(atPath: go.path, contents: nil)
         let shown = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
             FileManager.default.fileExists(atPath: ready.path)
         }
@@ -139,6 +145,24 @@ struct SelectionSuite {
     }
 
     // MARK: - Helpers
+
+    /// The fixture lays out rows for the width it sees; start it only after
+    /// the grid stopped changing for `stableWindow`.
+    private func waitForStableGrid(_ pane: TerminalPane) async {
+        var last = pane.state.surfaceSize
+        var stableSince = ContinuousClock.now
+        let deadline = ContinuousClock.now + AppConstants.SelfTest.settleTimeout
+        while ContinuousClock.now < deadline {
+            await harness.pause(AppConstants.SelfTest.pollInterval)
+            let current = pane.state.surfaceSize
+            if current != last {
+                last = current
+                stableSince = ContinuousClock.now
+            } else if current != nil, ContinuousClock.now - stableSince >= AppConstants.SelfTest.stableWindow {
+                return
+            }
+        }
+    }
 
     private func copySelection(_ window: NSWindow) async -> String? {
         harness.clearPasteboard()

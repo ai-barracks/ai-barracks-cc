@@ -14,6 +14,9 @@ final class ArtifactStore {
     /// Bumped whenever `content` changes so the web view re-renders.
     private(set) var revision = 0
 
+    /// Directory currently watched (read-only, for tests and diagnostics).
+    var watchedRoot: URL? { root }
+
     @ObservationIgnored private var watcher: DirectoryWatcher?
     @ObservationIgnored private var root: URL?
     @ObservationIgnored private var scanTask: Task<Void, Never>?

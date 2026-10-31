@@ -83,6 +83,7 @@ enum CriteriaCatalog {
         .init(id: "MD-05", title: "스크립트·외부 리소스 차단", blocking: true, requires: ["MD-05-review"]),
         .init(id: "MD-06", title: "고정 뷰어와 분리", blocking: false, requires: ["MD-01a"]),
         .init(id: "MD-07", title: "Mermaid", blocking: false, requires: ["MD-07-phys"]),
+        .init(id: "WS-01", title: "배럭 선택·터미널·산출물 맥락 일치", blocking: true, requires: ["WS-01a"]),
     ]
 
     /// Every sub-ID that no automated suite produces: listed as `unverified`

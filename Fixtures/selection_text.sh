@@ -1,6 +1,15 @@
 #!/bin/sh
 # Deterministic screen content for the selection/copy self-test.
 # Line layout (1-based rows) is mirrored in SelectionSuite.Fixture.
+# Wait for the test to signal that the pane geometry has settled, so the
+# row layout below matches the width the test computes with (max 10s).
+if [ -n "${AIBCC_GO_FILE:-}" ]; then
+  n=0
+  while [ ! -e "$AIBCC_GO_FILE" ] && [ "$n" -lt 200 ]; do
+    sleep 0.05
+    n=$((n + 1))
+  done
+fi
 printf '\033[2J\033[1;1H'
 printf 'alpha beta gamma\r\n'
 printf '한글 선택 테스트 가나다\r\n'

@@ -7,7 +7,40 @@ struct LifecycleSuite {
     let harness: SelfTestHarness
 
     func run() async -> [TestResult] {
-        [await quadSplit(), await shellExitCleanup()]
+        [await quadSplit(), await shellExitCleanup(), await barrackContextFollowsSelection()]
+    }
+
+    /// WS-01a (Codex runtime review R1): selecting another barrack switches
+    /// the terminal grid (with that barrack's cwd) and the artifact list
+    /// together, and switching back restores the original, still-running pane.
+    private func barrackContextFollowsSelection() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let original = workspace.selectedBarrack,
+              let other = workspace.barracks.first(where: { $0.id != original.id }),
+              let originalPane = workspace.panes.first
+        else {
+            return .make("WS-01a", "배럭 선택 = 터미널 cwd = 산출물 맥락", status: .unverified,
+                         evidence: ["reason": "needs at least two registered barracks"], startedAt: start)
+        }
+        workspace.selectedBarrackID = other.id
+        _ = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            harness.artifacts.watchedRoot == other.url && workspace.panes.first?.probeView?.window != nil
+        }
+        let switchedPane = workspace.panes.first
+        let cwdMatches = switchedPane?.state.configuration.workingDirectory == other.path
+        let artifactsMatch = harness.artifacts.watchedRoot == other.url
+        let newGrid = switchedPane?.id != originalPane.id
+        workspace.selectedBarrackID = original.id
+        let restored = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            workspace.panes.first?.id == originalPane.id && originalPane.probeView?.window != nil
+        }
+        let ok = cwdMatches && artifactsMatch && newGrid && restored
+        return .make("WS-01a", "배럭 선택 = 터미널 cwd = 산출물 맥락, 복귀 시 기존 셸 유지",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["cwd_matches": "\(cwdMatches)", "artifacts_match": "\(artifactsMatch)",
+                                "separate_grid": "\(newGrid)", "original_restored": "\(restored)"],
+                     startedAt: start)
     }
 
     private func quadSplit() async -> TestResult {
