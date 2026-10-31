@@ -91,14 +91,21 @@ struct LifecycleSuite {
         }
         await harness.install([recorder.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
+        // Ghostty treats a child that exits within 250ms of launch as an
+        // abnormal exit and keeps the surface; a real shell lives longer.
+        await harness.pause(AppConstants.SelfTest.minimumChildRuntime)
         harness.focus(recorder.pane)
-        let exitedID = recorder.pane.id
+        recorder.pane.startExitMonitorIfNeeded()
+        let pid = recorder.pane.monitoredPID
         EventSynthesizer.press(ctrlD, in: window)
-        let replaced = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
-            !harness.workspace.panes.contains { $0.id == exitedID }
+        let detected = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            recorder.pane.hasExited && recorder.pane.isChildGone
         }
-        return .make("ST-04a", "프로세스 종료 시 pane 정리(새 셸로 교체)",
-                     status: replaced ? .pass : .fail, cause: .app,
-                     evidence: ["panes_after": "\(harness.workspace.panes.count)"], startedAt: start)
+        return .make("ST-04a", "프로세스 종료 감지 + 자식 회수(좀비·고아 0), 출력 보존 배너",
+                     status: detected ? .pass : .fail, cause: .app,
+                     evidence: ["pid": pid.map(String.init) ?? "nil",
+                                "exited": "\(recorder.pane.hasExited)",
+                                "child_gone": "\(recorder.pane.isChildGone)"],
+                     startedAt: start)
     }
 }

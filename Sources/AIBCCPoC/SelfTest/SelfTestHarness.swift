@@ -101,6 +101,7 @@ struct SelfTestHarness {
     }
 
     /// Clicks a cell through the real mouse path (used to switch panes).
+    /// Requires the app to be active (see SelfTestRunner).
     func click(row: Int, column: Int, in pane: TerminalPane) async {
         guard let window, let point = windowPoint(row: row, column: column, in: pane) else { return }
         EventSynthesizer.click(at: point, count: 1, in: window)

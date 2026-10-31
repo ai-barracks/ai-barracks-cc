@@ -98,14 +98,20 @@ final class WorkspaceModel {
         }
     }
 
-    /// A pane whose process exited is replaced by a fresh shell so the grid
-    /// keeps its shape (ST-04). Close requests for live processes are ignored
-    /// in the PoC.
-    private func handleClose(paneID: UUID, processAlive: Bool) {
-        guard !processAlive, let index = panes.firstIndex(where: { $0.id == paneID }) else { return }
+    /// Replaces a pane with a fresh shell in the same slot (used by the
+    /// "새 셸" button on an exited pane and by surface close requests).
+    func restartPane(id paneID: UUID) {
+        guard let index = panes.firstIndex(where: { $0.id == paneID }) else { return }
         let replacement = makePane(title: "shell \(index + 1)")
         panes = panes.enumerated().map { offset, pane in offset == index ? replacement : pane }
         updateSurfaceVisibility()
+    }
+
+    /// Ghostty asked to close the surface after its process ended. Close
+    /// requests for live processes are ignored in the PoC.
+    private func handleClose(paneID: UUID, processAlive: Bool) {
+        guard !processAlive else { return }
+        restartPane(id: paneID)
     }
 
     /// Parked panes stop drawing, and keyboard focus never stays on a parked

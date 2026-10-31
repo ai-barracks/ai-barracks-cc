@@ -21,6 +21,7 @@ struct IntegrationSuite {
         let results = [
             await listsRecentArtifacts(store, sandbox),
             await reloadsOnChange(store, sandbox),
+            await renderCapture(),
             await terminalKeepsFirstKeystroke(),
         ]
         return results
@@ -52,6 +53,16 @@ struct IntegrationSuite {
                      status: reloaded ? .pass : .fail, cause: .app,
                      evidence: ["revision_before": "\(before)", "revision_after": "\(store.revision)"],
                      startedAt: start)
+    }
+
+    /// MD-02 evidence: a composited capture of the rendered document (table,
+    /// checklist) for visual review.
+    private func renderCapture() async -> TestResult {
+        let start = ContinuousClock.now
+        await harness.pause(.milliseconds(500))
+        let capture = await harness.requestCapture(label: "markdown-render")
+        return .make("MD-02-cap", "GFM 렌더링 캡처 — 검토 필요", status: .unverified,
+                     evidence: ["capture": capture?.lastPathComponent ?? "none"], startedAt: start)
     }
 
     /// MD-04: after the web view held focus, clicking back into the terminal

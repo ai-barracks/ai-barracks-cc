@@ -82,9 +82,37 @@ struct InputSuite {
         let bytes = await harness.settledBytes(rec.log, since: mark, expectingAtLeast: text.utf8.count)
         // Fixed newline policy: non-bracketed paste sends CR for each LF.
         let expected = Hex.bytes(text.replacingOccurrences(of: "\n", with: "\r"))
+        let trace = rec.pane.probeView?.callLog.suffix(6).map { "\($0.kind.rawValue):\($0.text ?? "")" } ?? []
+        let direct = bytes.isEmpty ? await directPasteAction(rec) : []
         return .make(id, title, status: bytes == expected ? .pass : .fail,
-                     evidence: ["hex": Hex.string(bytes), "expected": Hex.string(expected)],
+                     evidence: ["hex": Hex.string(bytes), "expected": Hex.string(expected),
+                                "probe_trace": trace.joined(separator: " | "),
+                                "direct_paste_action_hex": Hex.string(direct),
+                                "menu_cmd_v": menuItemDescription(for: "v")],
                      startedAt: start)
+    }
+
+    /// Diagnosis: which main-menu item owns a Cmd+<key> equivalent.
+    private func menuItemDescription(for key: String) -> String {
+        func search(_ menu: NSMenu?) -> NSMenuItem? {
+            guard let menu else { return nil }
+            for item in menu.items {
+                if item.keyEquivalent == key, item.keyEquivalentModifierMask == .command { return item }
+                if let found = search(item.submenu) { return found }
+            }
+            return nil
+        }
+        guard let item = search(NSApp.mainMenu) else { return "none" }
+        let action = item.action.map(NSStringFromSelector) ?? "nil"
+        return "\(item.title) action=\(action) target=\(item.target.map { String(describing: type(of: $0)) } ?? "nil") enabled=\(item.isEnabled)"
+    }
+
+    /// Diagnosis: invoke the view's paste action directly (what Edit > Paste
+    /// does) to separate "Cmd+V never arrived" from "Ghostty paste path".
+    private func directPasteAction(_ rec: SelfTestHarness.RecorderPane) async -> [UInt8] {
+        let mark = rec.log.mark()
+        rec.pane.probeView?.paste(nil)
+        return await harness.settledBytes(rec.log, since: mark)
     }
 
     private func escapeKey(_ rec: SelfTestHarness.RecorderPane, _ window: NSWindow) async -> TestResult {
@@ -285,9 +313,13 @@ struct InputSuite {
                      startedAt: start)
     }
 
+    /// Policy fixed after the first real run (2026-10-31): Ghostty replaces
+    /// the ESC of an embedded end marker with a space, keeps LF inside a
+    /// bracketed paste, and appends exactly one real end marker.
     private func acceptedBracketedPastes(_ payload: String) -> [[UInt8]] {
         let marker = "\u{1b}[201~"
-        let neutralized = [payload.replacingOccurrences(of: marker, with: ""),
+        let neutralized = [payload.replacingOccurrences(of: marker, with: " [201~"),
+                           payload.replacingOccurrences(of: marker, with: ""),
                            payload.replacingOccurrences(of: marker, with: "[201~")]
         let newlineForms = neutralized.flatMap { [$0, $0.replacingOccurrences(of: "\n", with: "\r")] }
         return newlineForms.map { Hex.bytes("\u{1b}[200~" + $0 + marker) }
@@ -311,8 +343,10 @@ struct InputSuite {
         let hit = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
             FileManager.default.fileExists(atPath: signalled.path)
         }
+        let trace = pane.probeView?.callLog.suffix(8).map { "\($0.kind.rawValue):\($0.text ?? "")" } ?? []
         return .make("IN-09a", "Ctrl+C → foreground 프로세스 그룹 SIGINT (trap 실행)",
-                     status: hit ? .pass : .fail, startedAt: start)
+                     status: hit ? .pass : .fail,
+                     evidence: ["probe_trace": trace.joined(separator: " | ")], startedAt: start)
     }
 
     // MARK: - Helpers

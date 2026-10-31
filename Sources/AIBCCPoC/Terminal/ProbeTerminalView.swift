@@ -5,6 +5,7 @@ import GhosttyTerminal
 struct InputCallRecord: Codable, Sendable, Equatable {
     enum Kind: String, Codable, Sendable {
         case keyDown, interpretBegin, interpretEnd, insertText, setMarkedText, unmarkText, doCommand
+        case pasteAction, copyAction, keyEquivalent
     }
 
     let kind: Kind
@@ -84,6 +85,22 @@ final class ProbeTerminalView: AppTerminalView {
     override func unmarkText() {
         record(.unmarkText)
         super.unmarkText()
+    }
+
+    override func paste(_ sender: Any?) {
+        record(.pasteAction)
+        super.paste(sender)
+    }
+
+    override func copy(_ sender: Any?) {
+        record(.copyAction)
+        super.copy(sender)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let handled = super.performKeyEquivalent(with: event)
+        record(.keyEquivalent, text: "\(event.charactersIgnoringModifiers ?? "") handled=\(handled)", keyCode: event.keyCode)
+        return handled
     }
 
     override func doCommand(by selector: Selector) {

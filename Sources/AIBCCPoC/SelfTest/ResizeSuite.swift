@@ -79,6 +79,9 @@ struct ResizeSuite {
         let start = ContinuousClock.now
         let workspace = harness.workspace
         let readyBefore = readyCount(rec)
+        // SwiftUI may already have collapsed the inspector while the window
+        // was narrow; make it visible first so the hide below is a real change.
+        _ = await apply(rec, allowNoOp: { true }) { workspace.isArtifactPanelVisible = true }
         let outcomes = [
             await apply(rec) { workspace.isArtifactPanelVisible = false },
             await apply(rec) { workspace.isArtifactPanelVisible = true },

@@ -23,13 +23,16 @@ enum AppConstants {
     }
 
     enum Terminal {
-        static let fontFamily = "SF Mono"
-        static let fallbackFontFamily = "Apple SD Gothic Neo"
         static let fontSize: Float = 13
         static let minimumContrast = 1.3
         /// Points. Self-test cell math depends on these exact values.
         static let paddingX = 8
         static let paddingY = 6
+        /// App shortcuts that must win over Ghostty's default keybinds
+        /// (Cmd+Opt+I is Ghostty's inspector toggle; found by IN-11b).
+        static let appReservedChords = [
+            "super+alt+i", "super+alt+1", "super+alt+2", "super+alt+4", "super+alt+shift+l",
+        ]
     }
 
     enum Layout {
@@ -51,7 +54,7 @@ enum AppConstants {
         ]
         /// Fixed barrack knowledge files have their own dedicated viewers.
         static let dedicatedViewerFiles: Set<String> = [
-            "RULES.md", "SOUL.md", "GROWTH.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md",
+            "RULES.md", "SOUL.md", "GROWTH.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "SESSIONS.md",
         ]
         static let watchLatency: TimeInterval = 0.3
         static let rendererReadyTimeout: Duration = .seconds(3)
@@ -59,6 +62,7 @@ enum AppConstants {
 
     enum SelfTest {
         static let argument = "--selftest"
+        static let onlyArgumentPrefix = "--selftest-only="
         static let outputDirectoryEnv = "AIBCC_SELFTEST_OUT"
         static let defaultOutputDirectory = "~/Library/Application Support/AIBCCPoC/selftest"
         static let pollInterval: Duration = .milliseconds(25)
@@ -67,6 +71,7 @@ enum AppConstants {
         /// Longer than Ghostty's multi-click interval so consecutive click
         /// tests are never counted as one double/triple click.
         static let clickReset: Duration = .milliseconds(700)
+        static let minimumChildRuntime: Duration = .seconds(1)
         static let readyTimeout: Duration = .seconds(10)
         static let settleTimeout: Duration = .seconds(3)
         static let stableWindow: Duration = .milliseconds(150)

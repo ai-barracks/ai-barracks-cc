@@ -18,6 +18,17 @@ struct AIBCCPoCApp: App {
                 )
         }
         .commands {
+            // SwiftUI's default pasteboard items stay disabled when the first
+            // responder is an AppKit view (the terminal), and a disabled
+            // item still swallows its shortcut: Cmd+V never reached the
+            // terminal (self-test IN-07, 2026-10-31). Forward to the first
+            // responder instead — terminal or document viewer.
+            CommandGroup(replacing: .pasteboard) {
+                ResponderCommand(title: "잘라내기", selector: #selector(NSText.cut(_:)), key: "x")
+                ResponderCommand(title: "복사하기", selector: #selector(NSText.copy(_:)), key: "c")
+                ResponderCommand(title: "붙여넣기", selector: #selector(NSText.paste(_:)), key: "v")
+                ResponderCommand(title: "전체 선택", selector: #selector(NSText.selectAll(_:)), key: "a")
+            }
             CommandMenu("레이아웃") {
                 ForEach(PaneLayout.allCases) { preset in
                     Button("터미널 \(preset.label)개") { workspace.setLayout(preset) }
@@ -35,6 +46,18 @@ struct AIBCCPoCApp: App {
                 .keyboardShortcut("l", modifiers: [.command, .option, .shift])
             }
         }
+    }
+}
+
+/// Menu command that sends a standard action to the current first responder.
+private struct ResponderCommand: View {
+    let title: String
+    let selector: Selector
+    let key: KeyEquivalent
+
+    var body: some View {
+        Button(title) { NSApp.sendAction(selector, to: nil, from: nil) }
+            .keyboardShortcut(key, modifiers: .command)
     }
 }
 

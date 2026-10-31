@@ -1,5 +1,6 @@
 import Foundation
 import GhosttyTerminal
+import Observation
 
 /// One terminal surface hosted in the grid. Ghostty owns the PTY (`.exec`
 /// backend, see docs/spikes/pty-ownership.md).
@@ -8,13 +9,19 @@ import GhosttyTerminal
 /// process) lives exactly as long as that view, so SwiftUI re-creating its
 /// representable must hand back the same instance instead of a fresh one.
 @MainActor
+@Observable
 final class TerminalPane: Identifiable {
     let id: UUID
     let title: String
     let state: TerminalViewState
-    private var ownedView: ProbeTerminalView?
+    /// The child exited; the pane keeps its final output on screen.
+    private(set) var hasExited = false
+    @ObservationIgnored private var ownedView: ProbeTerminalView?
+    @ObservationIgnored private var exitMonitor: ProcessExitMonitor?
 
     var probeView: ProbeTerminalView? { ownedView }
+    var monitoredPID: pid_t? { exitMonitor?.pid }
+    var isChildGone: Bool { exitMonitor?.isGone ?? false }
 
     init(
         controller: TerminalController,
@@ -37,6 +44,22 @@ final class TerminalPane: Identifiable {
         viewState.makePlatformView = { [weak self] in
             self?.platformView() ?? ProbeTerminalView(frame: .zero)
         }
+    }
+
+    /// Starts watching the surface's child once Ghostty has spawned it.
+    func startExitMonitorIfNeeded() {
+        guard exitMonitor == nil, !hasExited, let pid = probeView?.foregroundPid, pid > 0 else { return }
+        exitMonitor = ProcessExitMonitor(pid: pid) { [weak self] in self?.childDidExit() }
+    }
+
+    private func childDidExit() {
+        // A login/exec chain can hand the terminal to a new process; follow
+        // it instead of declaring the pane dead.
+        if let next = probeView?.foregroundPid, next > 0, next != exitMonitor?.pid, kill(next, 0) == 0 {
+            exitMonitor = ProcessExitMonitor(pid: next) { [weak self] in self?.childDidExit() }
+            return
+        }
+        hasExited = true
     }
 
     private func platformView() -> ProbeTerminalView {

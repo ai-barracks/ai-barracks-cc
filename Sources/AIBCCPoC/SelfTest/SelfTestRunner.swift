@@ -17,7 +17,10 @@ enum SelfTestExit: Int32 {
 @MainActor
 enum SelfTestLauncher {
     static func runIfRequested(workspace: WorkspaceModel, artifacts: ArtifactStore) async {
-        guard CommandLine.arguments.contains(AppConstants.SelfTest.argument) else { return }
+        let arguments = CommandLine.arguments
+        let requested = arguments.contains(AppConstants.SelfTest.argument)
+            || arguments.contains { $0.hasPrefix(AppConstants.SelfTest.onlyArgumentPrefix) }
+        guard requested else { return }
         let runner = SelfTestRunner(workspace: workspace, artifacts: artifacts)
         let outcome = await runner.run()
         InputSourceGuard.restore()
@@ -38,14 +41,20 @@ struct SelfTestRunner {
             return .setupError
         }
         harness.window?.makeKeyAndOrderFront(nil)
+        // An inactive app treats the first click as an activation click, so
+        // click-to-focus tests are only meaningful while active.
+        NSRunningApplication.current.activate()
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { NSApp.isActive }
         let environment = environmentSnapshot()
         let startedAt = Date()
 
-        let measured = await InputSuite(harness: harness).run()
-            + (await ResizeSuite(harness: harness).run())
-            + (await SelectionSuite(harness: harness).run())
-            + (await LifecycleSuite(harness: harness).run())
-            + (await IntegrationSuite(harness: harness).run())
+        GhosttyDebugCapture.enable(writingTo: output.appendingPathComponent("ghostty-debug.log"))
+        let only = Self.requestedSuites()
+        let measured = (only.contains("input") ? await InputSuite(harness: harness).run() : [])
+            + (only.contains("resize") ? await ResizeSuite(harness: harness).run() : [])
+            + (only.contains("selection") ? await SelectionSuite(harness: harness).run() : [])
+            + (only.contains("lifecycle") ? await LifecycleSuite(harness: harness).run() : [])
+            + (only.contains("integration") ? await IntegrationSuite(harness: harness).run() : [])
         let subs = measured + CriteriaCatalog.pendingSubResults(excluding: Set(measured.map(\.id)))
         let parents = CriteriaCatalog.aggregate(subs)
         let report = SelfTestReport(startedAt: startedAt, finishedAt: Date(), environment: environment,
@@ -57,6 +66,17 @@ struct SelfTestRunner {
             return .reportWriteFailed
         }
         return verdict(parents, measured: measured)
+    }
+
+    static let allSuites: Set<String> = ["input", "resize", "selection", "lifecycle", "integration"]
+
+    /// `--selftest-only=input,lifecycle` runs a subset (diagnosis only; a
+    /// partial run can never produce exit 0 because criteria stay unverified).
+    static func requestedSuites() -> Set<String> {
+        let prefix = AppConstants.SelfTest.onlyArgumentPrefix
+        guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) }) else { return allSuites }
+        let names = argument.dropFirst(prefix.count).split(separator: ",").map(String.init)
+        return Set(names).intersection(allSuites)
     }
 
     private func verdict(_ parents: [TestResult], measured: [TestResult]) -> SelfTestExit {
@@ -91,6 +111,7 @@ struct SelfTestRunner {
             "input_source_at_start": InputSourceGuard.currentSourceID ?? "unknown",
             "backing_scale": "\(NSScreen.main?.backingScaleFactor ?? 0)",
             "barracks": "\(workspace.barracks.count)",
+            "app_active_at_start": "\(NSApp.isActive)",
         ]
     }
 
