@@ -10,3 +10,4 @@ Codex code review r1 (2026-10-31) 반영 후에도 남는 제약. 제품 전환 
 6. **`--selftest` exit 0은 사람 검사 결과가 합쳐져야만 가능** — 자동 실행만으로는 최선이 exit 3(incomplete)이다.
 7. **자동화 미완 하위 항목** — ST-01b(4분할에서 IN/SC 핵심 재실행), MD-04b(뷰어 클릭·스크롤 후 복귀)는 `unverified`로 보고된다.
 8. **settle timeout과 정상 종료 구분 없음**(Codex r2 #17 잔여) — 바이트 비교가 기대값과 어긋나면 fail로 드러나므로 판정은 안전하지만, evidence에 timeout 여부가 따로 남지 않는다.
+9. **이 Mac의 Command Line Tools 손상** — `usr/lib/swift/pm/{ManifestAPI,PluginAPI}`에 2024-02 CLT의 `*.private.swiftinterface`가 남아 있어 swiftc가 옛 PackageDescription API로 manifest를 컴파일하고, 현재 `libPackageDescription.dylib`와 링크하다 실패한다(`Undefined symbols ... Package.__allocating_init`). **모든 SwiftPM 패키지가 영향**. 시스템 파일은 건드리지 않고 `scripts/make-toolchain-fix.sh`가 공개 인터페이스만 담은 미러를 `.toolchain-fix/`에 만들고 `SWIFTPM_CUSTOM_LIBS_DIR`로 지정한다(`package-app.sh`가 자동 적용). 근본 해결은 CLT 재설치 또는 관리자 권한으로 stale 파일 4개 삭제.

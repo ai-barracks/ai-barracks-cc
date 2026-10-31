@@ -21,6 +21,6 @@ let package = Package(
             path: "Sources/AIBCCPoC",
             linkerSettings: [.linkedFramework("Carbon")]
         ),
-    ],
-    swiftLanguageModes: [.v6]
+    ]
+    // swift-tools-version 6.x defaults every target to the Swift 6 language mode.
 )

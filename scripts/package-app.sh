@@ -27,14 +27,26 @@ require_disk() {
   echo "disk($stage): ${free}GB free"
 }
 
+use_toolchain_fix() {
+  # Stale 2024 private interfaces in the CLT break manifest compilation on
+  # this Mac (docs/known-issues.md #9). Route SwiftPM to a sanitized mirror.
+  if [[ -z "${SWIFTPM_CUSTOM_LIBS_DIR:-}" ]] \
+     && [[ -n "$(find /Library/Developer/CommandLineTools/usr/lib/swift/pm -name '*.private.swiftinterface' -print -quit 2>/dev/null)" ]]; then
+    "$ROOT/scripts/make-toolchain-fix.sh" >&2
+    export SWIFTPM_CUSTOM_LIBS_DIR="$ROOT/.toolchain-fix"
+  fi
+}
+
 build_binary() {
   # Build first as its own command so a compile failure stops the script
   # instead of being masked by a later successful --show-bin-path.
-  swift build -c "$CONFIG" --package-path "$ROOT"
+  # --disable-keychain: without it SwiftPM blocks on a keychain lookup for
+  # github.com while downloading the binary artifact (observed 2026-10-31).
+  swift build -c "$CONFIG" --package-path "$ROOT" --disable-keychain
 }
 
 bin_path() {
-  swift build -c "$CONFIG" --package-path "$ROOT" --show-bin-path
+  swift build -c "$CONFIG" --package-path "$ROOT" --disable-keychain --show-bin-path
 }
 
 warn_resource_lookup() {
@@ -91,6 +103,7 @@ JSON
 main() {
   require_disk start
   mkdir -p "$DIST"
+  use_toolchain_fix
   build_binary
   local bin_dir
   bin_dir="$(bin_path)"
