@@ -50,7 +50,9 @@ struct ResizeSuite {
         var outcomes: [Convergence] = []
         var captures: [String] = []
         for (index, size) in sizes.enumerated() {
-            outcomes = outcomes + [await apply(rec) { window.setContentSize(size) }]
+            let contentBefore = window.contentLayoutRect.size
+            let clamped = { window.contentLayoutRect.size == contentBefore }
+            outcomes = outcomes + [await apply(rec, allowNoOp: clamped) { window.setContentSize(size) }]
             if index == 0 || index == sizes.count / 2 || index == sizes.count - 1,
                let image = await harness.requestCapture(label: "resize-step\(index)") {
                 captures = captures + [image.lastPathComponent]
@@ -90,7 +92,34 @@ struct ResizeSuite {
                       status: failures.isEmpty && !restarted ? .pass : .fail,
                       evidence: ["process_restarted": "\(restarted)",
                                  "failed": failures.map(\.detail).joined(separator: " | ")],
-                      startedAt: start)]
+                      startedAt: start),
+                await splitDrag(rec)]
+    }
+
+    /// RS-03b: dragging the divider between two panes resizes the recorder
+    /// pane through the real mouse path.
+    private func splitDrag(_ rec: SelfTestHarness.RecorderPane) async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        _ = await apply(rec) { workspace.setLayout(.double) }
+        guard let window = harness.window, let view = rec.pane.probeView else {
+            return setupFailure("split drag geometry", start)
+        }
+        let paneRect = view.convert(view.bounds, to: nil)
+        let from = NSPoint(x: paneRect.maxX + AppConstants.Layout.paneSpacing / 2, y: paneRect.midY)
+        let to = NSPoint(x: paneRect.minX + paneRect.width * 0.6, y: paneRect.midY)
+        let ratioBefore = workspace.splitX
+        let outcome = await apply(rec) {
+            EventSynthesizer.drag(from: from, to: to, steps: 12, in: window)
+        }
+        let moved = workspace.splitX != ratioBefore
+        _ = await apply(rec) { workspace.setSplit(x: 0.5) }
+        _ = await apply(rec) { workspace.setLayout(.single) }
+        return .make("RS-03b", "분할 경계 드래그 3자 일치",
+                     status: moved && outcome.converged ? .pass : .fail,
+                     evidence: ["split_before": "\(ratioBefore)", "split_after_drag": "\(workspace.splitX)",
+                                "detail": outcome.detail],
+                     startedAt: start)
     }
 
     private func fontSizeActions(_ rec: SelfTestHarness.RecorderPane) async -> [TestResult] {
@@ -105,9 +134,16 @@ struct ResizeSuite {
                 notes = notes + ["\(action): handled=\(handled) changed=\(changed) \(outcome.detail)"]
             }
         }
-        return [.make("RS-04a", "폰트 크기 변경(바인딩 액션) 3자 일치",
-                      status: notes.isEmpty ? .pass : .fail,
-                      evidence: ["failed": notes.joined(separator: " | ")], startedAt: start)]
+        _ = await apply(rec) { _ = rec.pane.state.performBindingAction("increase_font_size:4") }
+        let capture = await harness.requestCapture(label: "font-large")
+        _ = await apply(rec) { _ = rec.pane.state.performBindingAction("reset_font_size") }
+        return [
+            .make("RS-04a", "폰트 크기 변경(바인딩 액션) 3자 일치",
+                  status: notes.isEmpty ? .pass : .fail,
+                  evidence: ["failed": notes.joined(separator: " | ")], startedAt: start),
+            .make("RS-04c", "큰 폰트에서 마지막 행·열 표시 — 캡처 검토 필요", status: .unverified,
+                  evidence: ["capture": capture?.lastPathComponent ?? "none"], startedAt: start),
+        ]
     }
 
     private func fontSizeShortcuts(_ rec: SelfTestHarness.RecorderPane, _ window: NSWindow) async -> [TestResult] {
@@ -130,48 +166,92 @@ struct ResizeSuite {
 
     private func fullScreen(_ rec: SelfTestHarness.RecorderPane, _ window: NSWindow) async -> [TestResult] {
         let start = ContinuousClock.now
-        let inside = await apply(rec, settle: .seconds(6)) { window.toggleFullScreen(nil) }
-        let entered = window.styleMask.contains(.fullScreen)
-        let outside = await apply(rec, settle: .seconds(6)) { window.toggleFullScreen(nil) }
-        let exited = !window.styleMask.contains(.fullScreen)
-        let ok = entered && exited && inside.converged && outside.converged
-        return [.make("RS-02a", "전체화면 진입·해제 3자 일치",
-                      status: ok ? .pass : .fail,
-                      evidence: ["entered": "\(entered)", "exited": "\(exited)",
-                                 "inside": inside.detail, "outside": outside.detail],
-                      startedAt: start)]
+        let entered = NotificationFlag(NSWindow.didEnterFullScreenNotification, object: window)
+        let exited = NotificationFlag(NSWindow.didExitFullScreenNotification, object: window)
+        defer { entered.invalidate(); exited.invalidate() }
+        let fullscreenTimeout = Duration.seconds(6)
+
+        let beforeEnter = geometry(rec)
+        let enterRequested = ContinuousClock.now
+        window.toggleFullScreen(nil)
+        let didEnter = await harness.waitUntil(fullscreenTimeout) { entered.fired }
+        let inside = await converge(rec, before: beforeEnter, requested: enterRequested)
+        let capture = await harness.requestCapture(label: "fullscreen")
+
+        let beforeExit = geometry(rec)
+        let exitRequested = ContinuousClock.now
+        window.toggleFullScreen(nil)
+        let didExit = await harness.waitUntil(fullscreenTimeout) { exited.fired }
+        let outside = await converge(rec, before: beforeExit, requested: exitRequested)
+
+        let ok = didEnter && didExit && inside.converged && outside.converged
+        return [
+            .make("RS-02a", "전체화면 진입·해제(애니메이션 완료 후) 3자 일치",
+                  status: ok ? .pass : .fail,
+                  evidence: ["did_enter": "\(didEnter)", "did_exit": "\(didExit)",
+                             "inside": inside.detail, "outside": outside.detail],
+                  startedAt: start),
+            .make("RS-02b", "전체화면 화면 표시 — 캡처 검토 필요", status: .unverified,
+                  evidence: ["capture": capture?.lastPathComponent ?? "none"], startedAt: start),
+        ]
     }
 
     // MARK: - Convergence
 
-    /// Applies `change`, waits until the geometry actually differs (or a grace
-    /// period passes for no-op changes), then until the triad holds for a
-    /// full `stableWindow`. Time is measured from the request.
+    /// Applies `change`, then converges (see `converge`).
     private func apply(
         _ rec: SelfTestHarness.RecorderPane,
         settle: Duration = AppConstants.SelfTest.settleTimeout,
+        allowNoOp: (() -> Bool)? = nil,
         _ change: () -> Void
     ) async -> Convergence {
         let before = geometry(rec)
         let requested = ContinuousClock.now
         change()
+        await harness.drain()
+        return await converge(rec, before: before, requested: requested, settle: settle, allowNoOp: allowNoOp)
+    }
+
+    /// Succeeds only after the geometry differs from `before` (or `allowNoOp`
+    /// confirms the request was a no-op after the grace period) and the SAME
+    /// geometry, with the triad agreeing, holds for a full `stableWindow`.
+    /// Time is measured from the request.
+    private func converge(
+        _ rec: SelfTestHarness.RecorderPane,
+        before: Geometry?,
+        requested: ContinuousClock.Instant,
+        settle: Duration = AppConstants.SelfTest.settleTimeout,
+        allowNoOp: (() -> Bool)? = nil
+    ) async -> Convergence {
         let deadline = requested + settle
         var changed = false
-        var agreeingSince: ContinuousClock.Instant?
-        while ContinuousClock.now < deadline {
-            changed = changed || geometry(rec) != before || ContinuousClock.now - requested > AppConstants.SelfTest.changeGrace
-            if changed && triadAgrees(rec) {
-                let since = agreeingSince ?? ContinuousClock.now
-                agreeingSince = since
-                if ContinuousClock.now - since >= AppConstants.SelfTest.stableWindow {
-                    return Convergence(converged: true, millis: (since - requested).milliseconds, detail: describe(rec))
+        var noOp = false
+        var stable: (geometry: Geometry, since: ContinuousClock.Instant)?
+        while ContinuousClock.now < deadline, !Task.isCancelled {
+            let current = geometry(rec)
+            if !changed, current != before {
+                changed = true
+            } else if !changed, let allowNoOp, ContinuousClock.now - requested > AppConstants.SelfTest.changeGrace, allowNoOp() {
+                changed = true
+                noOp = true
+            }
+            if changed, let current, triadAgrees(rec) {
+                if let held = stable, held.geometry == current {
+                    if ContinuousClock.now - held.since >= AppConstants.SelfTest.stableWindow {
+                        let prefix = noOp ? "no-op " : ""
+                        return Convergence(converged: true, millis: (held.since - requested).milliseconds,
+                                           detail: prefix + describe(rec))
+                    }
+                } else {
+                    stable = (current, ContinuousClock.now)
                 }
             } else {
-                agreeingSince = nil
+                stable = nil
             }
             await harness.pause(AppConstants.SelfTest.pollInterval)
         }
-        return Convergence(converged: false, millis: settle.milliseconds, detail: "timeout " + describe(rec))
+        return Convergence(converged: false, millis: settle.milliseconds,
+                           detail: "timeout changed=\(changed) " + describe(rec))
     }
 
     private func geometry(_ rec: SelfTestHarness.RecorderPane) -> Geometry? {

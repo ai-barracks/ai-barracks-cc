@@ -14,7 +14,7 @@ struct MainView: View {
                     ideal: AppConstants.Layout.sidebarMinWidth + 40
                 )
         } detail: {
-            TerminalGridView(panes: workspace.panes, layout: workspace.layout)
+            TerminalGridView(workspace: workspace)
                 .inspector(isPresented: $workspace.isArtifactPanelVisible) {
                     ArtifactPanel(store: artifacts)
                         .inspectorColumnWidth(

@@ -21,14 +21,8 @@ struct LifecycleSuite {
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorders.allSatisfy { $0.log.isReady } }
         let isolation = await inputIsolation(recorders, window)
         let original = window.frame
-        window.setContentSize(AppConstants.SelfTest.resizeSmallSize)
-        let resized = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
-            recorders.allSatisfy(gridMatchesPTY)
-        }
-        window.setFrame(original, display: true)
-        let restored = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
-            recorders.allSatisfy(gridMatchesPTY)
-        }
+        let resized = await resizeAndSettle(recorders) { window.setContentSize(AppConstants.SelfTest.resizeSmallSize) }
+        let restored = await resizeAndSettle(recorders) { window.setFrame(original, display: true) }
         let ok = isolation.isEmpty && resized && restored
         return .make("ST-01a", "4분할: pane별 입력 격리 + 리사이즈 grid·PTY 일치",
                      status: ok ? .pass : .fail,
@@ -56,6 +50,30 @@ struct LifecycleSuite {
             }
         }
         return failures
+    }
+
+    /// Waits for the first pane's grid to change, then for every pane's grid
+    /// and PTY winsize to agree and stay unchanged for `stableWindow`.
+    private func resizeAndSettle(_ recorders: [SelfTestHarness.RecorderPane], _ change: () -> Void) async -> Bool {
+        let before = recorders.first?.pane.state.surfaceSize
+        change()
+        let changed = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            recorders.first?.pane.state.surfaceSize != before
+        }
+        guard changed else { return false }
+        let deadline = ContinuousClock.now + AppConstants.SelfTest.settleTimeout
+        while ContinuousClock.now < deadline, !Task.isCancelled {
+            let snapshot = recorders.map(\.pane.state.surfaceSize)
+            if recorders.allSatisfy(gridMatchesPTY) {
+                await harness.pause(AppConstants.SelfTest.stableWindow)
+                if recorders.map(\.pane.state.surfaceSize) == snapshot, recorders.allSatisfy(gridMatchesPTY) {
+                    return true
+                }
+            } else {
+                await harness.pause(AppConstants.SelfTest.pollInterval)
+            }
+        }
+        return false
     }
 
     private func gridMatchesPTY(_ recorder: SelfTestHarness.RecorderPane) -> Bool {

@@ -66,14 +66,19 @@ struct SelfTestHarness {
         try? await Task.sleep(for: duration)
     }
 
-    /// Lets the run loop dequeue events posted by `EventSynthesizer`.
-    func drain() async {
-        await pause(AppConstants.SelfTest.eventDrain)
+    /// Waits until every event posted so far has been dispatched (sentinel
+    /// barrier). Returns false if the queue did not drain in time.
+    @discardableResult
+    func drain() async -> Bool {
+        guard let window else { return false }
+        let token = EventBarrier.shared.post(windowNumber: window.windowNumber)
+        return await waitUntil(AppConstants.SelfTest.settleTimeout) { EventBarrier.shared.isAcknowledged(token) }
     }
 
     /// Bytes received since `mark` once the stream has been quiet for
     /// `stableWindow`, bounded by `settleTimeout` overall.
     func settledBytes(_ log: RecorderLog, since mark: Int, expectingAtLeast count: Int = 1) async -> [UInt8] {
+        await drain()
         let deadline = ContinuousClock.now + AppConstants.SelfTest.settleTimeout
         _ = await waitUntil(AppConstants.SelfTest.settleTimeout) { log.bytes(since: mark).count >= count }
         var previous = log.bytes(since: mark)

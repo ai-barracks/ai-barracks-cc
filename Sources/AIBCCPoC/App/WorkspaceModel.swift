@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import GhosttyTerminal
 import Observation
 
@@ -14,6 +14,9 @@ final class WorkspaceModel {
     var isArtifactPanelVisible = true
     private(set) var panes: [TerminalPane] = []
     private(set) var layout: PaneLayout = .single
+    /// Split positions as fractions of the grid (dragged via dividers).
+    private(set) var splitX: CGFloat = 0.5
+    private(set) var splitY: CGFloat = 0.5
 
     init(barracks: [Barrack] = BarrackRegistry.load()) {
         controller = TerminalAppearance.makeController()
@@ -35,6 +38,12 @@ final class WorkspaceModel {
         }
         layout = newLayout
         updateSurfaceVisibility()
+    }
+
+    func setSplit(x: CGFloat? = nil, y: CGFloat? = nil) {
+        let range = AppConstants.Layout.splitRatioRange
+        if let x { splitX = min(max(x, range.lowerBound), range.upperBound) }
+        if let y { splitY = min(max(y, range.lowerBound), range.upperBound) }
     }
 
     /// Self-test hook: replace the whole grid with fixture panes.
@@ -99,10 +108,19 @@ final class WorkspaceModel {
         updateSurfaceVisibility()
     }
 
+    /// Parked panes stop drawing, and keyboard focus never stays on a parked
+    /// pane (Codex review r2 #2): it moves to the first visible pane.
     private func updateSurfaceVisibility() {
         for (index, pane) in panes.enumerated() {
             pane.state.isSurfaceVisible = index < layout.paneCount
         }
+        let parked = panes.dropFirst(layout.paneCount)
+        guard let focusedParked = parked.first(where: { pane in
+            guard let view = pane.probeView, let responder = view.window?.firstResponder as? NSView else { return false }
+            return responder === view || responder.isDescendant(of: view)
+        }), let target = panes.first?.probeView else { return }
+        if focusedParked.probeView?.hasMarkedText() == true { focusedParked.probeView?.unmarkText() }
+        target.window?.makeFirstResponder(target)
     }
 
     private func makeShellPanes(count: Int, startingAt offset: Int) -> [TerminalPane] {

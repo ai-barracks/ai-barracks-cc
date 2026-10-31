@@ -13,6 +13,8 @@ struct ArtifactPanel: View {
             documentView
                 .frame(minHeight: 200)
         }
+        // Opening another document retries the renderer (r2 #9).
+        .onChange(of: store.selected?.url) { rendererFailure = nil }
     }
 
     private var fileList: some View {

@@ -48,12 +48,19 @@ struct MarkdownWebView: NSViewRepresentable {
             self.onFailure = onFailure
         }
 
+        /// Failures can surface during `makeNSView`; SwiftUI state must not be
+        /// mutated synchronously there, so report on the next main-actor turn.
+        private func reportFailure(_ reason: String) {
+            let callback = onFailure
+            Task { @MainActor in callback(reason) }
+        }
+
         func loadRenderer(into webView: WKWebView) {
             guard let directory = Bundle.main.resourceURL?
                 .appendingPathComponent(AppConstants.Paths.rendererDirectory, isDirectory: true),
                 FileManager.default.fileExists(atPath: directory.appendingPathComponent(AppConstants.Paths.rendererEntry).path)
             else {
-                onFailure("renderer bundle missing")
+                reportFailure("renderer bundle missing")
                 return
             }
             rendererDirectory = directory.standardizedFileURL
@@ -61,7 +68,7 @@ struct MarkdownWebView: NSViewRepresentable {
             readinessTimer = Task { [weak self] in
                 try? await Task.sleep(for: AppConstants.Artifacts.rendererReadyTimeout)
                 guard let self, !Task.isCancelled, !self.isRendererLoaded else { return }
-                self.onFailure("renderer did not load in time")
+                self.reportFailure("renderer did not load in time")
             }
         }
 
@@ -87,11 +94,16 @@ struct MarkdownWebView: NSViewRepresentable {
         }
 
         func webView(_: WKWebView, didFail _: WKNavigation!, withError error: any Error) {
-            onFailure("navigation failed: \(error.localizedDescription)")
+            reportFailure("navigation failed: \(error.localizedDescription)")
         }
 
         func webView(_: WKWebView, didFailProvisionalNavigation _: WKNavigation!, withError error: any Error) {
-            onFailure("renderer load failed: \(error.localizedDescription)")
+            reportFailure("renderer load failed: \(error.localizedDescription)")
+        }
+
+        func webViewWebContentProcessDidTerminate(_: WKWebView) {
+            isRendererLoaded = false
+            reportFailure("renderer process terminated")
         }
 
         func webView(_: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
@@ -108,12 +120,13 @@ struct MarkdownWebView: NSViewRepresentable {
             guard let data = try? JSONSerialization.data(withJSONObject: body),
                   let json = String(data: data, encoding: .utf8)
             else {
-                onFailure("could not encode document")
+                reportFailure("could not encode document")
                 return
             }
             webView.evaluateJavaScript("window.aibccShow(\(json))") { [weak self] _, error in
                 guard let error else { return }
-                MainActor.assumeIsolated { self?.onFailure("render script failed: \(error.localizedDescription)") }
+                let reason = "render script failed: \(error.localizedDescription)"
+                MainActor.assumeIsolated { self?.reportFailure(reason) }
             }
         }
 

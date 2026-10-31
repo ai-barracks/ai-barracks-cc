@@ -33,6 +33,7 @@ struct InputSuite {
             await escapeKey(primary, window),
             await commandCopyDoesNotLeak(primary, window),
             await appShortcutDoesNotLeak(primary, window),
+            await commandKDoesNotLeak(primary, window),
             await contractHangulWithSpace(primary, window),
             await contractBackspaceWhileComposing(primary, window),
             await paneClickWhileComposing(primary, secondary, window),
@@ -101,6 +102,7 @@ struct InputSuite {
         harness.focus(rec.pane)
         let mark = rec.log.mark()
         if let copy = Synth.command("c") { Synth.press(copy, in: window) }
+        await harness.drain()
         await harness.pause(.milliseconds(300))
         let bytes = rec.log.bytes(since: mark)
         return .make("IN-11a", "선택 없을 때 ⌘C가 PTY로 새지 않음",
@@ -119,11 +121,26 @@ struct InputSuite {
         await harness.drain()
         let toggled = workspace.isArtifactPanelVisible != before
         Synth.press(toggle, in: window)
+        await harness.drain()
         await harness.pause(.milliseconds(300))
         let bytes = rec.log.bytes(since: mark)
         return .make("IN-11b", "앱 단축키(⌥⌘I)가 동작하고 PTY로 새지 않음",
                      status: toggled && bytes.isEmpty ? .pass : .fail,
                      evidence: ["menu_handled": "\(toggled)", "hex": Hex.string(bytes)], startedAt: start)
+    }
+
+    /// IN-11c: ⌘K (command palette in the product) must not inject bytes.
+    private func commandKDoesNotLeak(_ rec: SelfTestHarness.RecorderPane, _ window: NSWindow) async -> TestResult {
+        let start = ContinuousClock.now
+        harness.focus(rec.pane)
+        let mark = rec.log.mark()
+        if let key = Synth.command("k") { Synth.press(key, in: window) }
+        await harness.drain()
+        await harness.pause(.milliseconds(300))
+        let bytes = rec.log.bytes(since: mark)
+        return .make("IN-11c", "⌘K가 PTY로 바이트를 보내지 않음",
+                     status: bytes.isEmpty ? .pass : .fail,
+                     evidence: ["hex": Hex.string(bytes)], startedAt: start)
     }
 
     // MARK: - IME callback contract (scripted IMK)
@@ -243,8 +260,9 @@ struct InputSuite {
 
     // MARK: - Separate fixtures
 
-    /// IN-08a: with bracketed paste on, an embedded end marker must not
-    /// terminate the paste early (exactly one ESC[201~, at the end).
+    /// IN-08a: with bracketed paste on, an embedded end marker must be
+    /// neutralized and every other byte preserved. Accepted neutralizations:
+    /// drop the inner marker, or drop only its ESC; newlines as LF or CR.
     private func bracketedPaste(_ window: NSWindow) async -> TestResult {
         let start = ContinuousClock.now
         guard let rec = harness.makeRecorderPane(name: "bracketed", environment: ["AIBCC_BRACKETED_PASTE": "1"]),
@@ -253,18 +271,26 @@ struct InputSuite {
         await harness.install([rec.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { rec.log.isReady }
         harness.focus(rec.pane)
+        let payload = "abc\u{1b}[201~rm -rf x\ndef"
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("abc\u{1b}[201~rm -rf x\ndef", forType: .string)
+        NSPasteboard.general.setString(payload, forType: .string)
         let mark = rec.log.mark()
         Synth.press(key, in: window)
         let bytes = await harness.settledBytes(rec.log, since: mark, expectingAtLeast: 12)
-        let startMarker = Hex.bytes("\u{1b}[200~")
-        let endMarker = Hex.bytes("\u{1b}[201~")
-        let closes = occurrences(of: endMarker, in: bytes)
-        let ok = bytes.starts(with: startMarker) && closes == 1 && Array(bytes.suffix(endMarker.count)) == endMarker
-        return .make("IN-08a", "bracketed paste 내부 종료 구분자 무력화",
-                     status: ok ? .pass : .fail, evidence: ["hex": Hex.string(bytes), "end_markers": "\(closes)"],
+        let accepted = acceptedBracketedPastes(payload)
+        return .make("IN-08a", "bracketed paste: 내부 종료 구분자 무력화·나머지 원문 보존",
+                     status: accepted.contains(bytes) ? .pass : .fail,
+                     evidence: ["hex": Hex.string(bytes),
+                                "accepted": accepted.map(Hex.string).joined(separator: " || ")],
                      startedAt: start)
+    }
+
+    private func acceptedBracketedPastes(_ payload: String) -> [[UInt8]] {
+        let marker = "\u{1b}[201~"
+        let neutralized = [payload.replacingOccurrences(of: marker, with: ""),
+                           payload.replacingOccurrences(of: marker, with: "[201~")]
+        let newlineForms = neutralized.flatMap { [$0, $0.replacingOccurrences(of: "\n", with: "\r")] }
+        return newlineForms.map { Hex.bytes("\u{1b}[200~" + $0 + marker) }
     }
 
     private func controlC(_ window: NSWindow) async -> TestResult {
@@ -295,11 +321,6 @@ struct InputSuite {
         zip(letters, ime).compactMap { letter, calls in
             Synth.key(letter).map { (key: $0, ime: calls) }
         }
-    }
-
-    private func occurrences(of needle: [UInt8], in haystack: [UInt8]) -> Int {
-        guard !needle.isEmpty, haystack.count >= needle.count else { return 0 }
-        return (0...(haystack.count - needle.count)).filter { Array(haystack[$0..<$0 + needle.count]) == needle }.count
     }
 
     private func saveCallLog(_ log: [InputCallRecord], name: String) {

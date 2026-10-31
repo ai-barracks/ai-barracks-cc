@@ -27,12 +27,13 @@ enum InputSourceGuard {
 
     /// Runs `body` with `id` selected, then re-selects the source that was
     /// active before. Returns nil without running `body` if `id` is missing.
-    static func with<T>(_ id: String, _ body: () async -> T) async -> T? {
+    static func with<T>(_ id: String, _ body: @MainActor () async -> T) async -> T? {
         let previous = currentSourceID
+        defer {
+            if let previous, currentSourceID != previous { select(id: previous) }
+        }
         guard select(id: id), currentSourceID == id else { return nil }
-        let result = await body()
-        if let previous { select(id: previous) }
-        return result
+        return await body()
     }
 
     @discardableResult

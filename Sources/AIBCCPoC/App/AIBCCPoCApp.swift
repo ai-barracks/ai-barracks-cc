@@ -8,7 +8,9 @@ struct AIBCCPoCApp: App {
     @State private var artifacts = ArtifactStore()
 
     var body: some Scene {
-        WindowGroup("AIBCC Swift PoC") {
+        // Single window: panes own their native views, which cannot live in
+        // two view hierarchies at once (Codex review r2 #10).
+        Window("AIBCC Swift PoC", id: "main") {
             MainView(workspace: workspace, artifacts: artifacts)
                 .frame(
                     minWidth: AppConstants.Layout.minWindowWidth,

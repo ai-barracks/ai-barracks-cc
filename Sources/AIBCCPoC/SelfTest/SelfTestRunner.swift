@@ -56,10 +56,12 @@ struct SelfTestRunner {
             FileHandle.standardError.write(Data("selftest: report write failed: \(error)\n".utf8))
             return .reportWriteFailed
         }
-        return verdict(parents)
+        return verdict(parents, measured: measured)
     }
 
-    private func verdict(_ parents: [TestResult]) -> SelfTestExit {
+    private func verdict(_ parents: [TestResult], measured: [TestResult]) -> SelfTestExit {
+        // A suite that could not even set up invalidates the run (r2 #5).
+        if measured.contains(where: { $0.id.hasSuffix("-setup") && $0.status == .fail }) { return .setupError }
         let blockingIDs = Set(CriteriaCatalog.criteria.filter(\.blocking).map(\.id))
         let blocking = parents.filter { blockingIDs.contains($0.id) }
         if blocking.contains(where: { $0.status == .fail }) { return .blockingFailure }

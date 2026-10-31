@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Pane presets agreed in Council 20261031_144814: Focus, split, 2x2.
@@ -28,26 +29,76 @@ enum PaneLayout: Int, CaseIterable, Identifiable, Sendable {
 }
 
 /// Every pane stays in one `ForEach`, so switching presets only moves views:
-/// SwiftUI never tears a terminal down because the layout changed.
+/// SwiftUI never tears a terminal down because the layout changed. Split
+/// positions are dragged with overlay dividers (RS-03).
 struct TerminalGridView: View {
-    let panes: [TerminalPane]
-    let layout: PaneLayout
+    let workspace: WorkspaceModel
+
+    static let coordinateSpaceName = "terminal-grid"
 
     var body: some View {
-        PaneGridLayout(layout: layout, spacing: AppConstants.Layout.paneSpacing) {
-            ForEach(panes) { pane in
-                TerminalPaneView(pane: pane, state: pane.state)
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                PaneGridLayout(
+                    layout: workspace.layout,
+                    splitX: workspace.splitX,
+                    splitY: workspace.splitY,
+                    spacing: AppConstants.Layout.paneSpacing
+                ) {
+                    ForEach(workspace.panes) { pane in
+                        TerminalPaneView(pane: pane, state: pane.state)
+                    }
+                }
+                dividers(in: proxy.size)
             }
+            .coordinateSpace(name: Self.coordinateSpaceName)
         }
         .background(Color(nsColor: .separatorColor))
     }
+
+    @ViewBuilder
+    private func dividers(in size: CGSize) -> some View {
+        if workspace.layout != .single, size.width > 0 {
+            DividerHandle(cursor: .resizeLeftRight)
+                .frame(width: AppConstants.Layout.dividerHitWidth, height: size.height)
+                .position(x: size.width * workspace.splitX, y: size.height / 2)
+                .gesture(drag { workspace.setSplit(x: $0.x / size.width) })
+        }
+        if workspace.layout == .quad, size.height > 0 {
+            DividerHandle(cursor: .resizeUpDown)
+                .frame(width: size.width, height: AppConstants.Layout.dividerHitWidth)
+                .position(x: size.width / 2, y: size.height * workspace.splitY)
+                .gesture(drag { workspace.setSplit(y: $0.y / size.height) })
+        }
+    }
+
+    private func drag(_ update: @escaping (CGPoint) -> Void) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.coordinateSpaceName))
+            .onChanged { update($0.location) }
+    }
 }
 
-/// Places the first `layout.paneCount` panes in an equal grid and parks the
-/// rest outside the visible area (their surfaces stop drawing, see
-/// `WorkspaceModel.setLayout`).
+/// Invisible, hit-testable strip over a pane boundary.
+private struct DividerHandle: View {
+    let cursor: NSCursor
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { cursor.push() } else { NSCursor.pop() }
+            }
+    }
+}
+
+/// Places the first `layout.paneCount` panes in a grid split at
+/// (`splitX`, `splitY`) and parks the rest outside the visible area (their
+/// surfaces stop drawing, see `WorkspaceModel.updateSurfaceVisibility`).
 struct PaneGridLayout: Layout {
     let layout: PaneLayout
+    let splitX: CGFloat
+    let splitY: CGFloat
     let spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews _: Subviews, cache _: inout ()) -> CGSize {
@@ -55,10 +106,10 @@ struct PaneGridLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
-        let frames = Self.frames(for: layout, in: bounds, spacing: spacing)
+        let slots = paneFrames(in: bounds)
         for (index, subview) in subviews.enumerated() {
-            if frames.indices.contains(index) {
-                subview.place(at: frames[index].origin, proposal: ProposedViewSize(frames[index].size))
+            if slots.indices.contains(index) {
+                subview.place(at: slots[index].origin, proposal: ProposedViewSize(slots[index].size))
             } else {
                 let parked = CGPoint(x: bounds.maxX + bounds.width + 1000, y: bounds.minY)
                 subview.place(at: parked, proposal: ProposedViewSize(bounds.size))
@@ -66,25 +117,27 @@ struct PaneGridLayout: Layout {
         }
     }
 
-    static func frames(for layout: PaneLayout, in bounds: CGRect, spacing: CGFloat) -> [CGRect] {
-        let halfWidth = (bounds.width - spacing) / 2
-        let halfHeight = (bounds.height - spacing) / 2
-        let rightX = bounds.minX + halfWidth + spacing
-        let lowerY = bounds.minY + halfHeight + spacing
+    func paneFrames(in bounds: CGRect) -> [CGRect] {
+        let leftWidth = ((bounds.width - spacing) * splitX).rounded()
+        let rightWidth = bounds.width - spacing - leftWidth
+        let topHeight = ((bounds.height - spacing) * splitY).rounded()
+        let bottomHeight = bounds.height - spacing - topHeight
+        let rightX = bounds.minX + leftWidth + spacing
+        let lowerY = bounds.minY + topHeight + spacing
         switch layout {
         case .single:
             return [bounds]
         case .double:
             return [
-                CGRect(x: bounds.minX, y: bounds.minY, width: halfWidth, height: bounds.height),
-                CGRect(x: rightX, y: bounds.minY, width: halfWidth, height: bounds.height),
+                CGRect(x: bounds.minX, y: bounds.minY, width: leftWidth, height: bounds.height),
+                CGRect(x: rightX, y: bounds.minY, width: rightWidth, height: bounds.height),
             ]
         case .quad:
             return [
-                CGRect(x: bounds.minX, y: bounds.minY, width: halfWidth, height: halfHeight),
-                CGRect(x: rightX, y: bounds.minY, width: halfWidth, height: halfHeight),
-                CGRect(x: bounds.minX, y: lowerY, width: halfWidth, height: halfHeight),
-                CGRect(x: rightX, y: lowerY, width: halfWidth, height: halfHeight),
+                CGRect(x: bounds.minX, y: bounds.minY, width: leftWidth, height: topHeight),
+                CGRect(x: rightX, y: bounds.minY, width: rightWidth, height: topHeight),
+                CGRect(x: bounds.minX, y: lowerY, width: leftWidth, height: bottomHeight),
+                CGRect(x: rightX, y: lowerY, width: rightWidth, height: bottomHeight),
             ]
         }
     }

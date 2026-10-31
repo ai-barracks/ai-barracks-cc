@@ -39,6 +39,8 @@ enum AppConstants {
         static let inspectorMinWidth: CGFloat = 320
         static let inspectorIdealWidth: CGFloat = 420
         static let paneSpacing: CGFloat = 1
+        static let dividerHitWidth: CGFloat = 8
+        static let splitRatioRange: ClosedRange<CGFloat> = 0.2...0.8
     }
 
     enum Artifacts {
@@ -60,7 +62,6 @@ enum AppConstants {
         static let outputDirectoryEnv = "AIBCC_SELFTEST_OUT"
         static let defaultOutputDirectory = "~/Library/Application Support/AIBCCPoC/selftest"
         static let pollInterval: Duration = .milliseconds(25)
-        static let eventDrain: Duration = .milliseconds(60)
         static let captureTimeout: Duration = .seconds(4)
         static let changeGrace: Duration = .milliseconds(500)
         /// Longer than Ghostty's multi-click interval so consecutive click
