@@ -63,6 +63,9 @@ enum AppConstants {
         static let eventDrain: Duration = .milliseconds(60)
         static let captureTimeout: Duration = .seconds(4)
         static let changeGrace: Duration = .milliseconds(500)
+        /// Longer than Ghostty's multi-click interval so consecutive click
+        /// tests are never counted as one double/triple click.
+        static let clickReset: Duration = .milliseconds(700)
         static let readyTimeout: Duration = .seconds(10)
         static let settleTimeout: Duration = .seconds(3)
         static let stableWindow: Duration = .milliseconds(150)

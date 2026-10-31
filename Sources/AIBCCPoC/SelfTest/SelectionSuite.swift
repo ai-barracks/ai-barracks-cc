@@ -58,6 +58,7 @@ struct SelectionSuite {
 
     private func dragWord(_ pane: TerminalPane, _ window: NSWindow) async -> TestResult {
         let start = ContinuousClock.now
+        await harness.pause(AppConstants.SelfTest.clickReset)
         guard let from = harness.windowPoint(row: Fixture.wordsRow, column: 0, in: pane, fraction: 0.1),
               let to = harness.windowPoint(row: Fixture.wordsRow, column: 4, in: pane, fraction: 0.9)
         else { return setupFailure("geometry unavailable", start) }
@@ -68,6 +69,7 @@ struct SelectionSuite {
 
     private func doubleClickWord(_ pane: TerminalPane, _ window: NSWindow) async -> TestResult {
         let start = ContinuousClock.now
+        await harness.pause(AppConstants.SelfTest.clickReset)
         guard let point = harness.windowPoint(row: Fixture.wordsRow, column: 7, in: pane) else {
             return setupFailure("geometry unavailable", start)
         }
@@ -81,6 +83,7 @@ struct SelectionSuite {
         _ pane: TerminalPane, _ window: NSWindow
     ) async -> TestResult {
         let start = ContinuousClock.now
+        await harness.pause(AppConstants.SelfTest.clickReset)
         guard let point = harness.windowPoint(row: row, column: 1, in: pane) else {
             return setupFailure("geometry unavailable", start)
         }
@@ -91,6 +94,7 @@ struct SelectionSuite {
 
     private func rectangle(_ pane: TerminalPane, _ window: NSWindow) async -> TestResult {
         let start = ContinuousClock.now
+        await harness.pause(AppConstants.SelfTest.clickReset)
         guard let from = harness.windowPoint(row: Fixture.wordsRow, column: 0, in: pane, fraction: 0.1),
               let to = harness.windowPoint(row: Fixture.hangulRow, column: 4, in: pane, fraction: 0.9)
         else { return setupFailure("geometry unavailable", start) }

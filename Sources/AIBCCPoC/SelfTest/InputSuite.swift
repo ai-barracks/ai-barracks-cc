@@ -199,6 +199,9 @@ struct InputSuite {
         Synth.type("x", in: window)
         let bytesB = await harness.settledBytes(second.log, since: markB)
         probe.clearReplayQueue()
+        // The scripted IME never commits; drop A's leftover composition so it
+        // cannot leak into the next test.
+        if probe.hasMarkedText() { probe.unmarkText() }
         return .make("IN-04a", "조합 중 다른 pane 클릭 시 오배달 0 (A의 확정 정책은 실제 IME로)",
                      status: focused && bytesB == [0x78] ? .pass : .fail, layer: .imeCallbackContract,
                      evidence: ["pane_b_focused": "\(focused)", "pane_b": Hex.string(bytesB),
