@@ -44,8 +44,16 @@ struct SelfTestRunner {
         // An inactive app treats the first click as an activation click, so
         // click-to-focus tests are only meaningful while active.
         NSRunningApplication.current.activate()
-        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { NSApp.isActive }
+        let active = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { NSApp.isActive }
         let environment = environmentSnapshot()
+        // Clicks and menu shortcuts are meaningless for an inactive app (the
+        // display may be asleep or another app holds focus): refuse to report
+        // results that would be false failures.
+        guard active else {
+            FileHandle.standardError.write(Data("selftest: app could not become active; rerun while the display is awake\n".utf8))
+            try? "setup=app-inactive\n".write(to: output.appendingPathComponent("summary.txt"), atomically: true, encoding: .utf8)
+            return .setupError
+        }
         let startedAt = Date()
 
         GhosttyDebugCapture.enable(writingTo: output.appendingPathComponent("ghostty-debug.log"))

@@ -61,8 +61,8 @@ enum CriteriaCatalog {
     ]
 
     private static let stability: [Criterion] = [
-        .init(id: "ST-01", title: "4분할 핵심 항목", blocking: true, requires: ["ST-01a", "ST-01b"]),
-        .init(id: "ST-02", title: "대량 출력 중 입력 지연 p95", blocking: true, requires: ["ST-02a", "ST-02-baseline"]),
+        .init(id: "ST-01", title: "4분할 핵심 항목", blocking: true, requires: ["ST-01a", "ST-01b", "ST-01c"]),
+        .init(id: "ST-02", title: "대량 출력 중 입력 지연 p95", blocking: true, requires: ["ST-02a", "ST-02b", "ST-02-baseline"], optional: ["ST-02c"]),
         .init(id: "ST-03", title: "대량 출력 중 최장 정지", blocking: false, requires: ["ST-03-baseline"]),
         .init(id: "ST-04", title: "셸·앱 종료 시 프로세스 정리", blocking: true, requires: ["ST-04a", "ST-04-phys"]),
         .init(id: "ST-05", title: "OSC 알림·bell 수신", blocking: false, requires: ["ST-05-phys"]),

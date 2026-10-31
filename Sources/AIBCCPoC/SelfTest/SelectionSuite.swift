@@ -57,7 +57,45 @@ struct SelectionSuite {
             await tripleClick("SC-05c", "줄 끝에 걸쳐 줄바꿈된 wide char 연속 복사", row: Fixture.wrapRow,
                               expected: wrapExpected(pane), pane, window),
         ]
-        return fixtureResults + (await mouseCapturedTUI(window))
+        return fixtureResults + (await mouseCapturedTUI(window)) + [await quadSelection(window)]
+    }
+
+    /// ST-01c: selection & copy in the bottom-right pane of a 2x2 grid, with
+    /// the other three panes left untouched.
+    private func quadSelection(_ window: NSWindow) async -> TestResult {
+        let start = ContinuousClock.now
+        let temp = FileManager.default.temporaryDirectory
+        let ready = temp.appendingPathComponent("aibcc-quadsel-ready-\(UUID().uuidString)")
+        let go = temp.appendingPathComponent("aibcc-quadsel-go-\(UUID().uuidString)")
+        let recorders = (1...3).compactMap { harness.makeRecorderPane(name: "quadsel-\($0)") }
+        guard recorders.count == 3,
+              let selection = harness.makeScriptPane(
+                  name: "quad-selection", script: AppConstants.Paths.selectionScript, readyFile: ready,
+                  environment: ["AIBCC_GO_FILE": go.path, "AIBCC_SELECTION_SHORT": "1"]
+              )
+        else { return setupFailure("quad selection fixtures", start) }
+        await harness.install(recorders.map(\.pane) + [selection], layout: .quad)
+        await waitForStableGrid(selection)
+        FileManager.default.createFile(atPath: go.path, contents: nil)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { FileManager.default.fileExists(atPath: ready.path) }
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorders.allSatisfy { $0.log.isReady } }
+        let marks = recorders.map { $0.log.mark() }
+        await harness.pause(AppConstants.SelfTest.clickReset)
+        guard let line = harness.windowPoint(row: Fixture.wordsRow, column: 1, in: selection),
+              let from = harness.windowPoint(row: Fixture.hangulRow, column: 0, in: selection, fraction: 0.1),
+              let to = harness.windowPoint(row: Fixture.hangulRow, column: 3, in: selection, fraction: 0.9)
+        else { return setupFailure("quad geometry", start) }
+        Synth.click(at: line, count: 3, in: window)
+        let tripled = await copySelection(window)
+        await harness.pause(AppConstants.SelfTest.clickReset)
+        Synth.drag(from: from, to: to, steps: 8, in: window)
+        let dragged = await copySelection(window)
+        let leaked = zip(recorders, marks).contains { !$0.0.log.bytes(since: $0.1).isEmpty }
+        let ok = tripled == Fixture.words && dragged == "한글" && !leaked
+        return .make("ST-01c", "4분할 pane에서 트리플클릭·드래그 선택 복사, 다른 pane 무영향",
+                     status: ok ? .pass : .fail,
+                     evidence: ["triple": tripled ?? "nil", "drag": dragged ?? "nil", "leak_to_other_panes": "\(leaked)"],
+                     startedAt: start)
     }
 
     // MARK: - Scenarios

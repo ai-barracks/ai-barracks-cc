@@ -19,7 +19,9 @@ import time
 import tty
 
 CTRL_D = 0x04
-FLOOD_SECONDS = 8.0
+FLOOD_LINES = int(os.environ.get("FLOOD_LINES", "100000"))
+CHUNK_LINES = 20
+PROGRESS_EVERY = 2000
 LINE = ("x" * 80) + ("가나다라마바사아자차") + "\r\n"
 
 
@@ -30,14 +32,34 @@ def log(out, lock, kind, **fields):
         out.flush()
 
 
+def wait_for_go():
+    """Start flooding only when the test signals (AIBCC_GO_FILE), so typing
+    and output overlap even though 100k lines take well under a second."""
+    go = os.environ.get("AIBCC_GO_FILE")
+    if not go:
+        return
+    deadline = time.time() + 10
+    while not os.path.exists(go) and time.time() < deadline:
+        time.sleep(0.005)
+
+
 def flood(stop, out, lock):
+    """Writes exactly FLOOD_LINES lines (criteria: 100k), with start /
+    progress / done markers so the test only counts samples taken while
+    output was really flowing."""
     lines = 0
-    deadline = time.time() + FLOOD_SECONDS
-    while not stop.is_set() and time.time() < deadline:
-        sys.stdout.write(LINE * 20)
-        sys.stdout.flush()
-        lines += 20
-    log(out, lock, "flood_done", lines=lines)
+    wait_for_go()
+    try:
+        log(out, lock, "flood_start")
+        while not stop.is_set() and lines < FLOOD_LINES:
+            sys.stdout.write(LINE * CHUNK_LINES)
+            sys.stdout.flush()
+            lines += CHUNK_LINES
+            if lines % PROGRESS_EVERY == 0:
+                log(out, lock, "flood_progress", lines=lines)
+        log(out, lock, "flood_done", lines=lines)
+    except Exception as error:  # surfaced to the test as an invalid run
+        log(out, lock, "flood_error", message=str(error))
 
 
 def main():

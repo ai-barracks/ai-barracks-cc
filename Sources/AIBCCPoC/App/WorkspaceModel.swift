@@ -22,8 +22,15 @@ final class WorkspaceModel {
     let barracks: [Barrack]
 
     var selectedBarrackID: Barrack.ID? {
-        didSet { activateSelectedGrid() }
+        willSet { terminalHadFocus = isTerminalFocused() }
+        didSet {
+            activateSelectedGrid()
+            // Hand keyboard focus over only if a terminal had it; keyboard
+            // navigation in the sidebar keeps its focus (Codex review r3 #5).
+            if terminalHadFocus { focusFirstVisiblePaneWhenAttached() }
+        }
     }
+    @ObservationIgnored private var terminalHadFocus = false
     var isArtifactPanelVisible = true
     private(set) var grids: [String: BarrackGrid] = [:]
 
@@ -166,6 +173,26 @@ final class WorkspaceModel {
         }), let target = grid.panes.first?.probeView else { return }
         if focusedParked.probeView?.hasMarkedText() == true { focusedParked.probeView?.unmarkText() }
         target.window?.makeFirstResponder(target)
+    }
+
+    private func isTerminalFocused() -> Bool {
+        grid.panes.contains { pane in
+            guard let view = pane.probeView, let responder = view.window?.firstResponder as? NSView else { return false }
+            return responder === view || responder.isDescendant(of: view)
+        }
+    }
+
+    private func focusFirstVisiblePaneWhenAttached() {
+        let target = grid.panes.first
+        Task { @MainActor in
+            for _ in 0..<AppConstants.Layout.focusHandoffAttempts {
+                if let view = target?.probeView, let window = view.window {
+                    window.makeFirstResponder(view)
+                    return
+                }
+                try? await Task.sleep(for: AppConstants.SelfTest.pollInterval)
+            }
+        }
     }
 
     private func makeShellPanes(count: Int, startingAt offset: Int) -> [TerminalPane] {

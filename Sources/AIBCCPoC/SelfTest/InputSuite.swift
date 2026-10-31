@@ -53,13 +53,22 @@ struct InputSuite {
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorders.allSatisfy { $0.log.isReady } }
         var failures: [String] = []
         for (index, rec) in recorders.enumerated() {
+            // Routing is judged right after the real click, before any helper
+            // re-focuses the pane (Codex review r3 #3).
             await harness.click(row: 3, column: 2, in: rec.pane)
+            if !harness.isFirstResponder(rec.pane.probeView) {
+                failures = failures + ["pane\(index + 1):click-not-routed"]
+            }
+            let others = recorders.enumerated().filter { $0.offset != index }
+            let marks = others.map { $0.element.log.mark() }
             let checks = [
                 await spaceKey(rec, window),
                 await contractHangulWithSpace(rec, window),
                 await paste("ST-01b-paste", "", text: "붙여넣기 \(index + 1)", rec, window),
             ]
             failures = failures + checks.filter { $0.status != .pass }.map { "pane\(index + 1):\($0.id)" }
+            let leaked = zip(others, marks).filter { !$0.0.element.log.bytes(since: $0.1).isEmpty }
+            failures = failures + leaked.map { "pane\($0.0.offset + 1):leak-from-pane\(index + 1)" }
         }
         return .make("ST-01b", "4분할 각 pane: 스페이스·한글 조합 계약·붙여넣기",
                      status: failures.isEmpty ? .pass : .fail,

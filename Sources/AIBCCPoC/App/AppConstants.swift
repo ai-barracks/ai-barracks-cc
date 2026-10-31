@@ -50,6 +50,7 @@ enum AppConstants {
         static let artifactDocumentMinHeight: CGFloat = 240
         static let paneSpacing: CGFloat = 1
         static let dividerHitWidth: CGFloat = 8
+        static let focusHandoffAttempts = 40
         static let splitRatioRange: ClosedRange<CGFloat> = 0.2...0.8
     }
 
@@ -81,8 +82,9 @@ enum AppConstants {
         static let minimumChildRuntime: Duration = .seconds(1)
         /// ST-02 pre-registered candidate (final value after the v1.6.1 baseline).
         static let latencyP95BudgetMs = 50.0
-        static let latencySamples = 40
-        static let latencyKeyInterval: Duration = .milliseconds(25)
+        static let latencySamples = 80
+        static let latencyKeyInterval: Duration = .milliseconds(6)
+        static let latencyMinimumValidSamples = 15
         static let readyTimeout: Duration = .seconds(10)
         static let settleTimeout: Duration = .seconds(3)
         static let stableWindow: Duration = .milliseconds(150)

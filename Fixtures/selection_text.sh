@@ -13,6 +13,12 @@ fi
 printf '\033[2J\033[1;1H'
 printf 'alpha beta gamma\r\n'
 printf '한글 선택 테스트 가나다\r\n'
+# Short variant for small (2x2) panes: only the two rows above, so the
+# screen never scrolls and row indices stay valid.
+if [ "${AIBCC_SELECTION_SHORT:-}" = "1" ]; then
+  if [ -n "${AIBCC_READY_FILE:-}" ]; then : > "$AIBCC_READY_FILE"; fi
+  exec sleep 3600
+fi
 printf 'emoji 🙂 wide 漢字 end\r\n'
 printf 'trailing spaces   \r\n'
 # A wide character that does not fit at the end of a row must wrap whole and

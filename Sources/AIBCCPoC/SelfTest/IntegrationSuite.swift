@@ -23,7 +23,7 @@ struct IntegrationSuite {
             await reloadsOnChange(store, sandbox),
             await renderCapture(),
             await terminalKeepsFirstKeystroke(),
-            await viewerClickAndScrollThenType(),
+            await viewerClickAndScrollThenType(sandbox: sandbox),
         ]
         return results
     }
@@ -94,33 +94,55 @@ struct IntegrationSuite {
                      startedAt: start)
     }
 
-    /// MD-04b: click inside the rendered document and scroll it, then click
-    /// back into the terminal — the first keystroke must reach the PTY.
-    private func viewerClickAndScrollThenType() async -> TestResult {
+    /// MD-04b: click inside a long rendered document and scroll it with a real
+    /// scroll-wheel event (scroll offset must change), then click back into
+    /// the terminal — the first keystroke must reach the PTY (r3 #4).
+    private func viewerClickAndScrollThenType(sandbox: URL) async -> TestResult {
         let start = ContinuousClock.now
+        let title = "뷰어 클릭·실제 스크롤 후 터미널 클릭 복귀 첫 글자"
         guard let window = harness.window, let rec = harness.makeRecorderPane(name: "md-click") else {
-            return failure("MD-04b", "뷰어 클릭·스크롤 후 터미널 복귀", reason: "setup", start)
+            return failure("MD-04b", title, reason: "setup", start)
         }
+        let store = harness.artifacts
+        let longDoc = sandbox.appendingPathComponent("long.md")
+        let body = "# 긴 문서\n\n" + (1...300).map { "- 줄 \($0)" }.joined(separator: "\n") + "\n"
+        try? body.write(to: longDoc, atomically: true, encoding: .utf8)
+        _ = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { store.files.contains { $0.url.lastPathComponent == "long.md" } }
+        store.select(store.files.first { $0.url.lastPathComponent == "long.md" })
         await harness.install([rec.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { rec.log.isReady }
+        await harness.pause(.milliseconds(600))
         guard let webView = findWebView(in: window.contentView),
               let terminalPoint = harness.windowPoint(row: 3, column: 2, in: rec.pane)
-        else { return failure("MD-04b", "뷰어 클릭·스크롤 후 터미널 복귀", reason: "web view or geometry", start) }
+        else { return failure("MD-04b", title, reason: "web view or geometry", start) }
         let viewerPoint = webView.convert(NSPoint(x: webView.bounds.midX, y: webView.bounds.midY), to: nil)
         EventSynthesizer.click(at: viewerPoint, count: 1, in: window)
         await harness.drain()
         let viewerFocused = harness.isFirstResponder(webView)
-        _ = try? await webView.evaluateJavaScript("window.scrollTo(0, document.body.scrollHeight)")
+        let scrolled = await scrollWithWheel(webView)
         EventSynthesizer.click(at: terminalPoint, count: 1, in: window)
         await harness.drain()
         let mark = rec.log.mark()
         EventSynthesizer.type("x", in: window)
         let bytes = await harness.settledBytes(rec.log, since: mark)
-        let ok = viewerFocused && bytes == [0x78]
-        return .make("MD-04b", "뷰어 클릭·스크롤 후 터미널 클릭 복귀 첫 글자 유실 0",
-                     status: ok ? .pass : .fail, cause: .app,
-                     evidence: ["viewer_focused_by_click": "\(viewerFocused)", "hex": Hex.string(bytes)],
+        let ok = viewerFocused && scrolled > 0 && bytes == [0x78]
+        return .make("MD-04b", title, status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["viewer_focused_by_click": "\(viewerFocused)",
+                                "scroll_y_after_wheel": String(format: "%.0f", scrolled), "hex": Hex.string(bytes)],
                      startedAt: start)
+    }
+
+    /// Sends a pixel scroll-wheel event to the web view and returns scrollY
+    /// (-1 when the offset cannot be read).
+    private func scrollWithWheel(_ webView: WKWebView) async -> Double {
+        if let cgEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+                                 wheel1: -600, wheel2: 0, wheel3: 0),
+           let event = NSEvent(cgEvent: cgEvent) {
+            webView.scrollWheel(with: event)
+        }
+        await harness.pause(.milliseconds(400))
+        let value = try? await webView.evaluateJavaScript("window.scrollY")
+        return (value as? NSNumber)?.doubleValue ?? -1
     }
 
     // MARK: - Helpers

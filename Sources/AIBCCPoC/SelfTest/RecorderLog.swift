@@ -9,6 +9,8 @@ struct RecorderEvent: Decodable, Sendable {
     let cols: Int?
     /// Wall-clock seconds (flood fixture only).
     let wall: Double?
+    /// Lines written so far (flood fixture progress markers).
+    let lines: Int?
 }
 
 /// Reader for the recorder's JSONL log — the ground truth of what the PTY
@@ -53,10 +55,16 @@ struct RecorderLog: Sendable {
     }
 
     /// Wall-clock arrival time of every input byte (flood fixture only).
-    func byteArrivals(since mark: Int) -> [(byte: UInt8, wall: Double)] {
+    /// A missing timestamp stays nil so the caller can reject the sample.
+    func byteArrivals(since mark: Int) -> [(byte: UInt8, wall: Double?)] {
         events().dropFirst(mark)
             .filter { $0.kind == "bytes" }
-            .flatMap { event in Self.decode(hex: event.hex ?? "").map { (byte: $0, wall: event.wall ?? 0) } }
+            .flatMap { event in Self.decode(hex: event.hex ?? "").map { (byte: $0, wall: event.wall) } }
+    }
+
+    /// First event of `kind` (flood markers).
+    func firstEvent(_ kind: String) -> RecorderEvent? {
+        events().first { $0.kind == kind }
     }
 
     private static func decode(hex: String) -> [UInt8] {

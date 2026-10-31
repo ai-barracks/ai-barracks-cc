@@ -10,36 +10,58 @@ struct LifecycleSuite {
         [await quadSplit(), await shellExitCleanup(), await barrackContextFollowsSelection()]
     }
 
-    /// WS-01a (Codex runtime review R1): selecting another barrack switches
-    /// the terminal grid (with that barrack's cwd) and the artifact list
-    /// together, and switching back restores the original, still-running pane.
+    /// WS-01a (Codex runtime review R1, r3 #1/#5): with a LIVE process in
+    /// barrack A, selecting barrack B shows B's grid whose shell really runs
+    /// in B (process cwd), moves terminal focus to it and switches artifacts;
+    /// A's process stays alive while hidden, and after returning the same
+    /// process receives typing through a real click.
     private func barrackContextFollowsSelection() async -> TestResult {
         let start = ContinuousClock.now
         let workspace = harness.workspace
         guard let original = workspace.selectedBarrack,
               let other = workspace.barracks.first(where: { $0.id != original.id }),
-              let originalPane = workspace.panes.first
+              let window = harness.window,
+              let live = harness.makeRecorderPane(name: "ws-live")
         else {
             return .make("WS-01a", "배럭 선택 = 터미널 cwd = 산출물 맥락", status: .unverified,
-                         evidence: ["reason": "needs at least two registered barracks"], startedAt: start)
+                         evidence: ["reason": "needs two registered barracks"], startedAt: start)
         }
+        await harness.install([live.pane], layout: .single)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { live.log.isReady }
+        await harness.pause(AppConstants.SelfTest.minimumChildRuntime)
+        live.pane.startExitMonitorIfNeeded()
+        let livePID = live.pane.monitoredPID ?? 0
+        harness.focus(live.pane)
+
         workspace.selectedBarrackID = other.id
-        _ = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
-            harness.artifacts.watchedRoot == other.url && workspace.panes.first?.probeView?.window != nil
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
+            workspace.panes.first?.probeView?.foregroundPid != nil && harness.artifacts.watchedRoot == other.url
         }
-        let switchedPane = workspace.panes.first
-        let cwdMatches = switchedPane?.state.configuration.workingDirectory == other.path
-        let artifactsMatch = harness.artifacts.watchedRoot == other.url
-        let newGrid = switchedPane?.id != originalPane.id
+        await harness.pause(.milliseconds(500))
+        let otherPane = workspace.panes.first
+        let otherPID = otherPane?.probeView?.foregroundPid ?? 0
+        let cwd = ProcessCWD.path(of: otherPID).map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        let cwdMatches = cwd == other.url.resolvingSymlinksInPath().path
+        let focusHandedOver = harness.isFirstResponder(otherPane?.probeView)
+        let aliveWhileHidden = ProcessCWD.isAlive(livePID)
+
         workspace.selectedBarrackID = original.id
         let restored = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
-            workspace.panes.first?.id == originalPane.id && originalPane.probeView?.window != nil
+            workspace.panes.first?.id == live.pane.id && live.pane.probeView?.window != nil
+                && harness.artifacts.watchedRoot == original.url
         }
-        let ok = cwdMatches && artifactsMatch && newGrid && restored
-        return .make("WS-01a", "배럭 선택 = 터미널 cwd = 산출물 맥락, 복귀 시 기존 셸 유지",
+        await harness.click(row: 3, column: 2, in: live.pane)
+        let mark = live.log.mark()
+        EventSynthesizer.type("x", in: window)
+        let typed = await harness.settledBytes(live.log, since: mark)
+        let ok = cwdMatches && focusHandedOver && aliveWhileHidden && restored
+            && ProcessCWD.isAlive(livePID) && typed == [0x78]
+        return .make("WS-01a", "배럭 전환: 실제 cwd·포커스 인계·숨은 프로세스 생존·복귀 후 입력",
                      status: ok ? .pass : .fail, cause: .app,
-                     evidence: ["cwd_matches": "\(cwdMatches)", "artifacts_match": "\(artifactsMatch)",
-                                "separate_grid": "\(newGrid)", "original_restored": "\(restored)"],
+                     evidence: ["other_cwd": cwd ?? "nil", "cwd_matches": "\(cwdMatches)",
+                                "focus_handed_over": "\(focusHandedOver)",
+                                "alive_while_hidden": "\(aliveWhileHidden)", "restored": "\(restored)",
+                                "typed_after_return": Hex.string(typed)],
                      startedAt: start)
     }
 
