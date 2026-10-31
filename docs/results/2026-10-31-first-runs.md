@@ -1,7 +1,7 @@
 # 첫 실제 실행 결과 — 2026-10-31
 
 빌드: CLT만(Swift 6.3.2), libghostty-spm 2.2.2026103001(Ghostty `1e9e14af5df1`), `.app` 14MB ad-hoc 서명. 오류 0·경고 0.
-최종 전체 실행: **pass 51 / fail 0(마지막 수정 후 재실행 기준, 아래 표) / unverified = 사람·Codex·기준선 대기 항목**.
+마지막 전체 실행: **pass 51 / fail 2**(RS-03a 패널 토글 테스트 순서 문제 1건과 그 상위 RS-03) → 테스트 수정 후 resize 스위트 재실행에서 pass. 나머지 unverified는 사람·Codex·기준선 대기 항목.
 
 ## 자동 판정 (하위 ID)
 
