@@ -17,13 +17,17 @@ final class ArtifactStore {
     @ObservationIgnored private var watcher: DirectoryWatcher?
     @ObservationIgnored private var root: URL?
     @ObservationIgnored private var scanTask: Task<Void, Never>?
+    /// Incremented on every root change; stale scans compare and drop out.
+    @ObservationIgnored private var generation = 0
 
     func watch(root newRoot: URL?) {
         guard newRoot != root else { return }
+        scanTask?.cancel()
+        generation += 1
         watcher?.stop()
+        watcher = nil
         root = newRoot
-        selected = nil
-        content = nil
+        clearSelection()
         files = []
         guard let newRoot else { return }
         let newWatcher = DirectoryWatcher(url: newRoot) { [weak self] in
@@ -35,6 +39,10 @@ final class ArtifactStore {
     }
 
     func select(_ file: ArtifactFile?) {
+        guard let file else {
+            clearSelection()
+            return
+        }
         selected = file
         reloadContent(force: true)
     }
@@ -42,37 +50,47 @@ final class ArtifactStore {
     func refresh() {
         guard let root else { return }
         scanTask?.cancel()
+        let scanGeneration = generation
         scanTask = Task { [weak self] in
             let scanned = await Task.detached(priority: .utility) {
                 ArtifactIndex.scan(root: root)
             }.value
-            guard !Task.isCancelled else { return }
-            self?.apply(scanned: scanned)
+            guard !Task.isCancelled, let self, self.generation == scanGeneration, self.root == root else { return }
+            self.apply(scanned: scanned)
         }
     }
 
     private func apply(scanned: [ArtifactFile]) {
         files = scanned
-        if let current = selected, let updated = scanned.first(where: { $0.url == current.url }) {
+        guard let current = selected else { return }
+        if let updated = scanned.first(where: { $0.url == current.url }) {
             let changed = updated.modified != current.modified
             selected = updated
             if changed { reloadContent(force: false) }
+        } else if FileManager.default.fileExists(atPath: current.url.path) {
+            // Fell out of the top-N list but still exists: keep it fresh.
+            reloadContent(force: false)
+        } else {
+            clearSelection()
         }
     }
 
     private func reloadContent(force: Bool) {
-        guard let file = selected else {
-            content = nil
-            return
-        }
+        guard let file = selected else { return }
         do {
             let text = try String(contentsOf: file.url, encoding: .utf8)
+            loadError = nil
             guard force || text != content else { return }
             content = text
-            loadError = nil
             revision += 1
         } catch {
             loadError = error.localizedDescription
         }
+    }
+
+    private func clearSelection() {
+        selected = nil
+        content = nil
+        loadError = nil
     }
 }

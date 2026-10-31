@@ -3,15 +3,18 @@ import GhosttyTerminal
 
 /// One terminal surface hosted in the grid. Ghostty owns the PTY (`.exec`
 /// backend, see docs/spikes/pty-ownership.md).
+///
+/// The pane strongly owns its native view: the surface (and the child
+/// process) lives exactly as long as that view, so SwiftUI re-creating its
+/// representable must hand back the same instance instead of a fresh one.
 @MainActor
 final class TerminalPane: Identifiable {
     let id: UUID
     let title: String
     let state: TerminalViewState
+    private var ownedView: ProbeTerminalView?
 
-    var probeView: ProbeTerminalView? {
-        state.attachedPlatformView as? ProbeTerminalView
-    }
+    var probeView: ProbeTerminalView? { ownedView }
 
     init(
         controller: TerminalController,
@@ -22,7 +25,6 @@ final class TerminalPane: Identifiable {
     ) {
         let paneID = UUID()
         let viewState = TerminalViewState(controller: controller)
-        viewState.makePlatformView = { ProbeTerminalView(frame: .zero) }
         viewState.configuration = TerminalSurfaceOptions(
             backend: .exec,
             workingDirectory: workingDirectory,
@@ -32,6 +34,16 @@ final class TerminalPane: Identifiable {
         id = paneID
         self.title = title
         state = viewState
+        viewState.makePlatformView = { [weak self] in
+            self?.platformView() ?? ProbeTerminalView(frame: .zero)
+        }
+    }
+
+    private func platformView() -> ProbeTerminalView {
+        if let ownedView { return ownedView }
+        let view = ProbeTerminalView(frame: .zero)
+        ownedView = view
+        return view
     }
 
     /// GUI apps launched from Finder/`open` often have no LANG; a non-UTF-8

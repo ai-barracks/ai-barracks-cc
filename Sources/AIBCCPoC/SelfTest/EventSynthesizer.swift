@@ -1,9 +1,10 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// Builds in-process NSEvents. Keys go through `NSApp.sendEvent` so key
-/// equivalents and the menu are exercised like real typing; mouse events go
-/// to the window so hit-testing picks the view under the point.
+/// Builds in-process NSEvents and posts them to the app's event queue, so they
+/// are dequeued by the run loop like real input: `NSApp.currentEvent` is set,
+/// key equivalents and menus run, and mouse events are hit-tested. Callers
+/// must yield (await) for queued events to be processed.
 @MainActor
 enum EventSynthesizer {
     struct Key: Sendable {
@@ -30,9 +31,12 @@ enum EventSynthesizer {
     static let escape = Key(keyCode: UInt16(kVK_Escape), characters: "\u{1b}", unmodified: "\u{1b}", modifiers: [])
     static let delete = Key(keyCode: UInt16(kVK_Delete), characters: "\u{7f}", unmodified: "\u{7f}", modifiers: [])
 
-    static func command(_ letter: Character) -> Key? {
+    static let commandEqual = Key(keyCode: UInt16(kVK_ANSI_Equal), characters: "=", unmodified: "=", modifiers: .command)
+    static let commandMinus = Key(keyCode: UInt16(kVK_ANSI_Minus), characters: "-", unmodified: "-", modifiers: .command)
+
+    static func command(_ letter: Character, extra: NSEvent.ModifierFlags = []) -> Key? {
         guard let code = asciiKeyCodes[letter] else { return nil }
-        return Key(keyCode: code, characters: String(letter), unmodified: String(letter), modifiers: .command)
+        return Key(keyCode: code, characters: String(letter), unmodified: String(letter), modifiers: extra.union(.command))
     }
 
     static func control(_ letter: Character) -> Key? {
@@ -55,7 +59,7 @@ enum EventSynthesizer {
                 isARepeat: false,
                 keyCode: key.keyCode
             ) else { continue }
-            NSApp.sendEvent(event)
+            NSApp.postEvent(event, atStart: false)
         }
     }
 
@@ -90,7 +94,7 @@ enum EventSynthesizer {
             clickCount: 1,
             pressure: type == .leftMouseUp ? 0 : 1
         ) else { return }
-        window.sendEvent(event)
+        NSApp.postEvent(event, atStart: false)
     }
 
     static func click(at point: NSPoint, count: Int, in window: NSWindow) {

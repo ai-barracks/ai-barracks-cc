@@ -2,7 +2,7 @@ import AppKit
 import GhosttyTerminal
 
 /// Shared plumbing for the self-test suites: fixture panes, waiting, focus,
-/// and cell-to-window coordinate math.
+/// cell-to-window coordinate math, and window-capture requests.
 @MainActor
 struct SelfTestHarness {
     let workspace: WorkspaceModel
@@ -41,10 +41,11 @@ struct SelfTestHarness {
         return workspace.makePane(title: name, command: command, environment: env)
     }
 
-    func install(_ panes: [TerminalPane], layout: PaneLayout) async {
+    @discardableResult
+    func install(_ panes: [TerminalPane], layout: PaneLayout) async -> Bool {
         workspace.replacePanes(panes, layout: layout)
-        _ = await waitUntil(AppConstants.SelfTest.readyTimeout) {
-            panes.allSatisfy { $0.probeView != nil && $0.state.surfaceSize != nil }
+        return await waitUntil(AppConstants.SelfTest.readyTimeout) {
+            panes.prefix(layout.paneCount).allSatisfy { $0.probeView?.window != nil && $0.state.surfaceSize != nil }
         }
     }
 
@@ -54,9 +55,9 @@ struct SelfTestHarness {
     @discardableResult
     func waitUntil(_ timeout: Duration, _ condition: () -> Bool) async -> Bool {
         let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
+        while ContinuousClock.now < deadline, !Task.isCancelled {
             if condition() { return true }
-            try? await Task.sleep(for: AppConstants.SelfTest.pollInterval)
+            await pause(AppConstants.SelfTest.pollInterval)
         }
         return condition()
     }
@@ -65,16 +66,24 @@ struct SelfTestHarness {
         try? await Task.sleep(for: duration)
     }
 
-    /// Waits until the recorder stops receiving new bytes for `stableWindow`.
+    /// Lets the run loop dequeue events posted by `EventSynthesizer`.
+    func drain() async {
+        await pause(AppConstants.SelfTest.eventDrain)
+    }
+
+    /// Bytes received since `mark` once the stream has been quiet for
+    /// `stableWindow`, bounded by `settleTimeout` overall.
     func settledBytes(_ log: RecorderLog, since mark: Int, expectingAtLeast count: Int = 1) async -> [UInt8] {
+        let deadline = ContinuousClock.now + AppConstants.SelfTest.settleTimeout
         _ = await waitUntil(AppConstants.SelfTest.settleTimeout) { log.bytes(since: mark).count >= count }
         var previous = log.bytes(since: mark)
-        while true {
+        while ContinuousClock.now < deadline, !Task.isCancelled {
             await pause(AppConstants.SelfTest.stableWindow)
             let current = log.bytes(since: mark)
             if current == previous { return current }
             previous = current
         }
+        return previous
     }
 
     // MARK: - Focus & geometry
@@ -84,6 +93,18 @@ struct SelfTestHarness {
         guard let window, let view = pane.probeView else { return false }
         window.makeKeyAndOrderFront(nil)
         return window.makeFirstResponder(view)
+    }
+
+    /// Clicks a cell through the real mouse path (used to switch panes).
+    func click(row: Int, column: Int, in pane: TerminalPane) async {
+        guard let window, let point = windowPoint(row: row, column: column, in: pane) else { return }
+        EventSynthesizer.click(at: point, count: 1, in: window)
+        await drain()
+    }
+
+    func isFirstResponder(_ view: NSView?) -> Bool {
+        guard let view, let responder = window?.firstResponder as? NSView else { return false }
+        return responder === view || responder.isDescendant(of: view)
     }
 
     /// Window-space point at the center (or `fraction` across) of a cell.
@@ -104,6 +125,23 @@ struct SelfTestHarness {
 
     var pasteboardString: String? {
         NSPasteboard.general.string(forType: .string)
+    }
+
+    // MARK: - Window capture handshake
+
+    /// Asks scripts/capture-watcher.sh (run outside the app, which already has
+    /// screen-capture rights) for a composited window capture. Returns the
+    /// PNG path if it appeared in time.
+    func requestCapture(label: String) async -> URL? {
+        guard let window else { return nil }
+        let image = outputDirectory.appendingPathComponent("capture-\(label).png")
+        let request = outputDirectory.appendingPathComponent("capture-request-\(label).json")
+        let body = "{\"window\": \(window.windowNumber), \"output\": \"\(image.path)\"}\n"
+        guard (try? body.write(to: request, atomically: true, encoding: .utf8)) != nil else { return nil }
+        let captured = await waitUntil(AppConstants.SelfTest.captureTimeout) {
+            FileManager.default.fileExists(atPath: image.path)
+        }
+        return captured ? image : nil
     }
 
     private func shellQuote(_ value: String) -> String {

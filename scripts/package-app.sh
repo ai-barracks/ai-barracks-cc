@@ -28,8 +28,21 @@ require_disk() {
 }
 
 build_binary() {
+  # Build first as its own command so a compile failure stops the script
+  # instead of being masked by a later successful --show-bin-path.
   swift build -c "$CONFIG" --package-path "$ROOT"
+}
+
+bin_path() {
   swift build -c "$CONFIG" --package-path "$ROOT" --show-bin-path
+}
+
+warn_resource_lookup() {
+  # Known product blocker (docs/known-issues.md #1): SwiftPM's Bundle.module
+  # accessor searches the .app root and the absolute build path, not
+  # Contents/Resources. The PoC works on this machine through the build-path
+  # fallback only.
+  echo "note: GhosttyTerminal resources resolve via the build-path fallback ($1)" >&2
 }
 
 assemble_bundle() {
@@ -59,7 +72,7 @@ sign_bundle() {
 
 write_build_info() {
   local ghostty_ref
-  ghostty_ref="$(find "$ROOT/.build/checkouts" -maxdepth 2 -name Ghostty.ref -exec cat {} \; 2>/dev/null | head -1)"
+  ghostty_ref="$(find "$ROOT/.build/checkouts" -maxdepth 2 -name Ghostty.ref -exec cat {} \; 2>/dev/null | head -1 || true)"
   cat > "$DIST/build-info.json" <<JSON
 {
   "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -78,9 +91,11 @@ JSON
 main() {
   require_disk start
   mkdir -p "$DIST"
+  build_binary
   local bin_dir
-  bin_dir="$(build_binary | tail -1)"
+  bin_dir="$(bin_path)"
   assemble_bundle "$bin_dir"
+  warn_resource_lookup "$bin_dir"
   sign_bundle
   write_build_info
   require_disk end

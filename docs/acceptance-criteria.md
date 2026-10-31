@@ -111,3 +111,7 @@ CLT `swift build` → `.app` 패키징(프레임워크 먼저 서명 후 앱 서
 - **제품 전환 Go**: 엔진 후보 통과 + 7의 `B` 전부 pass + v1.6.1 대비 회귀 0 + 세션·scrollback 경로 확보 + Xcode 없이 재현 가능한 빌드.
 - 사람 검사만 남으면 최종 판정만 보류하고 나머지는 진행. Claude는 사람 검사 통과를 대신 선언하지 않는다.
 - No-go → Tauri 유지 + 같은 디자인 명세, 렌더러 번들 이관.
+
+## 부록 — 하위 ID (2026-10-31 추가, 기준 변경 없음)
+
+Codex 리뷰 r1 #11에 따라 자동 측정은 하위 ID(예: `IN-07a` 여러 줄, `IN-07b` 한 줄, `IN-07-phys` 다른 앱 출처)로 보고하고, 상위 ID는 하위 결과가 **모두** pass일 때만 pass로 집계한다. 매핑의 단일 출처는 `Sources/AIBCCPoC/SelfTest/CriteriaCatalog.swift`. 기준 항목·차단 여부는 바꾸지 않았다.

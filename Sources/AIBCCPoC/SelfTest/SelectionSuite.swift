@@ -15,7 +15,8 @@ struct SelectionSuite {
         static let hangulRow = 1
         static let wideRow = 2
         static let trailingRow = 3
-        static let longRow = 4
+        static let wrapRow = 4
+        static let longRow = 6
         static let words = "alpha beta gamma"
         static let hangul = "한글 선택 테스트 가나다"
         static let wide = "emoji 🙂 wide 漢字 end"
@@ -36,6 +37,7 @@ struct SelectionSuite {
         }
         guard shown else { return [setupFailure("selection fixture not ready", start)] }
         await harness.pause(.milliseconds(300))
+        harness.focus(pane)
 
         let fixtureResults = [
             await dragWord(pane, window),
@@ -46,6 +48,8 @@ struct SelectionSuite {
             await tripleClick("SC-04b", "줄 끝 공백 정리", row: Fixture.trailingRow, expected: Fixture.trailing, pane, window),
             await tripleClick("SC-05a", "한글 선택 복사", row: Fixture.hangulRow, expected: Fixture.hangul, pane, window),
             await tripleClick("SC-05b", "이모지·wide char 선택 복사", row: Fixture.wideRow, expected: Fixture.wide, pane, window),
+            await tripleClick("SC-05c", "줄 끝에 걸쳐 줄바꿈된 wide char 연속 복사", row: Fixture.wrapRow,
+                              expected: wrapExpected(pane), pane, window),
         ]
         return fixtureResults + (await mouseCapturedTUI(window))
     }
@@ -59,7 +63,7 @@ struct SelectionSuite {
         else { return setupFailure("geometry unavailable", start) }
         Synth.drag(from: from, to: to, steps: 8, in: window)
         let copied = await copySelection(window)
-        return verdict("SC-01", "드래그 선택 → ⌘C", copied: copied, expected: "alpha", start)
+        return verdict("SC-01a", "드래그 선택 → ⌘C", copied: copied, expected: "alpha", start)
     }
 
     private func doubleClickWord(_ pane: TerminalPane, _ window: NSWindow) async -> TestResult {
@@ -82,7 +86,7 @@ struct SelectionSuite {
         }
         Synth.click(at: point, count: 3, in: window)
         let copied = await copySelection(window)
-        return verdict(id, title, copied: copied.map(trimTrailingWhitespace), expected: expected, start)
+        return verdict(id, title, copied: copied, expected: expected, start)
     }
 
     private func rectangle(_ pane: TerminalPane, _ window: NSWindow) async -> TestResult {
@@ -91,8 +95,8 @@ struct SelectionSuite {
               let to = harness.windowPoint(row: Fixture.hangulRow, column: 4, in: pane, fraction: 0.9)
         else { return setupFailure("geometry unavailable", start) }
         Synth.drag(from: from, to: to, steps: 8, in: window, modifiers: .option)
-        let copied = await copySelection(window).map(trimTrailingWhitespace)
-        return verdict("SC-03", "Option+드래그 사각 선택", copied: copied, expected: "alpha\n한글", start)
+        let copied = await copySelection(window)
+        return verdict("SC-03a", "Option+드래그 사각 선택", copied: copied, expected: "alpha\n한글", start)
     }
 
     /// SC-06 + SC-08: a TUI that captured the mouse must still allow
@@ -112,20 +116,21 @@ struct SelectionSuite {
         Synth.drag(from: from, to: to, steps: 8, in: window, modifiers: .shift)
         let copied = await copySelection(window)
         let leaked = rec.log.bytes(since: mark)
-        harness.focus(rec.pane)
+        let stillFocused = harness.isFirstResponder(rec.pane.probeView)
         let typedMark = rec.log.mark()
         Synth.type("x", in: window)
         let typed = await harness.settledBytes(rec.log, since: typedMark)
         let selectOK = captured && copied == "rows=" && leaked.isEmpty
         return [
-            .make("SC-06", "TUI 마우스 점유 중 Shift+드래그 선택",
+            .make("SC-06a", "TUI 마우스 점유 중 Shift+드래그 선택",
                   status: selectOK ? .pass : .fail,
                   evidence: ["mouse_captured": "\(captured)", "copied": copied ?? "nil",
                              "pty_bytes_during_drag": Hex.string(leaked)],
                   startedAt: start),
-            .make("SC-08", "복사 후 터미널 입력 유지",
-                  status: typed == [0x78] ? .pass : .fail,
-                  evidence: ["hex": Hex.string(typed)], startedAt: start),
+            .make("SC-08a", "복사 후 재포커스 없이 터미널 입력 유지",
+                  status: stillFocused && typed == [0x78] ? .pass : .fail,
+                  evidence: ["first_responder_kept": "\(stillFocused)", "hex": Hex.string(typed)],
+                  startedAt: start),
         ]
     }
 
@@ -138,11 +143,10 @@ struct SelectionSuite {
         return harness.pasteboardString
     }
 
-    private func trimTrailingWhitespace(_ text: String) -> String {
-        text.split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line in String(line.reversed().drop { $0 == " " || $0 == "\r" }.reversed()) }
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .newlines)
+    /// Fixture prints (columns - 1) "w" then two wide characters.
+    private func wrapExpected(_ pane: TerminalPane) -> String {
+        let columns = Int(pane.state.surfaceSize?.columns ?? 80)
+        return String(repeating: "w", count: max(columns - 1, 0)) + "漢字"
     }
 
     private func verdict(
@@ -150,7 +154,9 @@ struct SelectionSuite {
         _ start: ContinuousClock.Instant
     ) -> TestResult {
         .make(id, title, status: copied == expected ? .pass : .fail,
-              evidence: ["copied": copied ?? "nil", "expected": expected], startedAt: start)
+              evidence: ["copied": copied ?? "nil", "copied_hex": copied.map { Hex.string(Hex.bytes($0)) } ?? "nil",
+                         "expected": expected],
+              startedAt: start)
     }
 
     private func setupFailure(_ reason: String, _ start: ContinuousClock.Instant) -> TestResult {

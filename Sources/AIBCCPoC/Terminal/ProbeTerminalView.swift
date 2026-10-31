@@ -12,6 +12,9 @@ struct InputCallRecord: Codable, Sendable, Equatable {
     let keyCode: UInt16?
     let selectedLocation: Int?
     let selectedLength: Int?
+    /// insertText is dropped by the wrapper when `NSApp.currentEvent` is nil,
+    /// so the probe records it (Codex review r1 #currentEvent).
+    let hadCurrentEvent: Bool
     let uptime: TimeInterval
 }
 
@@ -28,6 +31,9 @@ enum ScriptedIMECall: Sendable, Equatable {
 /// scripted IMK behaviour. Recording a physical-keyboard session yields a
 /// fixture; replaying it re-runs exactly the calls IMK made, without IMK.
 final class ProbeTerminalView: AppTerminalView {
+    /// Bounded so long sessions do not slow the main actor (and skew latency).
+    static let callLogLimit = 5000
+
     private(set) var callLog: [InputCallRecord] = []
     private var replayQueue: [[ScriptedIMECall]] = []
 
@@ -110,9 +116,13 @@ final class ProbeTerminalView: AppTerminalView {
             keyCode: keyCode,
             selectedLocation: selected?.location,
             selectedLength: selected?.length,
+            hadCurrentEvent: NSApp.currentEvent != nil,
             uptime: ProcessInfo.processInfo.systemUptime
         )
-        callLog = callLog + [entry]
+        if callLog.count >= Self.callLogLimit {
+            callLog.removeFirst(callLog.count - Self.callLogLimit + 1)
+        }
+        callLog.append(entry)
     }
 
     private static func plainText(_ value: Any) -> String? {

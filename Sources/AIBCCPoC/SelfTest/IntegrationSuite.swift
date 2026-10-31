@@ -33,7 +33,7 @@ struct IntegrationSuite {
         let listed = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { store.files.count == 2 }
         let names = store.files.map(\.relativePath)
         let ok = listed && names == ["docs/newer.md", "older.md"]
-        return .make("MD-01", "최근 수정 .md 목록(시간순, 고정 뷰어 파일 제외)",
+        return .make("MD-01a", "최근 수정 .md 목록(시간순, 고정 뷰어 파일 제외)",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["listed": names.joined(separator: ", ")], startedAt: start)
     }
@@ -48,7 +48,7 @@ struct IntegrationSuite {
         let reloaded = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
             store.revision > before && (store.content?.contains("에이전트가 추가한 줄") ?? false)
         }
-        return .make("MD-03", "파일 변경 시 자동 새로고침 (스크롤 유지는 수동 확인)",
+        return .make("MD-03a", "파일 변경 시 자동 새로고침 (스크롤 유지는 수동 확인)",
                      status: reloaded ? .pass : .fail, cause: .app,
                      evidence: ["revision_before": "\(before)", "revision_after": "\(store.revision)"],
                      startedAt: start)
@@ -59,22 +59,27 @@ struct IntegrationSuite {
     private func terminalKeepsFirstKeystroke() async -> TestResult {
         let start = ContinuousClock.now
         guard let window = harness.window, let rec = harness.makeRecorderPane(name: "md-focus") else {
-            return failure("MD-04", "뷰어 → 터미널 복귀 첫 글자", reason: "setup", start)
+            return failure("MD-04a", "뷰어 → 터미널 복귀 첫 글자", reason: "setup", start)
         }
         await harness.install([rec.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { rec.log.isReady }
         guard let webView = findWebView(in: window.contentView),
               let point = harness.windowPoint(row: 3, column: 2, in: rec.pane)
-        else { return failure("MD-04", "뷰어 → 터미널 복귀 첫 글자", reason: "web view or geometry", start) }
+        else { return failure("MD-04a", "뷰어 → 터미널 복귀 첫 글자", reason: "web view or geometry", start) }
         window.makeFirstResponder(webView)
+        let viewerHadFocus = harness.isFirstResponder(webView)
         EventSynthesizer.click(at: point, count: 1, in: window)
+        await harness.drain()
+        let terminalHasFocus = harness.isFirstResponder(rec.pane.probeView)
         let mark = rec.log.mark()
         EventSynthesizer.type("x", in: window)
         let bytes = await harness.settledBytes(rec.log, since: mark)
-        let ok = bytes == [0x78]
-        return .make("MD-04", "뷰어 → 터미널 복귀 첫 글자 유실 0",
+        let ok = viewerHadFocus && terminalHasFocus && bytes == [0x78]
+        return .make("MD-04a", "뷰어 → 터미널 클릭 복귀 첫 글자 유실 0",
                      status: ok ? .pass : .fail, cause: .app,
-                     evidence: ["hex": Hex.string(bytes)], startedAt: start)
+                     evidence: ["viewer_had_focus": "\(viewerHadFocus)", "terminal_focus_after_click": "\(terminalHasFocus)",
+                                "hex": Hex.string(bytes)],
+                     startedAt: start)
     }
 
     // MARK: - Helpers

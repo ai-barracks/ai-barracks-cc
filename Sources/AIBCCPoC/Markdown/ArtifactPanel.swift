@@ -4,6 +4,7 @@ import SwiftUI
 /// document below. Separate from the fixed RULES/Wiki viewers.
 struct ArtifactPanel: View {
     let store: ArtifactStore
+    @State private var rendererFailure: String?
 
     var body: some View {
         VSplitView {
@@ -34,11 +35,14 @@ struct ArtifactPanel: View {
     private var documentView: some View {
         if let error = store.loadError {
             ContentUnavailableView("열 수 없음", systemImage: "exclamationmark.triangle", description: Text(error))
+        } else if let content = store.content, let failure = rendererFailure {
+            RawSourceView(source: content, reason: failure)
         } else if let content = store.content {
             MarkdownWebView(
                 source: content,
                 documentURL: store.selected?.url,
-                revision: store.revision
+                revision: store.revision,
+                onRendererFailure: { rendererFailure = $0 }
             )
         } else {
             ContentUnavailableView("문서를 선택하세요", systemImage: "doc.richtext")
@@ -50,6 +54,28 @@ struct ArtifactPanel: View {
             get: { store.selected?.url },
             set: { url in store.select(store.files.first { $0.url == url }) }
         )
+    }
+}
+
+/// Plain-text fallback when the renderer cannot load or run (MD-02).
+private struct RawSourceView: View {
+    let source: String
+    let reason: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Label("렌더러 사용 불가 — 원문 표시 (\(reason))", systemImage: "exclamationmark.triangle")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+                .padding(8)
+            ScrollView {
+                Text(source)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+        }
     }
 }
 

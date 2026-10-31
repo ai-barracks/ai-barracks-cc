@@ -52,6 +52,7 @@ enum AppConstants {
             "RULES.md", "SOUL.md", "GROWTH.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md",
         ]
         static let watchLatency: TimeInterval = 0.3
+        static let rendererReadyTimeout: Duration = .seconds(3)
     }
 
     enum SelfTest {
@@ -59,17 +60,15 @@ enum AppConstants {
         static let outputDirectoryEnv = "AIBCC_SELFTEST_OUT"
         static let defaultOutputDirectory = "~/Library/Application Support/AIBCCPoC/selftest"
         static let pollInterval: Duration = .milliseconds(25)
+        static let eventDrain: Duration = .milliseconds(60)
+        static let captureTimeout: Duration = .seconds(4)
+        static let changeGrace: Duration = .milliseconds(500)
         static let readyTimeout: Duration = .seconds(10)
         static let settleTimeout: Duration = .seconds(3)
         static let stableWindow: Duration = .milliseconds(150)
         static let resizeConvergenceBudget: Duration = .milliseconds(300)
         static let resizeSteps = 20
         static let resizeLargeSize = CGSize(width: 1400, height: 900)
-        /// Non-blocking criteria (acceptance-criteria.md "N"/"O"): recorded,
-        /// but they never make the self-test exit non-zero.
-        static let nonBlockingIDs: Set<String> = [
-            "RS-07", "RS-08", "IN-12", "RD-03", "ST-03", "ST-05", "MD-06", "MD-07",
-        ]
         static let resizeSmallSize = CGSize(width: 980, height: 620)
     }
 }

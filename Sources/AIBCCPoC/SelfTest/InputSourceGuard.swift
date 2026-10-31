@@ -1,18 +1,38 @@
 import Carbon
 import Foundation
 
-/// Selects a keyboard input source for the synthetic IME test and always
-/// restores the user's original source — on normal exit, on SIGINT/SIGTERM,
-/// and via atexit (Council decision 6).
+/// Keyboard input-source control for the self-test.
+/// - Plain-key tests run on an ASCII layout so results never depend on the
+///   source the user happened to leave active (Codex review r1 #6).
+/// - The Korean synthetic test is scoped: afterwards the ASCII baseline is
+///   restored, and at exit (normal, atexit, SIGINT/SIGTERM) the user's
+///   original source is restored (Council decision 6).
 @MainActor
 enum InputSourceGuard {
     static let korean2Set = "com.apple.inputmethod.Korean.2SetKorean"
+    static let asciiCandidates = ["com.apple.keylayout.ABC", "com.apple.keylayout.US"]
 
     private static var signalSources: [DispatchSourceSignal] = []
 
     static var currentSourceID: String? {
         guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else { return nil }
         return sourceID(of: source)
+    }
+
+    /// Selects the first available ASCII layout. Returns its ID, or nil.
+    @discardableResult
+    static func selectASCIIBaseline() -> String? {
+        asciiCandidates.first { select(id: $0) && currentSourceID == $0 }
+    }
+
+    /// Runs `body` with `id` selected, then re-selects the source that was
+    /// active before. Returns nil without running `body` if `id` is missing.
+    static func with<T>(_ id: String, _ body: () async -> T) async -> T? {
+        let previous = currentSourceID
+        guard select(id: id), currentSourceID == id else { return nil }
+        let result = await body()
+        if let previous { select(id: previous) }
+        return result
     }
 
     @discardableResult

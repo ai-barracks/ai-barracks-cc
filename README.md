@@ -28,10 +28,16 @@ AIBCC_NODE_MODULES=/path/to/ai-barracks-cc/node_modules ./scripts/build-renderer
 # 항상 .app으로 실행한다 (TSM/IME·리소스 로딩을 실제 앱과 같게)
 open dist/AIBCC-PoC.app
 
-# 자체 테스트 — 실행 중에는 키보드·마우스를 건드리지 말 것 (입력 소스를 잠시 한국어로 바꿨다가 복원)
+# (선택) 창 캡처 서비스 — 화면 캡처 권한이 있는 터미널에서 먼저 띄운다 (RS-01b 증거)
+./scripts/capture-watcher.sh &
+
+# 자체 테스트 — 실행 중에는 키보드·마우스를 건드리지 말 것
+# (일반 키 테스트는 ABC 입력 소스, 합성 한글 테스트만 2벌식으로 잠시 전환 후 원래 입력 소스로 복원)
 open -W dist/AIBCC-PoC.app --args --selftest
 cat ~/Library/Application\ Support/AIBCCPoC/selftest/*/summary.txt
 ```
+
+종료 코드: 0 = 모든 차단 기준 통과(사람 검사 결과 병합 시에만 가능) · 1 = 차단 기준 실패 · 2 = 준비 실패 · 3 = 실패 없음·미검증 남음(자동 실행의 최선) · 4 = 보고서 저장 실패. 상위 ID(IN-01 등)는 하위 결과가 **모두** pass일 때만 pass다. 알려진 제약: [docs/known-issues.md](docs/known-issues.md).
 
 `swift build`는 GitHub에서 프리빌트 `GhosttyKit.xcframework`(약 76MB zip)를 받는다. 출처·체크섬은 `Package.swift`가 고정한 태그의 매니페스트에 있다.
 

@@ -6,6 +6,17 @@ printf 'alpha beta gamma\r\n'
 printf '한글 선택 테스트 가나다\r\n'
 printf 'emoji 🙂 wide 漢字 end\r\n'
 printf 'trailing spaces   \r\n'
+# A wide character that does not fit at the end of a row must wrap whole and
+# copy back contiguous: (cols - 1) ASCII cells, then two wide characters.
+cols=$(stty size 2>/dev/null | cut -d' ' -f2)
+cols=${cols:-80}
+fill=$((cols - 1))
+j=0
+while [ "$j" -lt "$fill" ]; do
+  printf 'w'
+  j=$((j + 1))
+done
+printf '漢字\r\n'
 # One logical line longer than any test width: must copy back as one line.
 printf 'LONG:'
 i=0
