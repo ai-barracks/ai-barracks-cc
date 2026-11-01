@@ -8,7 +8,10 @@ struct InspectorView: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $workspace.inspectorTab) {
-                ForEach(InspectorTab.allCases) { Text($0.label).tag($0) }
+                ForEach(InspectorTab.allCases) { tab in
+                    let count = tab == .maintenance ? workspace.maintenance.items.count : 0
+                    Text(count > 0 ? "\(tab.label) \(count)" : tab.label).tag(tab)
+                }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -17,6 +20,7 @@ struct InspectorView: View {
             switch workspace.inspectorTab {
             case .artifacts: ArtifactPanel(store: artifacts)
             case .context: ContextPanel(workspace: workspace)
+            case .maintenance: MaintenancePanel(workspace: workspace, store: workspace.maintenance)
             }
         }
     }

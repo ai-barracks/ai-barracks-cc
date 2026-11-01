@@ -7,7 +7,7 @@ import Foundation
 struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
-         processTree()]
+         processTree(), maintenanceParsing()]
     }
 
     private func foldMatrix() -> TestResult {
@@ -115,6 +115,28 @@ struct UnitSuite {
         return .make("AT-01b", "pane 매칭용 프로세스 트리: 자식은 후손, 부모는 아님",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["child_is_descendant": "\(descendant)", "parent_is_descendant": "\(unrelated)"],
+                     startedAt: start)
+    }
+
+    /// Real aib v1.6.0 output shapes (ANSI colors included).
+    private func maintenanceParsing() -> TestResult {
+        let start = ContinuousClock.now
+        let clean = "\u{1B}[0;36m[INFO]\u{1B}[0m [dry-run] Would delete: sessions/claude-x.md\n\u{1B}[0;36m[INFO]\u{1B}[0m Would clean 1 empty session(s)"
+        let lint = "  \u{1B}[0;33m[STALE]\u{1B}[0m wiki/topics/A.md: 2026-05-04\n\n\u{1B}[0;33m[WARN]\u{1B}[0m Wiki lint: 101 issue(s) found"
+        let ok = "\u{1B}[0;32m[OK]\u{1B}[0m   Skills wiring is in sync"
+        let quiet = MaintenanceScanner.parse(verify: "", clean: "", gc: "", lint: "", skills: ok,
+                                             cliVersion: "aib v1.6.0", barrackVersion: "1.6.0", path: "/b")
+        let busy = MaintenanceScanner.parse(verify: "claude-1 changed after seal", clean: clean, gc: "", lint: lint,
+                                            skills: ok, cliVersion: "aib v1.6.0", barrackVersion: "1.5.0", path: "/b")
+        let kinds = busy.map(\.kind)
+        let counts = Dictionary(uniqueKeysWithValues: busy.map { ($0.kind, $0.count) })
+        let pass = quiet.isEmpty && kinds == [.seal, .clean, .wikiLint, .versionDrift]
+            && counts[.clean] == 1 && counts[.wikiLint] == 101
+            && busy.first { $0.kind == .clean }?.command.contains("--dry-run && printf") == true
+        return .make("MT-01a", "정비 항목 해석(aib 출력, 색 코드 포함)·적용 전 dry-run",
+                     status: pass ? .pass : .fail, cause: .app,
+                     evidence: ["quiet": "\(quiet.count)", "kinds": kinds.map(\.rawValue).joined(separator: ","),
+                                "counts": counts.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: ",")],
                      startedAt: start)
     }
 

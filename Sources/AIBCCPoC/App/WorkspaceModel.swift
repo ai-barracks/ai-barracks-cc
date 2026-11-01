@@ -27,10 +27,16 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
 
 /// Right inspector tabs (spec §4): artifacts first (P1).
 enum InspectorTab: String, CaseIterable, Identifiable, Sendable {
-    case artifacts, context
+    case artifacts, context, maintenance
 
     var id: String { rawValue }
-    var label: String { self == .artifacts ? "산출물" : "문맥" }
+    var label: String {
+        switch self {
+        case .artifacts: "산출물"
+        case .context: "문맥"
+        case .maintenance: "정비"
+        }
+    }
 }
 
 /// Terminal grid owned by one barrack: its panes, preset and split positions.
@@ -74,6 +80,7 @@ final class WorkspaceModel {
     var destination: Destination = .sessions
     var inspectorTab: InspectorTab = .artifacts
     var isNewAgentSheetPresented = false
+    let maintenance = MaintenanceStore()
     let liveness: LivenessStore
     private(set) var grids: [String: BarrackGrid] = [:]
 
@@ -347,11 +354,21 @@ extension WorkspaceModel {
     /// The preset grows to make room (1 → 2 → 4); nil when four are full.
     @discardableResult
     func launchAgent(_ client: AgentClient, skipPermissions: Bool) -> TerminalPane? {
+        openPane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions))
+    }
+
+    /// 정비 actions run where the user sees them: a new pane in the
+    /// barrack, through a login shell that stays afterwards.
+    @discardableResult
+    func runInPane(title: String, command: String) -> TerminalPane? {
+        openPane(title: title, command: "/bin/zsh -lc " + AgentLauncher.shellQuote(command + "; exec /bin/zsh -l"))
+    }
+
+    private func openPane(title: String, command: String?) -> TerminalPane? {
         guard let barrack = selectedBarrack else { return nil }
         let current = grid
         guard current.panes.count < PaneLayout.quad.paneCount else { return nil }
-        let pane = makePane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions),
-                            environment: [:], directory: barrack.path, attachingTo: nil)
+        let pane = makePane(title: title, command: command, environment: [:], directory: barrack.path, attachingTo: nil)
         let panes = current.panes + [pane]
         let needed = max(panes.count, current.layout.paneCount)
         let layout = PaneLayout.allCases.first { $0.paneCount >= needed } ?? .quad

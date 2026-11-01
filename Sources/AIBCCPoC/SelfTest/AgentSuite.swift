@@ -8,7 +8,8 @@ struct AgentSuite {
     let harness: SelfTestHarness
 
     func run() async -> [TestResult] {
-        [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess()]
+        [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
+         await maintenanceRunsInPane(), await maintenanceScanCompletes()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -51,6 +52,38 @@ struct AgentSuite {
         return .make("AG-01c", "터미널 포커스에서 ⌘N → 시작 시트(PTY로 새지 않음)",
                      status: opened && leaked.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["sheet": "\(opened)", "leaked": Hex.string(leaked)], startedAt: start)
+    }
+
+    /// A 정비 action runs visibly: a new pane, the command, a shell after.
+    private func maintenanceRunsInPane() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        let marker = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-mt-\(UUID().uuidString)")
+        guard let base = harness.makeRecorderPane(name: "mt-base") else {
+            return .make("MT-01b", "정비 실행", status: .fail, cause: .app, evidence: ["reason": "setup"], startedAt: start)
+        }
+        await harness.install([base.pane], layout: .single)
+        let pane = workspace.runInPane(title: "정비", command: "echo done > \(AgentLauncher.shellQuote(marker.path))")
+        let ran = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
+            FileManager.default.fileExists(atPath: marker.path)
+        }
+        try? FileManager.default.removeItem(at: marker)
+        let ok = ran && pane != nil && workspace.panes.count == 2
+        return .make("MT-01b", "정비 동작은 새 터미널 pane에서 실행(결과가 보임)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["ran": "\(ran)", "panes": "\(workspace.panes.count)"], startedAt: start)
+    }
+
+    /// The read-only scan against the real aib finishes.
+    private func maintenanceScanCompletes() async -> TestResult {
+        let start = ContinuousClock.now
+        let store = harness.workspace.maintenance
+        await store.scan(harness.workspace.selectedBarrack)
+        let elapsed = (ContinuousClock.now - start).milliseconds
+        return .make("MT-01c", "정비 점검(aib dry-run·verify·lint)이 끝나고 항목을 냄",
+                     status: !store.isScanning && elapsed < 30_000 ? .pass : .fail, cause: .app,
+                     evidence: ["items": store.items.map { "\($0.kind.rawValue)=\($0.count)" }.joined(separator: ","),
+                                "ms": String(format: "%.0f", elapsed)], startedAt: start)
     }
 
     private func matchesPaneByProcess() async -> TestResult {
