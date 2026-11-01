@@ -16,7 +16,7 @@ enum CriteriaCatalog {
     }
 
     static let criteria: [Criterion] = input + resize + selection + readability + stability + regression + markdown
-        + persistence
+        + persistence + reproductions
 
     private static let input: [Criterion] = [
         .init(id: "IN-01", title: "한글 조합 표시·확정 1회", blocking: true, requires: ["IN-01a", "IN-01-phys"], optional: ["IN-01-syn"]),
@@ -97,6 +97,15 @@ enum CriteriaCatalog {
         .init(id: "PS-02", title: "재부착 실패·데몬 종료 복구", blocking: false, requires: ["PS-02a", "PS-02b"]),
     ]
 
+    /// Reproduction suites for observations that never became bugs (run
+    /// explicitly: repro10, repro-r5); kept as regression checks.
+    private static let reproductions: [Criterion] = [
+        .init(id: "RP-10", title: "pane 교체 직후 첫 키 유실(알려진 이슈 #10)", blocking: false,
+              requires: ["RP-10a", "RP-10b", "RP-10c", "RP-10d"]),
+        .init(id: "RP-R5", title: "창 상태 변화 후 화면 갱신(Codex 실행 리뷰 R5)", blocking: false,
+              requires: ["RP-R5a", "RP-R5b"]),
+    ]
+
     /// Every sub-ID that no automated suite produces: listed as `unverified`
     /// with the method that can verify it.
     static func pendingSubResults(excluding measured: Set<String>) -> [TestResult] {
@@ -132,6 +141,8 @@ enum CriteriaCatalog {
         if id.hasSuffix("-review") { return "code review" }
         if id.hasPrefix("PS-") { return "scripts/run-persist-test.sh" }
         if id == "PK-01b" { return "scripts/verify-standalone.sh" }
+        if id.hasPrefix("RP-10") { return "--selftest-only=repro10" }
+        if id.hasPrefix("RP-R5") { return "--selftest-only=repro-r5 (capture-watcher)" }
         return "human"
     }
 }

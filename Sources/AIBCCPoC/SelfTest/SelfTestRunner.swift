@@ -79,7 +79,7 @@ struct SelfTestRunner {
 
     static let suiteOrder = ["packaging", "input", "resize", "selection", "lifecycle", "load", "integration"]
     /// Run only when named (they need a daemon and two app launches).
-    static let explicitSuites = ["persist1", "persist2"]
+    static let explicitSuites = ["persist1", "persist2", "repro10", "repro-r5"]
     static let allSuites = Set(suiteOrder)
     static let knownSuites = Set(suiteOrder + explicitSuites)
 
@@ -93,6 +93,8 @@ struct SelfTestRunner {
         case "load": return await LoadSuite(harness: harness).run()
         case "integration": return await IntegrationSuite(harness: harness).run()
         case "persist1": return await PersistSuite(harness: harness).phaseOne()
+        case "repro10": return await ReproSuite(harness: harness).run()
+        case "repro-r5": return await RenderSuite(harness: harness).run()
         case "persist2":
             let suite = PersistSuite(harness: harness)
             return await suite.phaseTwo() + suite.recovery()

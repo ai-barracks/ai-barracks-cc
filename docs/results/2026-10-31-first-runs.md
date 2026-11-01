@@ -69,3 +69,10 @@ Codex r3(신규 blocker 0, 새 테스트의 false-pass 경로 major 4·minor 2)�
 - 첫 데몬 실행에서 **출력 처리량 14MB/s·back-pressure 부재**를 발견(10만 줄 폭주가 측정 종료까지 끝나지 않음) → reader 스레드·소켓 계층·종단 간 흐름 제어로 재설계 → 1분할 10만 줄 69ms, 4분할 205ms.
 - 세션 생존 PS-01a~e·복구 PS-02a/b pass. 상세: docs/spikes/pty-ownership.md 2단계.
 - 실행 중 찾은 결함: `@Observable` 속성의 `didSet`이 init 안에서도 실행돼 복원 전에 새 그리드를 저장(저장된 배치 덮어쓰기) → 복원을 먼저 하도록 수정. pane 교체 시 deinit에만 의존한 세션 종료가 늦어 고아 세션 발생 → 교체 시 명시 종료 + 복원 시 고아 정리(PS-01e).
+
+## 캡처 검토·재현 테스트 (2026-11-01 오후)
+
+- **캡처 증거 신뢰성 결함 3건 수정**: ① capture-watcher가 이전 실행의 오래된 요청을 계속 재시도해 현재 요청이 4초 뒤에 찍히거나 다른 순간을 찍음(step0 캡처가 step8 크기) → 시작 이후·10초 이내 요청만 처리 ② 수렴 직후 캡처가 이전 프레임을 찍음(큰 폰트 캡처가 13pt로 보임) → 캡처 전 렌더 대기 + 캡처가 보여야 할 값(`expected_on_capture`) 기록 ③ watcher가 `set -e`로 첫 실패에 종료.
+- 캡처 육안 검토(run `2026-11-01T08-52-02Z`): RS-01b·RS-02b·RS-04c pass(마지막 행·열 BR 표식 온전, 헤더 격자 = recorder 출력). `scripts/merge-evidence.py`로 증거 병합 → **차단 기준 pass 23 · fail 0 · unverified 18**.
+- RS-08a 507ms 실패 → 첫 단계가 이전 실행이 남긴 최소 창 크기에서 시작해 inspector 표시 애니메이션을 포함한 것. 시작 시 기본 크기로 정규화 + 첫 단계는 준비 단계로 분리 → 최장 54~92ms pass.
+- 알려진 이슈 #10·Codex R5: 재현 테스트(RP-10a~d, RP-R5a/b)로 exec·daemon 모두 재현 안 됨. known-issues #10·#12.

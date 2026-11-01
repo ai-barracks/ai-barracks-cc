@@ -10,6 +10,8 @@ at the last column of the last row) so a screenshot shows whether the last
 row/column is actually visible. Exits on byte 0x04 (Ctrl+D).
 Set AIBCC_MOUSE_REPORT=1 to enable SGR mouse reporting (a TUI that captures
 the mouse) and AIBCC_BRACKETED_PASTE=1 to enable bracketed paste.
+AIBCC_ECHO=1 writes every received chunk back to the screen (R5 render
+check: input delivery is logged, its drawing is compared in captures).
 AIBCC_BANNER=TEXT is redrawn on row 3 with the markers (persistence replay
 check); AIBCC_DA_QUERY=1 sends one DA1 query at start, whose answer arrives
 as input (proves a replayed query is not answered twice).
@@ -97,6 +99,9 @@ def main():
                 if not data:
                     break
                 log(out, "bytes", hex=data.hex(" "))
+                if enabled("AIBCC_ECHO"):
+                    sys.stdout.write(data.decode("utf-8", "replace"))
+                    sys.stdout.flush()
                 if CTRL_D in data:
                     break
         finally:
