@@ -6,11 +6,40 @@ import SwiftUI
 struct DocumentView: View {
     let barrack: Barrack
     let destination: Destination
+    var startCouncil: () -> Void = {}
     @State private var selection: URL?
     @State private var source: String?
     @State private var failure: String?
 
     var body: some View {
+        if documents.isEmpty {
+            emptyState
+        } else {
+            browser
+        }
+    }
+
+    /// An empty destination says what it is for and how to fill it.
+    @ViewBuilder
+    private var emptyState: some View {
+        switch destination {
+        case .council:
+            ContentUnavailableView {
+                Label("Council 기록 없음", systemImage: destination.symbol)
+            } description: {
+                Text("Claude와 Codex가 토론한 결과가 resources/council에 쌓이면 여기서 읽습니다.")
+            } actions: {
+                Button("Council 시작 (⌘⇧C)", action: startCouncil)
+            }
+        case .skills:
+            ContentUnavailableView("Skills 없음", systemImage: destination.symbol,
+                                   description: Text("skills/<이름>/SKILL.md를 추가하면 여기서 읽습니다."))
+        default:
+            ContentUnavailableView("문서 없음", systemImage: destination.symbol)
+        }
+    }
+
+    private var browser: some View {
         HStack(spacing: 0) {
             List(documents, id: \.self, selection: $selection) { file in
                 Text(title(of: file)).font(Tokens.Font.body).lineLimit(1)

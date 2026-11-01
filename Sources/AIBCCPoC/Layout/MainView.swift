@@ -45,7 +45,8 @@ struct MainView: View {
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
             GitView(workspace: workspace, barrack: barrack)
         } else if let barrack = workspace.selectedBarrack {
-            DocumentView(barrack: barrack, destination: workspace.destination)
+            DocumentView(barrack: barrack, destination: workspace.destination,
+                         startCouncil: { workspace.isCouncilSheetPresented = true })
         }
     }
 
