@@ -13,9 +13,18 @@ let package = Package(
         ),
     ],
     targets: [
+        // Frame protocol + socket helpers shared by the app and the daemon.
+        .target(name: "PtyProtocol", path: "Sources/PtyProtocol"),
+        // PTY owner that outlives the app (Herdr-style core daemon).
+        .executableTarget(
+            name: "AIBCCPtyDaemon",
+            dependencies: ["PtyProtocol"],
+            path: "Sources/PtyDaemon"
+        ),
         .executableTarget(
             name: "AIBCCPoC",
             dependencies: [
+                "PtyProtocol",
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
             ],
             path: "Sources/AIBCCPoC",
