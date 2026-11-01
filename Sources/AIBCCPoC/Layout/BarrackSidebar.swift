@@ -45,7 +45,13 @@ struct BarrackSidebar: View {
         case .wiki:
             let topics = try? FileManager.default.contentsOfDirectory(atPath: barrack.url.appendingPathComponent("wiki/topics").path)
             return topics?.filter { $0.hasSuffix(".md") }.count
-        case .rules:
+        case .skills:
+            let count = BarrackDocuments.skills(in: barrack.url).count
+            return count > 0 ? count : nil
+        case .council:
+            let count = BarrackDocuments.councilMinutes(in: barrack.url).count
+            return count > 0 ? count : nil
+        case .rules, .git:
             return nil
         }
     }

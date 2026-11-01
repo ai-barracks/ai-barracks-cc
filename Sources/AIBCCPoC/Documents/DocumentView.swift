@@ -58,13 +58,17 @@ struct DocumentView: View {
             let index = root.appendingPathComponent("wiki/Index.md")
             return [index].filter { FileManager.default.fileExists(atPath: $0.path) }
                 + topics.filter { $0.pathExtension == "md" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-        case .sessions:
+        case .skills:
+            return BarrackDocuments.skills(in: root)
+        case .council:
+            return BarrackDocuments.councilMinutes(in: root)
+        case .sessions, .git:
             return []
         }
     }
 
     private func title(of file: URL) -> String {
-        file.deletingPathExtension().lastPathComponent
+        destination == .skills ? file.deletingLastPathComponent().lastPathComponent : file.deletingPathExtension().lastPathComponent
     }
 
     private func load() {
@@ -74,6 +78,7 @@ struct DocumentView: View {
             return
         }
         // YAML is shown as a fenced block; the renderer handles Markdown.
-        source = file.pathExtension == "md" ? text : "```yaml\n" + text + "\n```"
+        // A SKILL.md's frontmatter becomes a short header instead of raw YAML.
+        source = file.pathExtension == "md" ? BarrackDocuments.frontmatterAsHeader(text) : "```yaml\n" + text + "\n```"
     }
 }

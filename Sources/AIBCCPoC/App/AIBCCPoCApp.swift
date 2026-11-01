@@ -38,6 +38,8 @@ struct AIBCCPoCApp: App {
                     .keyboardShortcut("n", modifiers: .command)
                 Button("다음 주의 항목으로") { workspace.goToNextAttention() }
                     .keyboardShortcut("a", modifiers: [.command, .shift])
+                Button("Council 시작…") { workspace.isCouncilSheetPresented = true }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
                 Divider()
                 Toggle("앱 종료 시 세션 유지", isOn: $keepSessionsOnQuit)
                     .disabled(workspace.daemon == nil)

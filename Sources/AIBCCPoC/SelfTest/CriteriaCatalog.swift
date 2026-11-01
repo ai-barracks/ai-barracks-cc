@@ -103,6 +103,8 @@ enum CriteriaCatalog {
         .init(id: "MD-08", title: "문서 표시에서 aib 메타데이터 주석 숨김", blocking: false, requires: ["MD-08a"]),
         .init(id: "AG-01", title: "⌘N 에이전트 시작(aib start)", blocking: false, requires: ["AG-01a", "AG-01b", "AG-01c"]),
         .init(id: "AT-01", title: "⌘⇧A 주의 항목 이동·done 확인", blocking: false, requires: ["AT-01a", "AT-01b", "AT-01c"]),
+        .init(id: "SK-01", title: "Skills·Council 목적지", blocking: false, requires: ["SK-01a"]),
+        .init(id: "DS-01", title: "목적지 왕복 후 터미널 보존", blocking: false, requires: ["DS-01a"]),
         .init(id: "DB-01", title: "세션 유지 기본값(데몬)·테스트 격리", blocking: false, requires: ["DB-01a"]),
         .init(id: "MT-01", title: "정비 큐(aib 점검 → 판단 → pane 실행)", blocking: false, requires: ["MT-01a", "MT-01b", "MT-01c"]),
     ]

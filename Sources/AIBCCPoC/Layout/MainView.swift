@@ -25,6 +25,7 @@ struct MainView: View {
         }
         .toolbar { toolbarContent }
         .sheet(isPresented: $workspace.isNewAgentSheetPresented) { NewAgentSheet(workspace: workspace) }
+        .sheet(isPresented: $workspace.isCouncilSheetPresented) { CouncilSheet(workspace: workspace) }
         .navigationTitle(workspace.selectedBarrack?.name ?? "AIBCC")
         .navigationSubtitle(workspace.destination.label)
         .onChange(of: workspace.selectedBarrackID, initial: true) {
@@ -41,6 +42,8 @@ struct MainView: View {
     private var center: some View {
         if workspace.destination == .sessions || workspace.selectedBarrack == nil {
             TerminalGridView(workspace: workspace)
+        } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
+            GitView(workspace: workspace, barrack: barrack)
         } else if let barrack = workspace.selectedBarrack {
             DocumentView(barrack: barrack, destination: workspace.destination)
         }

@@ -7,7 +7,7 @@ import Foundation
 struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
-         processTree(), maintenanceParsing(), socketChoice()]
+         processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil()]
     }
 
     private func foldMatrix() -> TestResult {
@@ -153,6 +153,31 @@ struct UnitSuite {
         return .make("DB-01a", "데몬 기본값·버전 소켓, self-test는 전용 소켓, --backend=exec는 데몬 없음",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["user": user, "selftest": test, "exec": exec ?? "nil"], startedAt: start)
+    }
+
+    private func skillsAndCouncil() -> TestResult {
+        let start = ContinuousClock.now
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-sk-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let skill = root.appendingPathComponent("skills/council")
+        let minutes = root.appendingPathComponent("resources/council")
+        try? FileManager.default.createDirectory(at: skill, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: minutes, withIntermediateDirectories: true)
+        try? "---\nname: council\ndescription: \"Debate\"\n---\n# Body".write(
+            to: skill.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+        try? "# m".write(to: minutes.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
+        try? "# p".write(to: minutes.appendingPathComponent("a-prompt.md"), atomically: true, encoding: .utf8)
+        let skills = BarrackDocuments.skills(in: root).map { $0.deletingLastPathComponent().lastPathComponent }
+        let council = BarrackDocuments.councilMinutes(in: root).map(\.lastPathComponent)
+        let header = BarrackDocuments.frontmatterAsHeader("---\nname: council\ndescription: \"Debate\"\n---\n# Body")
+        let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 11, day: 2, hour: 9, minute: 5))!
+        let command = CouncilCommand.make(topic: "REST 'vs' gRPC", rounds: 2, now: date)
+        let ok = skills == ["council"] && council == ["a.md"] && header == "> **council** — Debate\n\n# Body"
+            && command == "mkdir -p resources/council && aib council -r 2 -o resources/council/20261102-0905-council.md 'REST '\\''vs'\\'' gRPC'"
+        return .make("SK-01a", "Skills·Council 문서 찾기, SKILL.md 머리글 표시, council 명령(-o, 따옴표)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["skills": skills.joined(separator: ","), "council": council.joined(separator: ","),
+                                "header": header, "command": command], startedAt: start)
     }
 
     private func readerAppliesAck() -> TestResult {

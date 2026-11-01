@@ -9,7 +9,7 @@ struct AgentSuite {
 
     func run() async -> [TestResult] {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
-         await maintenanceRunsInPane(), await maintenanceScanCompletes()]
+         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -84,6 +84,36 @@ struct AgentSuite {
                      status: !store.isScanning && elapsed < 30_000 ? .pass : .fail, cause: .app,
                      evidence: ["items": store.items.map { "\($0.kind.rawValue)=\($0.count)" }.joined(separator: ","),
                                 "ms": String(format: "%.0f", elapsed)], startedAt: start)
+    }
+
+    /// P0 across destinations: Git/Skills replace the terminals on screen;
+    /// coming back shows the same shell, which still takes input.
+    private func destinationRoundTrip() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let recorder = harness.makeRecorderPane(name: "dest"), let window = harness.window else {
+            return .make("DS-01a", "목적지 왕복", status: .fail, cause: .app, evidence: ["reason": "setup"], startedAt: start)
+        }
+        await harness.install([recorder.pane], layout: .single)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
+        let pid = recorder.pane.processID
+        for destination in [Destination.git, .skills, .council, .rules] {
+            workspace.destination = destination
+            await harness.pause(.milliseconds(400))
+        }
+        let detached = recorder.pane.probeView?.window == nil
+        workspace.destination = .sessions
+        let back = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { recorder.pane.probeView?.window != nil }
+        await harness.click(row: 2, column: 2, in: recorder.pane)
+        let mark = recorder.log.mark()
+        EventSynthesizer.type("ok", in: window)
+        let typed = await harness.settledBytes(recorder.log, since: mark, expectingAtLeast: 2)
+        let ok = detached && back && recorder.pane.processID == pid && typed == Hex.bytes("ok")
+        return .make("DS-01a", "Git·Skills·Council·규칙을 거쳐 돌아와도 같은 셸·입력 정상",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["detached_while_away": "\(detached)", "reattached": "\(back)",
+                                "same_process": "\(recorder.pane.processID == pid)", "typed": Hex.string(typed)],
+                     startedAt: start)
     }
 
     private func matchesPaneByProcess() async -> TestResult {

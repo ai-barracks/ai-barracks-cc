@@ -4,7 +4,7 @@ import Observation
 
 /// What the center shows for the selected barrack (spec §4 destinations).
 enum Destination: String, CaseIterable, Identifiable, Sendable {
-    case sessions, rules, wiki
+    case sessions, rules, wiki, skills, council, git
 
     var id: String { rawValue }
 
@@ -13,6 +13,9 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .sessions: "세션"
         case .rules: "규칙"
         case .wiki: "Wiki"
+        case .skills: "Skills"
+        case .council: "Council"
+        case .git: "Git"
         }
     }
 
@@ -21,6 +24,9 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .sessions: "terminal"
         case .rules: "list.bullet.rectangle"
         case .wiki: "books.vertical"
+        case .skills: "puzzlepiece.extension"
+        case .council: "person.3"
+        case .git: "arrow.triangle.branch"
         }
     }
 }
@@ -80,6 +86,7 @@ final class WorkspaceModel {
     var destination: Destination = .sessions
     var inspectorTab: InspectorTab = .artifacts
     var isNewAgentSheetPresented = false
+    var isCouncilSheetPresented = false
     let maintenance = MaintenanceStore()
     let liveness: LivenessStore
     private(set) var grids: [String: BarrackGrid] = [:]
