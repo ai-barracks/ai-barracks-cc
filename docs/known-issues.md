@@ -2,7 +2,7 @@
 
 Codex code review r1 (2026-10-31) 반영 후에도 남는 제약. 제품 전환 시 해결 대상.
 
-1. **[product blocker] SwiftPM resource bundle lookup** — SwiftPM 6.3.2의 `Bundle.module`은 `.app` 루트와 빌드 당시 절대 경로만 찾는다. `Contents/Resources`에 복사한 `GhosttyKit_GhosttyTerminal.bundle`은 찾지 않으므로, 이 PoC는 **이 Mac의 `.build` 경로 fallback으로만 동작**한다. 제품에서는 libghostty-spm을 fork해 `Bundle.main.resourceURL` 우선 resolver를 넣거나 upstream에 제안한다. 앱 루트에 bundle을 두는 방식은 strict codesign 구조 검증과 충돌한다.
+1. **SwiftPM resource bundle lookup — 해소(2026-11-01)** — SwiftPM 6.3.2의 `Bundle.module`은 `.app` 루트와 빌드 당시 절대 경로만 찾고 없으면 `fatalError`라, 배포 앱(빌드 디렉터리 없음)은 첫 터미널 생성에서 죽었다(대조 실험으로 크래시 재현). libghostty-spm을 `Vendor/libghostty-spm`으로 들여와 `Bundle.main.resourceURL`을 먼저 찾는 resolver로 패치(`Vendor/libghostty-spm/PATCHES.md`, upstream 제안 후보). PK-01a(리소스·terminfo·현지화 문자열이 `Contents/Resources`에서 해석)·PK-01b(`scripts/verify-standalone.sh`: 빌드 경로 bundle을 치운 채 터미널 시작·입력) pass. 바이너리 xcframework는 원래 URL·checksum 그대로 받는다.
 2. **split 경계 드래그는 자체 구현** — layout 전환 시 터미널(PTY)을 보존하려고 `HSplitView` 대신 `PaneGridLayout` + overlay divider(드래그 비율 0.2~0.8)를 쓴다. 키보드로 divider를 옮기는 접근성 경로는 아직 없다.
 3. **숨겨진 pane의 PTY 크기** — 4→1 전환 시 주차된 pane은 그리기를 멈추지만 전체 영역 크기를 제안받아 SIGWINCH가 한 번 발생한다.
 4. **앱 종료 후 세션 생존 — 스파이크로 해소, 기본값은 아직 `.exec`** — `--backend=daemon`(opt-in)에서 AIBCCPtyDaemon이 PTY를 소유하고 앱은 `.inMemory`로 화면만 붙는다. 앱 종료 후 같은 프로세스 생존·재실행 시 자동 재부착·이전 화면 재생·입력 연결이 실측 통과(PS-01a~e, PS-02a/b; docs/spikes/pty-ownership.md 2단계). 남은 제약:

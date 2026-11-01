@@ -50,14 +50,6 @@ bin_path() {
   swift build -c "$CONFIG" --package-path "$ROOT" --disable-keychain --show-bin-path
 }
 
-warn_resource_lookup() {
-  # Known product blocker (docs/known-issues.md #1): SwiftPM's Bundle.module
-  # accessor searches the .app root and the absolute build path, not
-  # Contents/Resources. The PoC works on this machine through the build-path
-  # fallback only.
-  echo "note: GhosttyTerminal resources resolve via the build-path fallback ($1)" >&2
-}
-
 assemble_bundle() {
   local bin_dir="$1"
   rm -rf "$APP"
@@ -112,7 +104,6 @@ main() {
   local bin_dir
   bin_dir="$(bin_path)"
   assemble_bundle "$bin_dir"
-  warn_resource_lookup "$bin_dir"
   sign_bundle
   write_build_info
   require_disk end

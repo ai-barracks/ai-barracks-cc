@@ -85,6 +85,8 @@ enum CriteriaCatalog {
         .init(id: "MD-06", title: "고정 뷰어와 분리", blocking: false, requires: ["MD-01a"]),
         .init(id: "MD-07", title: "Mermaid", blocking: false, requires: ["MD-07-phys"]),
         .init(id: "WS-01", title: "배럭 선택·터미널·산출물 맥락 일치", blocking: true, requires: ["WS-01a"]),
+        .init(id: "PK-01", title: "배포 앱이 자체 리소스로 동작(빌드 경로 비의존)", blocking: true,
+              requires: ["PK-01a", "PK-01b"]),
     ]
 
     /// Spike (known issue #4), not a Go/No-go gate: two app launches via
@@ -128,6 +130,7 @@ enum CriteriaCatalog {
         if id.hasSuffix("-baseline") { return "measure v1.6.1 baseline first" }
         if id.hasSuffix("-review") { return "code review" }
         if id.hasPrefix("PS-") { return "scripts/run-persist-test.sh" }
+        if id == "PK-01b" { return "scripts/verify-standalone.sh" }
         return "human"
     }
 }

@@ -1,16 +1,16 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-// libghostty-spm is pinned to an exact tag so the prebuilt GhosttyKit
-// xcframework (Ghostty upstream 1e9e14af5df1) stays reproducible.
+// libghostty-spm is vendored at tag 2.2.2026103001; its binaryTarget keeps
+// the prebuilt GhosttyKit xcframework (Ghostty upstream 1e9e14af5df1) pinned
+// by checksum.
 let package = Package(
     name: "AIBCCPoC",
     platforms: [.macOS(.v14)],
     dependencies: [
-        .package(
-            url: "https://github.com/Lakr233/libghostty-spm.git",
-            exact: "2.2.2026103001"
-        ),
+        // Vendored libghostty-spm 2.2.2026103001 with a resource-bundle
+        // lookup that works in a shipped .app (Vendor/libghostty-spm/PATCHES.md).
+        .package(path: "Vendor/libghostty-spm"),
     ],
     targets: [
         // Frame protocol + socket helpers shared by the app and the daemon.

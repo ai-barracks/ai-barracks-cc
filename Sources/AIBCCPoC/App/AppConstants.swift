@@ -99,6 +99,9 @@ enum AppConstants {
     enum SelfTest {
         static let argument = "--selftest"
         static let onlyArgumentPrefix = "--selftest-only="
+        /// Set by scripts/verify-standalone.sh: the build-path resource
+        /// bundle it moved aside (PK-01b).
+        static let standaloneArgumentPrefix = "--standalone-check="
         static let outputDirectoryEnv = "AIBCC_SELFTEST_OUT"
         static let defaultOutputDirectory = "~/Library/Application Support/AIBCCPoC/selftest"
         static let pollInterval: Duration = .milliseconds(25)
