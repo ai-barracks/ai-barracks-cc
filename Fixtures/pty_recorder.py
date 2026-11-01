@@ -10,6 +10,9 @@ at the last column of the last row) so a screenshot shows whether the last
 row/column is actually visible. Exits on byte 0x04 (Ctrl+D).
 Set AIBCC_MOUSE_REPORT=1 to enable SGR mouse reporting (a TUI that captures
 the mouse) and AIBCC_BRACKETED_PASTE=1 to enable bracketed paste.
+AIBCC_BANNER=TEXT is redrawn on row 3 with the markers (persistence replay
+check); AIBCC_DA_QUERY=1 sends one DA1 query at start, whose answer arrives
+as input (proves a replayed query is not answered twice).
 """
 
 import fcntl
@@ -28,6 +31,7 @@ MOUSE_ON = "\x1b[?1000h\x1b[?1002h\x1b[?1006h"
 MOUSE_OFF = "\x1b[?1006l\x1b[?1002l\x1b[?1000l"
 BRACKETED_ON = "\x1b[?2004h"
 BRACKETED_OFF = "\x1b[?2004l"
+DA1_QUERY = "\x1b[c"
 
 
 def enabled(name):
@@ -59,6 +63,9 @@ def draw_markers(rows, cols):
     sys.stdout.write("\x1b[2J\x1b[1;1HTL")
     sys.stdout.write(f"\x1b[{rows};{max(cols - len(tail) + 1, 1)}H{tail}")
     sys.stdout.write(f"\x1b[2;1Hrows={rows} cols={cols}")
+    banner = os.environ.get("AIBCC_BANNER")
+    if banner:
+        sys.stdout.write(f"\x1b[3;1H{banner}")
     sys.stdout.flush()
 
 
@@ -82,6 +89,9 @@ def main():
             draw_markers(rows, cols)
             set_modes(True)
             log(out, "ready", rows=rows, cols=cols)
+            if enabled("AIBCC_DA_QUERY"):
+                sys.stdout.write(DA1_QUERY)
+                sys.stdout.flush()
             while True:
                 data = os.read(fd, READ_CHUNK)
                 if not data:

@@ -59,7 +59,7 @@ struct SelfTestRunner {
         GhosttyDebugCapture.enable(writingTo: output.appendingPathComponent("ghostty-debug.log"))
         let only = Self.requestedSuites()
         var measured: [TestResult] = []
-        for name in Self.suiteOrder where only.contains(name) {
+        for name in Self.suiteOrder + Self.explicitSuites where only.contains(name) {
             measured = measured + (await runSuite(name, harness: harness))
         }
         let subs = measured + CriteriaCatalog.pendingSubResults(excluding: Set(measured.map(\.id)))
@@ -76,7 +76,10 @@ struct SelfTestRunner {
     }
 
     static let suiteOrder = ["input", "resize", "selection", "lifecycle", "load", "integration"]
+    /// Run only when named (they need a daemon and two app launches).
+    static let explicitSuites = ["persist1", "persist2"]
     static let allSuites = Set(suiteOrder)
+    static let knownSuites = Set(suiteOrder + explicitSuites)
 
     private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {
         switch name {
@@ -86,6 +89,8 @@ struct SelfTestRunner {
         case "lifecycle": return await LifecycleSuite(harness: harness).run()
         case "load": return await LoadSuite(harness: harness).run()
         case "integration": return await IntegrationSuite(harness: harness).run()
+        case "persist1": return await PersistSuite(harness: harness).phaseOne()
+        case "persist2": return await PersistSuite(harness: harness).phaseTwo()
         default: return []
         }
     }
@@ -96,7 +101,7 @@ struct SelfTestRunner {
         let prefix = AppConstants.SelfTest.onlyArgumentPrefix
         guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) }) else { return allSuites }
         let names = argument.dropFirst(prefix.count).split(separator: ",").map(String.init)
-        return Set(names).intersection(allSuites)
+        return Set(names).intersection(knownSuites)
     }
 
     private func verdict(_ parents: [TestResult], measured: [TestResult]) -> SelfTestExit {
@@ -132,6 +137,9 @@ struct SelfTestRunner {
             "backing_scale": "\(NSScreen.main?.backingScaleFactor ?? 0)",
             "barracks": "\(workspace.barracks.count)",
             "app_active_at_start": "\(NSApp.isActive)",
+            "pty_backend": workspace.daemon == nil ? "exec" : "daemon",
+            "ptyd_socket": workspace.daemon?.socketPath ?? "none",
+            "ptyd_restore": workspace.restoreSummary,
         ]
     }
 

@@ -14,6 +14,11 @@ Checks, each printed as PASS/FAIL:
   signals     the child has default SIGPIPE/SIGHUP dispositions
   exit        EXITED carries the exit status; ATTACH after exit replays + EXITED
   kill        KILL hangs up a live child
+  echo        keystroke round trip (cat in raw mode) p95 < 5 ms: coalescing
+              must not delay interactive output
+  throughput  100k lines (11.2 MB) delivered in < 1 s
+  pressure    a client that stops reading throttles the child (daemon RSS
+              bounded) and, once it reads again, gets every line in order
   single      a second daemon on the same socket exits without stealing it
   shutdown    SHUTDOWN stops the daemon and its children
 Exit status 0 only if every check passed.
@@ -201,6 +206,72 @@ def scenario_exit(path):
     later.close()
 
 
+def scenario_echo(path):
+    client = Client(path)
+    session = uuid.uuid4()
+    create(client, session, "stty raw -echo; exec cat")
+    client.wait_for(lambda c: c.first(CREATED, session) is not None)
+    time.sleep(0.3)
+    client.sock.settimeout(0.001)
+    samples = []
+    for index in range(40):
+        before = len(client.output(session))
+        start = time.perf_counter()
+        client.send(INPUT, session, b"k")
+        if client.wait_for(lambda c: len(c.output(session)) > before, timeout=1):
+            samples.append((time.perf_counter() - start) * 1000)
+        time.sleep(0.02 if index % 2 else 0.003)
+    samples.sort()
+    p95 = samples[int(len(samples) * 0.95) - 1] if samples else 1e9
+    check("echo", len(samples) == 40 and p95 < 5, f"p50={samples[len(samples)//2]:.2f}ms p95={p95:.2f}ms" if samples else "")
+    client.send(KILL, session)
+    client.close()
+
+
+def scenario_throughput(path):
+    client = Client(path)
+    session = uuid.uuid4()
+    create(client, session, "python3 -c \"import sys; l=('x'*80+'가나다라마바사아자차'+'\\n'); "
+                            "w=sys.stdout.write; [w(l) for _ in range(100000)]; sys.stdout.flush()\"")
+    start = time.time()
+    client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=20)
+    elapsed = time.time() - start
+    size = len(client.output(session))
+    check("throughput", size >= 11_200_000 and elapsed < 1.0,
+          f"{size} bytes in {elapsed * 1000:.0f}ms ({size / max(elapsed, 1e-6) / 1e6:.0f} MB/s)")
+    client.close()
+
+
+def rss_kb(pid):
+    out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return int(out or 0)
+
+
+def scenario_pressure(path, daemon_pid):
+    client = Client(path)
+    session = uuid.uuid4()
+    create(client, session, "python3 -c \"import sys\nfor i in range(10**9): sys.stdout.write('%012d %s\\n' % (i, 'y' * 100))\"")
+    client.wait_for(lambda c: c.first(CREATED, session) is not None)
+    time.sleep(0.5)
+    # Stop reading: the kernel socket buffer fills, then the daemon must stop
+    # reading the PTY instead of buffering without bound.
+    baseline = rss_kb(daemon_pid)
+    time.sleep(3)
+    stalled = rss_kb(daemon_pid)
+    client.sock.settimeout(0.05)
+    deadline = time.time() + 4
+    while time.time() < deadline:
+        client.pump()
+    client.send(KILL, session)
+    client.wait_for(lambda c: c.first(EXITED, session) is not None)
+    lines = [line for line in client.output(session).split(b"\r\n") if len(line) == 113]
+    numbers = [int(line[:12]) for line in lines]
+    ordered = bool(numbers) and numbers == list(range(numbers[0], numbers[0] + len(numbers)))
+    check("pressure", stalled - baseline < 32 * 1024 and ordered and numbers[0] == 0 and len(numbers) > 10000,
+          f"rss {baseline}KB -> {stalled}KB while stalled, lines={len(numbers)} ordered={ordered}")
+    client.close()
+
+
 def scenario_kill(client, shell, pid):
     client.send(KILL, shell)
     exited = client.wait_for(lambda c: c.first(EXITED, shell) is not None)
@@ -221,30 +292,39 @@ def main():
         if not wait_socket(path):
             check("start", False, "socket never appeared")
             return 1
-        client, shell, pid = scenario_session(binary, path)
-        scenario_signals(path)
-        scenario_exit(path)
-        scenario_kill(client, shell, pid)
-
-        survivor = Client(path)
-        lingering = uuid.uuid4()
-        create(survivor, lingering, "sleep 60")
-        survivor.wait_for(lambda c: c.first(CREATED, lingering) is not None)
-        lingering_pid = json.loads(survivor.first(CREATED, lingering) or b"{}").get("pid", 0)
-
-        second = start_daemon(binary, path, log)
-        second.wait(timeout=TIMEOUT)
-        still_served = wait_socket(path) and daemon.poll() is None
-        check("single", second.returncode == 0 and still_served, f"second_exit={second.returncode}")
-
-        survivor.send(SHUTDOWN, uuid.UUID(int=0))
         try:
-            daemon.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            daemon.kill()
-        time.sleep(0.2)
-        check("shutdown", daemon.returncode == 0 and not alive(lingering_pid) and not os.path.exists(path),
-              f"exit={daemon.returncode}")
+            client, shell, pid = scenario_session(binary, path)
+            scenario_signals(path)
+            scenario_exit(path)
+            scenario_kill(client, shell, pid)
+            scenario_echo(path)
+            scenario_throughput(path)
+            scenario_pressure(path, daemon.pid)
+
+            survivor = Client(path)
+            lingering = uuid.uuid4()
+            create(survivor, lingering, "sleep 60")
+            survivor.wait_for(lambda c: c.first(CREATED, lingering) is not None)
+            lingering_pid = json.loads(survivor.first(CREATED, lingering) or b"{}").get("pid", 0)
+
+            second = start_daemon(binary, path, log)
+            second.wait(timeout=TIMEOUT)
+            still_served = wait_socket(path) and daemon.poll() is None
+            check("single", second.returncode == 0 and still_served, f"second_exit={second.returncode}")
+
+            survivor.send(SHUTDOWN, uuid.UUID(int=0))
+            try:
+                daemon.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                daemon.kill()
+            time.sleep(0.2)
+            check("shutdown", daemon.returncode == 0 and not alive(lingering_pid) and not os.path.exists(path),
+                  f"exit={daemon.returncode}")
+        finally:
+            # A crashed scenario must not leave a daemon behind.
+            if daemon.poll() is None:
+                daemon.kill()
+                daemon.wait()
     print(f"log: {log_path}")
     return 0 if all(RESULTS) else 1
 

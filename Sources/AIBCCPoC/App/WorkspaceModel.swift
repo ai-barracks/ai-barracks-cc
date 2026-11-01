@@ -14,30 +14,41 @@ struct BarrackGrid {
 /// barrack, the terminals in the center and the artifacts on the right always
 /// share one context (Codex runtime review R1). Switching barracks detaches
 /// the other grid's views without killing their shells — panes own their
-/// views, and Ghostty keeps a surface across detach/reattach.
+/// views, and Ghostty keeps a surface across detach/reattach. With the
+/// daemon backend the grids are also saved, and a relaunch reattaches to the
+/// same shells.
 @MainActor
 @Observable
 final class WorkspaceModel {
     let controller: TerminalController
     let barracks: [Barrack]
+    /// nil = Ghostty's exec backend (shells end with the app).
+    let daemon: DaemonBackend?
 
     var selectedBarrackID: Barrack.ID? {
         willSet { terminalHadFocus = isTerminalFocused() }
         didSet {
             activateSelectedGrid()
+            persist()
             // Hand keyboard focus over only if a terminal had it; keyboard
             // navigation in the sidebar keeps its focus (Codex review r3 #5).
             if terminalHadFocus { focusFirstVisiblePaneWhenAttached() }
         }
     }
     @ObservationIgnored private var terminalHadFocus = false
+    /// What the launch-time reattach did (self-test environment evidence).
+    @ObservationIgnored private(set) var restoreSummary = "not attempted"
     var isArtifactPanelVisible = true
     private(set) var grids: [String: BarrackGrid] = [:]
 
-    init(barracks: [Barrack] = BarrackRegistry.load()) {
+    init(barracks: [Barrack] = BarrackRegistry.load(), daemon: DaemonBackend? = DaemonBackend.fromArguments()) {
         controller = TerminalAppearance.makeController()
         self.barracks = barracks
-        selectedBarrackID = barracks.first?.id
+        self.daemon = daemon
+        // Restore first: with @Observable the didSet below already runs in
+        // init, and it would save a fresh grid over the saved layout.
+        let restoredSelection = daemon.flatMap { restore(from: $0) }
+        selectedBarrackID = restoredSelection ?? barracks.first?.id
         activateSelectedGrid()
     }
 
@@ -86,12 +97,27 @@ final class WorkspaceModel {
         command: String? = nil,
         environment: [String: String] = [:]
     ) -> TerminalPane {
+        makePane(title: title, command: command, environment: environment,
+                 directory: selectedBarrack?.path, attachingTo: nil)
+    }
+
+    private func makePane(
+        title: String,
+        command: String?,
+        environment: [String: String],
+        directory: String?,
+        attachingTo session: UUID?
+    ) -> TerminalPane {
+        let backend: PaneBackend = daemon.map {
+            .daemon($0, sessionID: session ?? UUID(), attach: session != nil)
+        } ?? .exec
         let pane = TerminalPane(
             controller: controller,
             title: title,
-            workingDirectory: selectedBarrack?.path,
+            workingDirectory: directory,
             command: command,
-            extraEnvironment: environment
+            extraEnvironment: environment,
+            backend: backend
         )
         let paneID = pane.id
         pane.state.onClose = { [weak self] processAlive in
@@ -148,8 +174,65 @@ final class WorkspaceModel {
     }
 
     private func store(_ newGrid: BarrackGrid) {
+        let kept = Set(newGrid.panes.map(\.id))
+        let removed = (grids[gridKey]?.panes ?? []).filter { !kept.contains($0.id) }
         grids = grids.merging([gridKey: newGrid]) { _, new in new }
+        removed.forEach { $0.terminate() }
         updateSurfaceVisibility()
+        persist()
+    }
+
+    // MARK: - Daemon session persistence
+
+    /// Reattaches every saved pane whose session the daemon still holds;
+    /// a grid that lost sessions is topped up with fresh shells. Returns the
+    /// saved selection. Must not touch `selectedBarrackID` (its didSet saves).
+    private func restore(from daemon: DaemonBackend) -> Barrack.ID? {
+        guard let saved = SessionStore.load(from: daemon.sessionStoreURL) else {
+            restoreSummary = "no saved layout"
+            return nil
+        }
+        guard let known = daemon.listSessions().map({ Set($0.map(\.id)) }) else {
+            restoreSummary = "daemon session list unavailable"
+            return nil
+        }
+        // Sessions no saved pane refers to were orphaned (e.g. a kill lost
+        // in a crash); nothing can ever attach to them again.
+        let referenced = Set(saved.grids.values.flatMap(\.panes).map(\.session))
+        let orphans = known.subtracting(referenced)
+        daemon.killSessions(Array(orphans))
+        let restored: [String: BarrackGrid] = barracks.reduce(into: [:]) { result, barrack in
+            guard let grid = saved.grids[barrack.id] else { return }
+            let attached = grid.panes.filter { known.contains($0.session) }.map {
+                makePane(title: $0.title, command: nil, environment: [:], directory: barrack.path, attachingTo: $0.session)
+            }
+            guard !attached.isEmpty else { return }
+            let layout = PaneLayout(rawValue: grid.layout) ?? .single
+            let fresh = (attached.count..<max(layout.paneCount, attached.count)).map {
+                makePane(title: "shell \($0 + 1)", command: nil, environment: [:], directory: barrack.path, attachingTo: nil)
+            }
+            result[barrack.id] = BarrackGrid(panes: attached + fresh, layout: layout,
+                                             splitX: CGFloat(grid.splitX), splitY: CGFloat(grid.splitY))
+        }
+        grids = restored
+        let savedPanes = saved.grids.values.map(\.panes.count).reduce(0, +)
+        let attachedPanes = restored.values.flatMap(\.panes).filter { $0.remote.map { known.contains($0.id) } ?? false }
+        restoreSummary = "saved=\(savedPanes) attached=\(attachedPanes.count) grids=\(restored.count) "
+            + "orphans_killed=\(orphans.count)"
+        return saved.selectedBarrackID.flatMap { selected in barracks.first { $0.id == selected }?.id }
+    }
+
+    private func persist() {
+        guard let daemon else { return }
+        let saved = SavedWorkspace(selectedBarrackID: selectedBarrackID, grids: grids.mapValues { grid in
+            SavedWorkspace.Grid(
+                layout: grid.layout.rawValue, splitX: Double(grid.splitX), splitY: Double(grid.splitY),
+                panes: grid.panes.compactMap { pane in
+                    pane.remote.map { SavedWorkspace.Pane(session: $0.id, title: pane.title) }
+                }
+            )
+        })
+        SessionStore.save(saved, to: daemon.sessionStoreURL)
     }
 
     /// Ghostty asked to close the surface after its process ended. Close

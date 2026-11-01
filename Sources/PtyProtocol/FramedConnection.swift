@@ -1,57 +1,99 @@
 import Darwin
 import Foundation
 
-/// Frames over a connected stream socket (DispatchIO). `onFrame` and
-/// `onClose` run on `queue`; `send` may be called from any thread and keeps
-/// submission order. `onClose` fires exactly once.
+/// Frames over a connected, non-blocking stream socket. `onFrames`, `onClose`
+/// and `onWriteDrained` run on `queue`; `send`, `setReadingPaused` and
+/// `pendingWriteBytes` are safe from any thread, and sends keep submission
+/// order. `onClose` fires exactly once.
+///
+/// Flow control: `pendingWriteBytes` tells a producer that the peer is behind
+/// (the daemon then stops reading the PTY), and pausing reads lets the kernel
+/// socket buffer push back on the peer.
 public final class FramedConnection: @unchecked Sendable {
-    /// A peer that stops reading must not grow the daemon without bound.
+    /// Hard cap for a peer that never reads; flow control keeps a healthy
+    /// peer far below it.
     public static let maxPendingWriteBytes = 64 * 1024 * 1024
+    /// `onWriteDrained` fires when a backlog falls to this level.
+    public static let writeLowWater = 256 * 1024
+    private static let readChunk = 256 * 1024
 
+    private let fd: Int32
     private let queue: DispatchQueue
-    private let channel: DispatchIO
     private let lock = NSLock()
-    private var decoder = FrameDecoder()
-    private var pendingWriteBytes = 0
+    // Guarded by `lock`.
+    private var queued = Data()
+    private var pendingCount = 0
+    private var flushScheduled = false
     private var isClosed = false
-    private let onFrame: (Frame) -> Void
-    private let onClose: () -> Void
+    private var closesWhenDrained = false
+    private var readPaused = false
+    // Queue-only.
+    private var writing = Data()
+    private var writeOffset = 0
+    private var decoder = FrameDecoder()
+    private var readSource: DispatchSourceRead?
+    private var writeSource: DispatchSourceWrite?
+    private var readSuspended = false
+    private var readBuffer = [UInt8](repeating: 0, count: FramedConnection.readChunk)
+    private var hadBacklog = false
 
-    public init(fd: Int32, queue: DispatchQueue, onFrame: @escaping (Frame) -> Void, onClose: @escaping () -> Void) {
+    private let onFrames: ([Frame]) -> Void
+    private let onClose: () -> Void
+    /// Set before `start()`.
+    public var onWriteDrained: (() -> Void)?
+
+    /// `onFrames` receives every complete frame of one socket read at once,
+    /// so a consumer can merge consecutive output.
+    public init(fd: Int32, queue: DispatchQueue, onFrames: @escaping ([Frame]) -> Void, onClose: @escaping () -> Void) {
+        self.fd = fd
         self.queue = queue
-        self.onFrame = onFrame
+        self.onFrames = onFrames
         self.onClose = onClose
-        channel = DispatchIO(type: .stream, fileDescriptor: fd, queue: queue) { _ in Darwin.close(fd) }
-        channel.setLimit(lowWater: 1)
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
     }
 
     public func start() {
-        channel.read(offset: 0, length: Int.max, queue: queue) { [weak self] done, data, error in
-            guard let self else { return }
-            if let data, !data.isEmpty {
-                for frame in self.decoder.feed(Data(data)) { self.onFrame(frame) }
-            }
-            if done || error != 0 { self.close() }
+        queue.async { [self] in
+            guard !lock.withLock({ isClosed }) else { return }
+            let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+            source.setEventHandler { [weak self] in self?.readAvailable() }
+            source.resume()
+            readSource = source
+            applyReadPause()
         }
     }
 
+    public var pendingWriteBytes: Int { lock.withLock { pendingCount } }
+
     public func send(_ frame: Frame) {
         let bytes = frame.encoded()
-        let overflow: Bool = lock.withLock {
-            guard !isClosed else { return false }
-            pendingWriteBytes += bytes.count
-            return pendingWriteBytes > Self.maxPendingWriteBytes
+        let (schedule, overflow): (Bool, Bool) = lock.withLock {
+            guard !isClosed else { return (false, false) }
+            queued.append(bytes)
+            pendingCount += bytes.count
+            defer { flushScheduled = true }
+            return (!flushScheduled, pendingCount > Self.maxPendingWriteBytes)
         }
         if overflow {
             close()
-            return
+        } else if schedule {
+            queue.async { self.flushWrites() }
         }
-        let payload = bytes.withUnsafeBytes { DispatchData(bytes: $0) }
-        channel.write(offset: 0, data: payload, queue: queue) { [weak self] done, _, error in
-            guard let self, done else { return }
-            self.lock.withLock { self.pendingWriteBytes -= bytes.count }
-            if error != 0 { self.close() }
+    }
+
+    /// Stops (or resumes) reading so the peer's writes back up in the kernel.
+    public func setReadingPaused(_ paused: Bool) {
+        lock.withLock { readPaused = paused }
+        queue.async { self.applyReadPause() }
+    }
+
+    /// Closes once every frame sent so far is written.
+    public func closeWhenDrained() {
+        let drained: Bool = lock.withLock {
+            closesWhenDrained = true
+            return pendingCount == 0
         }
+        if drained { close() }
     }
 
     public func close() {
@@ -60,8 +102,102 @@ public final class FramedConnection: @unchecked Sendable {
             return !isClosed
         }
         guard first else { return }
-        channel.close(flags: .stop)
-        queue.async { self.onClose() }
+        queue.async { [self] in
+            // A suspended source must be resumed before it is cancelled.
+            if readSuspended { readSource?.resume() }
+            readSource?.cancel()
+            writeSource?.cancel()
+            readSource = nil
+            writeSource = nil
+            Darwin.close(fd)
+            onClose()
+        }
+    }
+
+    // MARK: - Queue
+
+    private func applyReadPause() {
+        guard let readSource, !lock.withLock({ isClosed }) else { return }
+        let paused = lock.withLock { readPaused }
+        guard paused != readSuspended else { return }
+        readSuspended = paused
+        if paused { readSource.suspend() } else { readSource.resume() }
+    }
+
+    private func readAvailable() {
+        while !lock.withLock({ readPaused || isClosed }) {
+            let count = Darwin.read(fd, &readBuffer, readBuffer.count)
+            if count > 0 {
+                let frames = decoder.feed(Data(readBuffer[0..<count]))
+                if !frames.isEmpty { onFrames(frames) }
+            } else if count < 0 && errno == EINTR {
+                continue
+            } else {
+                if count == 0 || errno != EAGAIN { close() }
+                return
+            }
+        }
+    }
+
+    private func flushWrites() {
+        if writeOffset >= writing.count {
+            writing = lock.withLock {
+                defer { queued = Data() }
+                return queued
+            }
+            writeOffset = 0
+        }
+        let result = writeBuffered()
+        let (remaining, closeNow, more): (Int, Bool, Bool) = lock.withLock {
+            pendingCount -= result.written
+            let idle = pendingCount == 0
+            if idle { flushScheduled = false }
+            return (pendingCount, idle && closesWhenDrained, !idle && writeOffset >= writing.count)
+        }
+        if result.failed || closeNow { return close() }
+        if result.blocked {
+            hadBacklog = true
+            waitForWritable()
+        } else {
+            writeSource?.cancel()
+            writeSource = nil
+            // Frames queued while this batch was written.
+            if more { queue.async { self.flushWrites() } }
+        }
+        if hadBacklog && remaining <= Self.writeLowWater {
+            hadBacklog = false
+            onWriteDrained?()
+        }
+    }
+
+    private func writeBuffered() -> (written: Int, blocked: Bool, failed: Bool) {
+        var written = 0
+        var blocked = false
+        var failed = false
+        writing.withUnsafeBytes { raw in
+            while writeOffset < raw.count {
+                let result = Darwin.write(fd, raw.baseAddress! + writeOffset, raw.count - writeOffset)
+                if result > 0 {
+                    writeOffset += result
+                    written += result
+                } else if result < 0 && errno == EINTR {
+                    continue
+                } else {
+                    blocked = result < 0 && errno == EAGAIN
+                    failed = !blocked
+                    return
+                }
+            }
+        }
+        return (written, blocked, failed)
+    }
+
+    private func waitForWritable() {
+        guard writeSource == nil else { return }
+        let source = DispatchSource.makeWriteSource(fileDescriptor: fd, queue: queue)
+        source.setEventHandler { [weak self] in self?.flushWrites() }
+        source.resume()
+        writeSource = source
     }
 }
 

@@ -16,6 +16,7 @@ enum CriteriaCatalog {
     }
 
     static let criteria: [Criterion] = input + resize + selection + readability + stability + regression + markdown
+        + persistence
 
     private static let input: [Criterion] = [
         .init(id: "IN-01", title: "한글 조합 표시·확정 1회", blocking: true, requires: ["IN-01a", "IN-01-phys"], optional: ["IN-01-syn"]),
@@ -86,6 +87,13 @@ enum CriteriaCatalog {
         .init(id: "WS-01", title: "배럭 선택·터미널·산출물 맥락 일치", blocking: true, requires: ["WS-01a"]),
     ]
 
+    /// Spike (known issue #4), not a Go/No-go gate: two app launches via
+    /// scripts/run-persist-test.sh with the daemon backend.
+    private static let persistence: [Criterion] = [
+        .init(id: "PS-01", title: "앱 종료 후 세션 생존·재부착", blocking: false,
+              requires: ["PS-01a", "PS-01b", "PS-01c", "PS-01d", "PS-01e"]),
+    ]
+
     /// Every sub-ID that no automated suite produces: listed as `unverified`
     /// with the method that can verify it.
     static func pendingSubResults(excluding measured: Set<String>) -> [TestResult] {
@@ -118,6 +126,7 @@ enum CriteriaCatalog {
         if id.hasSuffix("-cu") { return "codex-computer-use" }
         if id.hasSuffix("-baseline") { return "measure v1.6.1 baseline first" }
         if id.hasSuffix("-review") { return "code review" }
+        if id.hasPrefix("PS-") { return "scripts/run-persist-test.sh" }
         return "human"
     }
 }

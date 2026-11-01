@@ -13,6 +13,8 @@ final class Daemon: @unchecked Sendable {
     private static let idleExit: TimeInterval = 300
     private static let idleCheckInterval: DispatchTimeInterval = .seconds(30)
     private static let shutdownGrace: DispatchTimeInterval = .seconds(4)
+    /// A session stops reading its PTY once a client is this far behind.
+    private static let outputHighWater = 1024 * 1024
 
     private let queue = DispatchQueue(label: "aibcc.ptyd")
     private let socketPath: String
@@ -54,17 +56,19 @@ final class Daemon: @unchecked Sendable {
             var client: Client?
             let connection = FramedConnection(
                 fd: clientFD, queue: queue,
-                onFrame: { [weak self] frame in
+                onFrames: { [weak self] frames in
                     guard let self, let client else { return }
-                    self.handle(frame, from: client)
+                    frames.forEach { self.handle($0, from: client) }
                 },
                 onClose: { [weak self] in
                     guard let self, let current = client else { return }
                     self.clients[ObjectIdentifier(current)] = nil
                     client = nil
+                    self.updateFlowControl()
                     self.markIdleIfNeeded()
                 }
             )
+            connection.onWriteDrained = { [weak self] in self?.updateFlowControl() }
             let created = Client(connection: connection)
             client = created
             clients[ObjectIdentifier(created)] = created
@@ -81,7 +85,9 @@ final class Daemon: @unchecked Sendable {
             if let request = PtyProtocol.decode(ResizeRequest.self, from: frame.payload) {
                 sessions[frame.session]?.resize(request)
             }
-        case .detach: client.attached.remove(frame.session)
+        case .detach:
+            client.attached.remove(frame.session)
+            updateFlowControl()
         case .list:
             let infos = sessions.values.map(\.info).sorted { $0.startedAt < $1.startedAt }
             client.connection.send(Frame(.sessions, payload: PtyProtocol.json(infos)))
@@ -102,7 +108,10 @@ final class Daemon: @unchecked Sendable {
         client.attached.insert(session.id)
         client.connection.send(Frame(.created, session: session.id, payload: PtyProtocol.json(session.info)))
         session.start(
-            onOutput: { [weak self] data in self?.broadcast(Frame(.output, session: session.id, payload: data)) },
+            onOutput: { [weak self] data in
+                self?.broadcast(Frame(.output, session: session.id, payload: data))
+                self?.updateFlowControl()
+            },
             onExit: { [weak self] info in self?.sessionExited(session.id, info) }
         )
         DaemonLog.write("created \(session.id) pid=\(session.pid) argv0=\(request.argv.first ?? "")")
@@ -150,6 +159,24 @@ final class Daemon: @unchecked Sendable {
     private func broadcast(_ frame: Frame) {
         for client in clients.values where client.attached.contains(frame.session) {
             client.connection.send(frame)
+        }
+    }
+
+    /// Back-pressure: a session stops reading its PTY while any attached
+    /// client is behind and resumes once every one has caught up, so a
+    /// flood throttles the child like a terminal does instead of growing
+    /// buffers. A session nobody is attached to keeps running (replay only).
+    private func updateFlowControl() {
+        for session in sessions.values where session.isAlive {
+            let backlog = clients.values
+                .filter { $0.attached.contains(session.id) }
+                .map(\.connection.pendingWriteBytes)
+                .max() ?? 0
+            if session.isOutputPaused {
+                if backlog <= FramedConnection.writeLowWater { session.setOutputPaused(false) }
+            } else if backlog > Self.outputHighWater {
+                session.setOutputPaused(true)
+            }
         }
     }
 

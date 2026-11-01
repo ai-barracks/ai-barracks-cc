@@ -36,6 +36,32 @@ enum AppConstants {
         ]
     }
 
+    /// Opt-in daemon PTY backend (persistence spike, known issue #4).
+    enum Daemon {
+        static let backendArgument = "--backend=daemon"
+        static let socketArgumentPrefix = "--ptyd-socket="
+        static let executableName = "AIBCCPtyDaemon"
+        static let defaultSocket = "~/Library/Application Support/AIBCCPoC/ptyd.sock"
+        static let sessionStoreSuffix = ".sessions.json"
+        static let logSuffix = ".log"
+        static let startTimeout: TimeInterval = 3
+        static let startPollMicroseconds: useconds_t = 50_000
+        static let replaySettleInitialDelay: Duration = .milliseconds(20)
+        static let replaySettleMaxDelay: Duration = .seconds(1)
+        /// The in-memory backend ships no xterm-ghostty terminfo to children.
+        static let term = "xterm-256color"
+        static let colorTerm = "truecolor"
+        static let termProgram = "AIBCC"
+        static let commandShell = "/bin/sh"
+        static let fallbackLoginShell = "/bin/zsh"
+        static let placeholderColumns: UInt16 = 80
+        static let placeholderRows: UInt16 = 24
+        /// Unparsed terminal output at which the app stops reading the
+        /// daemon socket (end-to-end back-pressure down to the child).
+        static let parseBacklogHighWater = 8 * 1024 * 1024
+        static let parseBacklogLowWater = 2 * 1024 * 1024
+    }
+
     enum Layout {
         static let minWindowWidth: CGFloat = 960
         static let minWindowHeight: CGFloat = 600

@@ -35,11 +35,11 @@ struct LifecycleSuite {
 
         workspace.selectedBarrackID = other.id
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
-            workspace.panes.first?.probeView?.foregroundPid != nil && harness.artifacts.watchedRoot == other.url
+            workspace.panes.first?.processID != nil && harness.artifacts.watchedRoot == other.url
         }
         await harness.pause(.milliseconds(500))
         let otherPane = workspace.panes.first
-        let otherPID = otherPane?.probeView?.foregroundPid ?? 0
+        let otherPID = otherPane?.processID ?? 0
         let cwd = ProcessCWD.path(of: otherPID).map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
         let cwdMatches = cwd == other.url.resolvingSymlinksInPath().path
         let focusHandedOver = harness.isFirstResponder(otherPane?.probeView)

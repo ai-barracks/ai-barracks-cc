@@ -4,11 +4,10 @@ import PtyProtocol
 
 /// TIOCSWINSZ is a function-like macro that Swift does not import.
 private let terminalSetWindowSize: UInt = 0x8008_7467
-private let readChunk = 65_536
 private let killGrace: DispatchTimeInterval = .seconds(3)
 
 /// One child process on a PTY owned by the daemon. Every member is touched on
-/// the daemon's serial queue only.
+/// the daemon's serial queue only; output is read by a `PtyReader` thread.
 final class PtySession: @unchecked Sendable {
     let id: UUID
     let pid: pid_t
@@ -18,10 +17,12 @@ final class PtySession: @unchecked Sendable {
     private(set) var replay = Data()
     private(set) var exitInfo: ExitInfo?
     private var inputBacklog = Data()
-    private var readSource: DispatchSourceRead?
+    private var reader: PtyReader?
     private var writeSource: DispatchSourceWrite?
     private var exitSource: DispatchSourceProcess?
     private var masterOpen = true
+    private var masterClosed = false
+    private(set) var isOutputPaused = false
     /// Set by KILL: the record is dropped at exit instead of kept for attach.
     var discardOnExit = false
     private var onOutput: (Data) -> Void = { _ in }
@@ -55,10 +56,13 @@ final class PtySession: @unchecked Sendable {
     func start(onOutput: @escaping (Data) -> Void, onExit: @escaping (ExitInfo) -> Void) {
         self.onOutput = onOutput
         self.onExit = onExit
-        let reader = DispatchSource.makeReadSource(fileDescriptor: masterFD, queue: queue)
-        reader.setEventHandler { [weak self] in self?.readAvailable() }
-        reader.resume()
-        readSource = reader
+        let reader = PtyReader(
+            fd: masterFD, queue: queue,
+            onData: { [weak self] data in self?.received(data) },
+            onEnd: {}
+        )
+        self.reader = reader
+        reader.start()
 
         let watcher = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
         watcher.setEventHandler { [weak self] in self?.reapIfExited() }
@@ -83,11 +87,19 @@ final class PtySession: @unchecked Sendable {
         _ = withUnsafeMutablePointer(to: &size) { ioctl(masterFD, terminalSetWindowSize, $0) }
     }
 
+    /// Back-pressure: while paused the PTY is not read, so the child blocks
+    /// on write once the kernel buffer is full.
+    func setOutputPaused(_ paused: Bool) {
+        guard paused != isOutputPaused else { return }
+        isOutputPaused = paused
+        reader?.setPaused(paused)
+    }
+
     /// Hangs up like a closing terminal (the kernel sends SIGHUP to the
     /// session), then SIGKILLs a child that ignores it.
     func terminate() {
         guard isAlive else { return }
-        closeMaster()
+        closeMaster {}
         queue.asyncAfter(deadline: .now() + killGrace) { [weak self] in
             guard let self, self.isAlive else { return }
             kill(self.pid, SIGKILL)
@@ -96,31 +108,9 @@ final class PtySession: @unchecked Sendable {
 
     // MARK: - Private
 
-    private func readAvailable() {
-        var buffer = [UInt8](repeating: 0, count: readChunk)
-        var collected = Data()
-        var reachedEnd = false
-        while masterOpen {
-            let count = Darwin.read(masterFD, &buffer, buffer.count)
-            if count > 0 {
-                collected.append(contentsOf: buffer[0..<count])
-            } else if count < 0 && errno == EINTR {
-                continue
-            } else {
-                // 0 or EIO: the slave side is gone; EAGAIN: drained for now.
-                reachedEnd = count == 0 || errno != EAGAIN
-                break
-            }
-        }
-        if !collected.isEmpty {
-            remember(collected)
-            onOutput(collected)
-        }
-        // Without this the source would fire forever on a hung-up master.
-        if reachedEnd {
-            readSource?.cancel()
-            readSource = nil
-        }
+    private func received(_ data: Data) {
+        remember(data)
+        onOutput(data)
     }
 
     private func flushInput() {
@@ -160,28 +150,39 @@ final class PtySession: @unchecked Sendable {
         }
     }
 
+    /// EXITED goes out only after the reader handed over its last output.
     private func reapIfExited() {
         guard isAlive else { return }
         var status: Int32 = 0
         guard waitpid(pid, &status, WNOHANG) == pid else { return }
-        readAvailable()
         let runtime = UInt64(max(Date().timeIntervalSince(startedAt), 0) * 1000)
         let info = ExitInfo(status: Self.exitCode(fromWaitStatus: status), runtimeMilliseconds: runtime)
         exitInfo = info
         exitSource?.cancel()
         exitSource = nil
-        closeMaster()
-        onExit(info)
+        closeMaster { [weak self] in self?.onExit(info) }
     }
 
-    private func closeMaster() {
-        guard masterOpen else { return }
+    /// Stops writing now; the fd is closed once the reader thread has left
+    /// poll (closing it under a blocked poll could hit a reused fd).
+    private func closeMaster(then completion: @escaping @Sendable () -> Void) {
         masterOpen = false
-        readSource?.cancel()
-        readSource = nil
         writeSource?.cancel()
         writeSource = nil
         inputBacklog.removeAll()
+        guard let reader else {
+            closeFD()
+            return completion()
+        }
+        reader.stop { [weak self] in
+            self?.closeFD()
+            completion()
+        }
+    }
+
+    private func closeFD() {
+        guard !masterClosed else { return }
+        masterClosed = true
         close(masterFD)
     }
 
