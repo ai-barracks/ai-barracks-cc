@@ -10,6 +10,11 @@ struct DocumentView: View {
     @State private var selection: URL?
     @State private var source: String?
     @State private var failure: String?
+    @State private var original: String?
+    @State private var draft = ""
+    @State private var isEditing = false
+    @State private var conflict = false
+    @State private var saveError: String?
 
     var body: some View {
         if documents.isEmpty {
@@ -59,11 +64,19 @@ struct DocumentView: View {
     @ViewBuilder
     private var reader: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let file = selection, let ownership = Ownership.of(file, in: barrack.url) {
-                OwnershipSeal(ownership: ownership)
-                    .padding(Tokens.Spacing.m)
+            HStack {
+                if let file = selection, let ownership = Ownership.of(file, in: barrack.url) {
+                    OwnershipSeal(ownership: ownership)
+                }
+                Spacer()
+                editControls
             }
-            if let source, let failure {
+            .padding(Tokens.Spacing.m)
+            if isEditing {
+                TextEditor(text: $draft)
+                    .font(.system(size: 13).monospaced())
+                    .padding(.horizontal, Tokens.Spacing.s)
+            } else if let source, let failure {
                 RawSourceView(source: source, reason: failure)
             } else if let source {
                 MarkdownWebView(source: source, documentURL: selection, revision: source.hashValue,
@@ -73,6 +86,47 @@ struct DocumentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .alert("파일이 바뀌었습니다", isPresented: $conflict) {
+            Button("내 편집으로 덮어쓰기", role: .destructive) {
+                if let file = selection { finish(DocumentEditing.overwrite(edited: draft, to: file)) }
+            }
+            Button("다시 불러오기(내 편집 버림)") { isEditing = false; load() }
+            Button("계속 편집", role: .cancel) {}
+        } message: {
+            Text("편집하는 동안 다른 곳(에이전트 등)이 이 파일을 고쳤습니다.")
+        }
+    }
+
+    @ViewBuilder
+    private var editControls: some View {
+        if let file = selection, DocumentEditing.isEditable(file, in: barrack.url, destination: destination) {
+            if isEditing {
+                if let saveError { Text(saveError).font(Tokens.Font.meta).foregroundStyle(Tokens.red) }
+                Button("취소") { isEditing = false; saveError = nil }
+                Button("저장") { save() }.keyboardShortcut("s", modifiers: .command)
+            } else {
+                Button("편집") { draft = original ?? ""; isEditing = true }
+            }
+        }
+    }
+
+    private func save() {
+        guard let file = selection, let original else { return }
+        let result = DocumentEditing.save(edited: draft, original: original, to: file)
+        if result == .conflict { conflict = true } else { finish(result) }
+    }
+
+    private func finish(_ result: DocumentEditing.SaveResult) {
+        switch result {
+        case .saved, .unchanged:
+            isEditing = false
+            saveError = nil
+            load()
+        case .failed:
+            saveError = "저장하지 못했습니다"
+        case .conflict:
+            conflict = true
+        }
     }
 
     private var documents: [URL] {
@@ -102,10 +156,13 @@ struct DocumentView: View {
 
     private func load() {
         failure = nil
+        isEditing = false
         guard let file = selection, let text = try? String(contentsOf: file, encoding: .utf8) else {
             source = nil
+            original = nil
             return
         }
+        original = text
         // YAML is shown as a fenced block; the renderer handles Markdown.
         // A SKILL.md's frontmatter becomes a short header instead of raw YAML.
         source = file.pathExtension == "md" ? BarrackDocuments.frontmatterAsHeader(text) : "```yaml\n" + text + "\n```"

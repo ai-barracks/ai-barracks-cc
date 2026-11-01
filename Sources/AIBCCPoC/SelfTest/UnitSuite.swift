@@ -7,7 +7,7 @@ import Foundation
 struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
-         processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil()]
+         processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict()]
     }
 
     private func foldMatrix() -> TestResult {
@@ -178,6 +178,48 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["skills": skills.joined(separator: ","), "council": council.joined(separator: ","),
                                 "header": header, "command": command], startedAt: start)
+    }
+
+    private func editingPolicy() -> TestResult {
+        let start = ContinuousClock.now
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-ed-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: root.appendingPathComponent("wiki"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = { (name: String, body: String) -> URL in
+            let url = root.appendingPathComponent(name)
+            try? body.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        }
+        let rules = file("RULES.md", "# Rules")
+        let soul = file("SOUL.md", "# Soul")
+        let sessions = file("SESSIONS.md", "<!-- AIB:OWNERSHIP — [SYSTEM] x -->\n# S")
+        let wiki = file("wiki/Index.md", "# Wiki")
+        let editable = { (url: URL, destination: Destination) in DocumentEditing.isEditable(url, in: root, destination: destination) }
+        let ok = editable(rules, .rules) && editable(soul, .rules) && !editable(sessions, .rules)
+            && !editable(wiki, .wiki) && !editable(rules, .wiki)
+        return .make("ED-01a", "편집 허용: 규칙 목적지의 USER-OWNED·AUTO-GROW만, Wiki·SYSTEM·RECORD는 읽기 전용",
+                     status: ok ? .pass : .fail, cause: .app, startedAt: start)
+    }
+
+    /// An agent appended to RULES.md while the user edited: never clobber.
+    private func editingConflict() -> TestResult {
+        let start = ContinuousClock.now
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-ed-\(UUID().uuidString).md")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let original = "# Rules\n- a\n"
+        try? original.write(to: url, atomically: true, encoding: .utf8)
+        let unchanged = DocumentEditing.save(edited: original, original: original, to: url)
+        let saved = DocumentEditing.save(edited: "# Rules\n- a\n- mine\n", original: original, to: url)
+        let afterSave = try? String(contentsOf: url, encoding: .utf8)
+        try? "# Rules\n- a\n- mine\n- agent\n".write(to: url, atomically: true, encoding: .utf8)
+        let conflict = DocumentEditing.save(edited: "# Rules\n- a\n- mine2\n", original: "# Rules\n- a\n- mine\n", to: url)
+        let kept = try? String(contentsOf: url, encoding: .utf8)
+        let ok = unchanged == .unchanged && saved == .saved && afterSave == "# Rules\n- a\n- mine\n"
+            && conflict == .conflict && kept == "# Rules\n- a\n- mine\n- agent\n"
+        return .make("ED-01b", "저장: 바뀐 게 없으면 쓰지 않음, 편집 중 외부 변경은 충돌로 멈춤(덮어쓰지 않음)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["unchanged": "\(unchanged)", "saved": "\(saved)", "conflict": "\(conflict)"],
+                     startedAt: start)
     }
 
     private func readerAppliesAck() -> TestResult {
