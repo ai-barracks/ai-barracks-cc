@@ -120,6 +120,7 @@ enum CriteriaCatalog {
                 : .unverified
             return .make(criterion.id, criterion.title, status: status, cause: .unknown,
                          evidence: ["requires": criterion.requires.joined(separator: ","),
+                                    "optional": criterion.optional.joined(separator: ","),
                                     "blocking": "\(criterion.blocking)"],
                          startedAt: start)
         }

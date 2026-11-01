@@ -41,11 +41,13 @@ struct SelfTestRunner {
             return .setupError
         }
         harness.window?.makeKeyAndOrderFront(nil)
+        let restoredFrame = harness.window.map { NSStringFromRect($0.frame) } ?? "none"
+        normalizeWindow(harness.window)
         // An inactive app treats the first click as an activation click, so
         // click-to-focus tests are only meaningful while active.
         NSRunningApplication.current.activate()
         let active = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { NSApp.isActive }
-        let environment = environmentSnapshot()
+        let environment = environmentSnapshot().merging(["restored_window_frame": restoredFrame]) { $1 }
         // Clicks and menu shortcuts are meaningless for an inactive app (the
         // display may be asleep or another app holds focus): refuse to report
         // results that would be false failures.
@@ -115,6 +117,16 @@ struct SelfTestRunner {
         if blocking.contains(where: { $0.status == .fail }) { return .blockingFailure }
         if blocking.contains(where: { $0.status == .unverified }) { return .incomplete }
         return .allBlockingPassed
+    }
+
+    /// macOS restores the last window frame, which an earlier run may have
+    /// left at the minimum size: every run starts from the default size so
+    /// results do not depend on the previous one (known issue #11).
+    private func normalizeWindow(_ window: NSWindow?) {
+        guard let window else { return }
+        window.setContentSize(NSSize(width: AppConstants.Layout.defaultWindowWidth,
+                                     height: AppConstants.Layout.defaultWindowHeight))
+        window.center()
     }
 
     private func makeOutputDirectory() -> URL? {

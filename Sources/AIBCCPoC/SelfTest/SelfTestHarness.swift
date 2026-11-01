@@ -144,6 +144,9 @@ struct SelfTestHarness {
     /// PNG path if it appeared in time.
     func requestCapture(label: String) async -> URL? {
         guard let window else { return nil }
+        // Convergence is judged on grid/PTY sizes; give the renderer time to
+        // present that state before the window server captures it.
+        await pause(AppConstants.SelfTest.captureRenderGrace)
         let image = outputDirectory.appendingPathComponent("capture-\(label).png")
         let request = outputDirectory.appendingPathComponent("capture-request-\(label).json")
         let body = "{\"window\": \(window.windowNumber), \"output\": \"\(image.path)\"}\n"

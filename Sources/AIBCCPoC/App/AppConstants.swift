@@ -106,6 +106,7 @@ enum AppConstants {
         static let defaultOutputDirectory = "~/Library/Application Support/AIBCCPoC/selftest"
         static let pollInterval: Duration = .milliseconds(25)
         static let captureTimeout: Duration = .seconds(4)
+        static let captureRenderGrace: Duration = .milliseconds(250)
         static let changeGrace: Duration = .milliseconds(500)
         /// Longer than Ghostty's multi-click interval so consecutive click
         /// tests are never counted as one double/triple click.
