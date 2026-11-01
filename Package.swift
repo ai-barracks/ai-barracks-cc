@@ -21,6 +21,13 @@ let package = Package(
             dependencies: ["PtyProtocol"],
             path: "Sources/PtyDaemon"
         ),
+        // Drives other apps with real input events for baselines (needs
+        // Accessibility; launched with `open` as its own app).
+        .executableTarget(
+            name: "AIBCCBench",
+            path: "Sources/AIBCCBench",
+            linkerSettings: [.linkedFramework("ApplicationServices"), .linkedFramework("AppKit")]
+        ),
         .executableTarget(
             name: "AIBCCPoC",
             dependencies: [
