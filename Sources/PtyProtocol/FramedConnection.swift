@@ -34,6 +34,9 @@ public final class FramedConnection: @unchecked Sendable {
     private var readSource: DispatchSourceRead?
     private var writeSource: DispatchSourceWrite?
     private var readSuspended = false
+    /// After this the fd number may already belong to another file: no
+    /// queued read or write may touch it.
+    private var fdClosed = false
     private var readBuffer = [UInt8](repeating: 0, count: FramedConnection.readChunk)
     private var hadBacklog = false
 
@@ -103,6 +106,7 @@ public final class FramedConnection: @unchecked Sendable {
         }
         guard first else { return }
         queue.async { [self] in
+            fdClosed = true
             // A suspended source must be resumed before it is cancelled.
             if readSuspended { readSource?.resume() }
             readSource?.cancel()
@@ -117,7 +121,7 @@ public final class FramedConnection: @unchecked Sendable {
     // MARK: - Queue
 
     private func applyReadPause() {
-        guard let readSource, !lock.withLock({ isClosed }) else { return }
+        guard !fdClosed, let readSource, !lock.withLock({ isClosed }) else { return }
         let paused = lock.withLock { readPaused }
         guard paused != readSuspended else { return }
         readSuspended = paused
@@ -125,7 +129,7 @@ public final class FramedConnection: @unchecked Sendable {
     }
 
     private func readAvailable() {
-        while !lock.withLock({ readPaused || isClosed }) {
+        while !fdClosed, !lock.withLock({ readPaused || isClosed }) {
             let count = Darwin.read(fd, &readBuffer, readBuffer.count)
             if count > 0 {
                 let frames = decoder.feed(Data(readBuffer[0..<count]))
@@ -140,6 +144,7 @@ public final class FramedConnection: @unchecked Sendable {
     }
 
     private func flushWrites() {
+        guard !fdClosed else { return }
         if writeOffset >= writing.count {
             writing = lock.withLock {
                 defer { queued = Data() }

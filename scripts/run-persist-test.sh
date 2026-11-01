@@ -5,7 +5,8 @@
 #   phase 1  app creates a recorder session, types, saves its identity, quits
 #   between  this script checks the process is still alive with no app running
 #   phase 2  app restores the grid by itself; PS-01a..d are checked in-app
-# Exit 0 only if PS-01 passed.
+#   then     PS-02 recovery checks (failed attach, daemon stopped under the app)
+# Exit 0 only if PS-01 and PS-02 passed.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,7 +42,7 @@ run_phase() {
 import json, sys
 report = json.load(open(sys.argv[1]))
 for result in report["results"]:
-    if result["id"].startswith("PS-01") and result["status"] != "unverified":
+    if result["id"].startswith("PS-0") and result["status"] != "unverified":
         print(f'  {result["id"]:12} {result["status"]:5} {json.dumps(result["evidence"], ensure_ascii=False)}')
 PY
   echo "$run"
@@ -79,8 +80,8 @@ main() {
   python3 - "$run/report.json" <<'PY'
 import json, sys
 results = {r["id"]: r["status"] for r in json.load(open(sys.argv[1]))["results"]}
-print(f'PS-01: {results.get("PS-01")}')
-sys.exit(0 if results.get("PS-01") == "pass" else 1)
+print(f'PS-01: {results.get("PS-01")}  PS-02: {results.get("PS-02")}')
+sys.exit(0 if results.get("PS-01") == "pass" and results.get("PS-02") == "pass" else 1)
 PY
 }
 

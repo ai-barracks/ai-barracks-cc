@@ -47,7 +47,9 @@ struct TerminalPaneView: View {
     private var exitBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: "stop.circle")
-            Text("프로세스 종료됨 — 출력은 그대로 남아 있습니다")
+            Text(pane.failure.map { "세션을 이어받지 못함 — \($0)" } ?? "프로세스 종료됨 — 출력은 그대로 남아 있습니다")
+                .lineLimit(1)
+                .truncationMode(.tail)
             Spacer(minLength: 8)
             Button("새 셸", action: onRestart)
                 .controlSize(.small)

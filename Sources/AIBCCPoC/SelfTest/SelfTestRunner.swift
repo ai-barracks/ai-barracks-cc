@@ -90,7 +90,9 @@ struct SelfTestRunner {
         case "load": return await LoadSuite(harness: harness).run()
         case "integration": return await IntegrationSuite(harness: harness).run()
         case "persist1": return await PersistSuite(harness: harness).phaseOne()
-        case "persist2": return await PersistSuite(harness: harness).phaseTwo()
+        case "persist2":
+            let suite = PersistSuite(harness: harness)
+            return await suite.phaseTwo() + suite.recovery()
         default: return []
         }
     }

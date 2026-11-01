@@ -60,9 +60,14 @@ final class TerminalPane: Identifiable {
             let start: DaemonSession.Start = attach ? .attach : .create(
                 DaemonLaunch.request(command: command, workingDirectory: workingDirectory, environment: environment)
             )
-            remote = DaemonSession(id: sessionID, socketPath: daemon.socketPath, start: start) { event in
+            let deliver: @Sendable (DaemonSession.Event) -> Void = { event in
                 DispatchQueue.main.async { MainActor.assumeIsolated { relay.pane?.handle(event) } }
             }
+            // A daemon that died (crash, manual kill) is started again once.
+            remote = DaemonSession(id: sessionID, socketPath: daemon.socketPath, start: start, onEvent: deliver)
+                ?? (daemon.ensureRunning()
+                    ? DaemonSession(id: sessionID, socketPath: daemon.socketPath, start: start, onEvent: deliver)
+                    : nil)
             if let remote {
                 viewState.configuration = TerminalSurfaceOptions(backend: .inMemory(remote.terminal))
             }
@@ -128,7 +133,10 @@ final class TerminalPane: Identifiable {
         case .exited:
             hasExited = true
         case let .failed(message):
+            // e.g. the session vanished between restore and attach: show it
+            // as ended (banner + "새 셸") instead of a blank, muted surface.
             failure = message
+            hasExited = true
         }
     }
 

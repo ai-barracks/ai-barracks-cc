@@ -92,6 +92,7 @@ enum CriteriaCatalog {
     private static let persistence: [Criterion] = [
         .init(id: "PS-01", title: "앱 종료 후 세션 생존·재부착", blocking: false,
               requires: ["PS-01a", "PS-01b", "PS-01c", "PS-01d", "PS-01e"]),
+        .init(id: "PS-02", title: "재부착 실패·데몬 종료 복구", blocking: false, requires: ["PS-02a", "PS-02b"]),
     ]
 
     /// Every sub-ID that no automated suite produces: listed as `unverified`

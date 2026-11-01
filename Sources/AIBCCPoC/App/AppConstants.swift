@@ -60,6 +60,8 @@ enum AppConstants {
         /// daemon socket (end-to-end back-pressure down to the child).
         static let parseBacklogHighWater = 8 * 1024 * 1024
         static let parseBacklogLowWater = 2 * 1024 * 1024
+        /// Split drags change the grid on every mouse move; save after.
+        static let persistDebounce: Duration = .milliseconds(400)
     }
 
     enum Layout {

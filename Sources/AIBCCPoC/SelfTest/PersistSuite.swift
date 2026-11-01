@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import PtyProtocol
 
 /// PS-01: a daemon-owned session survives an app quit and the next launch
 /// reattaches to it. Two app launches driven by scripts/run-persist-test.sh:
@@ -124,6 +125,39 @@ struct PersistSuite {
         guard let daemon = harness.workspace.daemon, let sessions = daemon.listSessions() else { return nil }
         let referenced = Set(harness.workspace.grids.values.flatMap(\.panes).compactMap { $0.remote?.id })
         return sessions.filter { $0.alive && !referenced.contains($0.id) }.map(\.id)
+    }
+
+    /// PS-02 (self-review fixes): a failed attach ends visibly instead of
+    /// leaving a blank muted pane; after the daemon dies, existing panes show
+    /// as ended and a new pane starts a new daemon. Runs last in persist2:
+    /// it stops the daemon.
+    func recovery() async -> [TestResult] {
+        let start = ContinuousClock.now
+        guard let daemon = harness.workspace.daemon else { return [] }
+        let missing = TerminalPane(controller: harness.workspace.controller, title: "missing", workingDirectory: nil,
+                                   backend: .daemon(daemon, sessionID: UUID(), attach: true))
+        await harness.install([missing], layout: .single)
+        let failedVisibly = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            missing.hasExited && missing.failure != nil
+        }
+        let attachFailure = TestResult.make(
+            "PS-02a", "없는 세션 attach → 종료 배너(빈 화면·입력 차단 방치 없음)",
+            status: failedVisibly ? .pass : .fail, cause: .app,
+            evidence: ["failure": missing.failure ?? "nil", "exited": "\(missing.hasExited)"], startedAt: start)
+
+        guard let before = harness.makeRecorderPane(name: "pre-crash") else { return [attachFailure] }
+        await harness.install([before.pane], layout: .single)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { before.log.isReady }
+        _ = FrameRequest.send(Frame(.shutdown), to: daemon.socketPath)
+        let endedWithDaemon = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { before.pane.hasExited }
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { daemon.listSessions() == nil }
+        let after = harness.makeRecorderPane(name: "post-crash")
+        if let after { await harness.install([after.pane], layout: .single) }
+        let recovered = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { after?.log.isReady == true }
+        return [attachFailure, .make(
+            "PS-02b", "데몬 종료 시 기존 pane은 종료 표시, 새 pane은 데몬 재기동으로 정상 시작",
+            status: endedWithDaemon && recovered ? .pass : .fail, cause: .app,
+            evidence: ["existing_ended": "\(endedWithDaemon)", "new_pane_ready": "\(recovered)"], startedAt: start)]
     }
 
     private func restoredPane(_ state: State) -> TerminalPane? {

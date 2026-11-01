@@ -38,6 +38,7 @@ final class WorkspaceModel {
     @ObservationIgnored private var terminalHadFocus = false
     /// What the launch-time reattach did (self-test environment evidence).
     @ObservationIgnored private(set) var restoreSummary = "not attempted"
+    @ObservationIgnored private var pendingPersist: Task<Void, Never>?
     var isArtifactPanelVisible = true
     private(set) var grids: [String: BarrackGrid] = [:]
 
@@ -83,7 +84,8 @@ final class WorkspaceModel {
         let current = grid
         store(BarrackGrid(panes: current.panes, layout: current.layout,
                           splitX: x.map(clamp) ?? current.splitX,
-                          splitY: y.map(clamp) ?? current.splitY))
+                          splitY: y.map(clamp) ?? current.splitY),
+              persisting: .debounced)
     }
 
     /// Self-test hook: replace the current barrack's grid with fixture panes.
@@ -173,13 +175,28 @@ final class WorkspaceModel {
         }
     }
 
-    private func store(_ newGrid: BarrackGrid) {
+    private enum Persisting { case now, debounced }
+
+    private func store(_ newGrid: BarrackGrid, persisting: Persisting = .now) {
         let kept = Set(newGrid.panes.map(\.id))
         let removed = (grids[gridKey]?.panes ?? []).filter { !kept.contains($0.id) }
         grids = grids.merging([gridKey: newGrid]) { _, new in new }
         removed.forEach { $0.terminate() }
         updateSurfaceVisibility()
-        persist()
+        switch persisting {
+        case .now: persist()
+        case .debounced: persistSoon()
+        }
+    }
+
+    private func persistSoon() {
+        guard daemon != nil else { return }
+        pendingPersist?.cancel()
+        pendingPersist = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: AppConstants.Daemon.persistDebounce)
+            guard !Task.isCancelled else { return }
+            self?.persist()
+        }
     }
 
     // MARK: - Daemon session persistence
@@ -223,6 +240,8 @@ final class WorkspaceModel {
     }
 
     private func persist() {
+        pendingPersist?.cancel()
+        pendingPersist = nil
         guard let daemon else { return }
         let saved = SavedWorkspace(selectedBarrackID: selectedBarrackID, grids: grids.mapValues { grid in
             SavedWorkspace.Grid(
