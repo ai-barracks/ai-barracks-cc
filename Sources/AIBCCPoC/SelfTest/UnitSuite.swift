@@ -6,7 +6,8 @@ import Foundation
 @MainActor
 struct UnitSuite {
     func run() -> [TestResult] {
-        [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden()]
+        [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
+         processTree()]
     }
 
     private func foldMatrix() -> TestResult {
@@ -64,6 +65,57 @@ struct UnitSuite {
         return .make("MD-08a", "aib 메타데이터 주석은 표시에서 빠지고 코드 블록 안 주석은 유지",
                      status: got == expected ? .pass : .fail, cause: .app,
                      evidence: ["got": got.replacingOccurrences(of: "\n", with: "⏎")], startedAt: start)
+    }
+
+    private func launchCommand() -> TestResult {
+        let start = ContinuousClock.now
+        let claude = AgentLauncher.command(for: .claude, skipPermissions: true)
+        let codex = AgentLauncher.command(for: .codex, skipPermissions: false)
+        let ok = claude == "/bin/zsh -lc 'aib start claude --skip-permissions; exec /bin/zsh -l'"
+            && codex == "/bin/zsh -lc 'aib start codex; exec /bin/zsh -l'"
+            && AgentLauncher.command(for: .terminal, skipPermissions: true) == nil
+        return .make("AG-01a", "에이전트 시작 명령 = aib start <client> (로그인 셸, 종료 후 셸 유지)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["claude": claude ?? "nil", "codex": codex ?? "nil"], startedAt: start)
+    }
+
+    /// Byte-compatible with CC v1.6.1 write_ack; done → idle; bad ids refused.
+    private func ackRoundTrip() -> TestResult {
+        let start = ContinuousClock.now
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-ack-\(UUID().uuidString)")
+        let live = root.appendingPathComponent("sessions/.live")
+        try? FileManager.default.createDirectory(at: live, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let now = Int(Date().timeIntervalSince1970)
+        try? "{\"session_id\":\"s1\",\"run_id\":\"r1\",\"state\":\"done\",\"ts\":\(now),\"pid\":0}"
+            .write(to: live.appendingPathComponent("s1.status"), atomically: true, encoding: .utf8)
+        let before = LivenessReader.read(barrackPath: root.path, now: now).first?.state
+        let wrote = LivenessAck.write(barrackPath: root.path, sessionID: "s1", runID: "r1", now: now)
+        let after = LivenessReader.read(barrackPath: root.path, now: now).first?.state
+        let refused = !LivenessAck.write(barrackPath: root.path, sessionID: "../x", runID: "r", now: now)
+            && !LivenessAck.write(barrackPath: root.path, sessionID: "", runID: "r", now: now)
+        let ok = before == .done && wrote && after == .idle && refused
+        return .make("AT-01a", "done 확인(ack): CC 호환 .ack 기록 → idle, 잘못된 세션 id 거부",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["before": before?.rawValue ?? "nil", "after": after?.rawValue ?? "nil",
+                                "refused_bad_ids": "\(refused)"], startedAt: start)
+    }
+
+    private func processTree() -> TestResult {
+        let start = ContinuousClock.now
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = ["2"]
+        try? child.run()
+        defer { child.terminate() }
+        let mine = ProcessInfo.processInfo.processIdentifier
+        let descendant = ProcessTree.isDescendant(child.processIdentifier, of: mine)
+        let unrelated = ProcessTree.isDescendant(mine, of: child.processIdentifier)
+        let ok = descendant && !unrelated
+        return .make("AT-01b", "pane 매칭용 프로세스 트리: 자식은 후손, 부모는 아님",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["child_is_descendant": "\(descendant)", "parent_is_descendant": "\(unrelated)"],
+                     startedAt: start)
     }
 
     private func readerAppliesAck() -> TestResult {

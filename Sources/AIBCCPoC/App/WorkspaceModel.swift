@@ -73,6 +73,7 @@ final class WorkspaceModel {
     var isArtifactPanelVisible = true
     var destination: Destination = .sessions
     var inspectorTab: InspectorTab = .artifacts
+    var isNewAgentSheetPresented = false
     let liveness: LivenessStore
     private(set) var grids: [String: BarrackGrid] = [:]
 
@@ -335,6 +336,74 @@ final class WorkspaceModel {
     private func makeShellPanes(count: Int, startingAt offset: Int) -> [TerminalPane] {
         (0..<max(count, 0)).map { index in
             makePane(title: "shell \(offset + index + 1)")
+        }
+    }
+}
+
+// MARK: - Agents and attention (spec §7: ⌘N, ⌘⇧A)
+
+extension WorkspaceModel {
+    /// ⌘N: a new pane running `aib start <client>` in the selected barrack.
+    /// The preset grows to make room (1 → 2 → 4); nil when four are full.
+    @discardableResult
+    func launchAgent(_ client: AgentClient, skipPermissions: Bool) -> TerminalPane? {
+        guard let barrack = selectedBarrack else { return nil }
+        let current = grid
+        guard current.panes.count < PaneLayout.quad.paneCount else { return nil }
+        let pane = makePane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions),
+                            environment: [:], directory: barrack.path, attachingTo: nil)
+        let panes = current.panes + [pane]
+        let needed = max(panes.count, current.layout.paneCount)
+        let layout = PaneLayout.allCases.first { $0.paneCount >= needed } ?? .quad
+        store(BarrackGrid(panes: panes, layout: layout, splitX: current.splitX, splitY: current.splitY))
+        destination = .sessions
+        focusWhenAttached(pane)
+        return pane
+    }
+
+    /// ⌘⇧A: the next session that needs the user (blocked first), in the
+    /// fixed barrack order. Selects its barrack and focuses the pane that
+    /// runs it; a `done` is acknowledged on arrival (never a `blocked`).
+    @discardableResult
+    func goToNextAttention() -> LiveSession? {
+        let candidates = barracks.flatMap { barrack in
+            liveness.sessions(of: barrack.id).filter(\.needsAttention).map { (barrack, $0) }
+        }
+        guard let (barrack, session) = candidates.first(where: { $0.1.state == .blocked }) ?? candidates.first else {
+            return nil
+        }
+        selectedBarrackID = barrack.id
+        destination = .sessions
+        if let pane = pane(running: session, in: barrack.id) {
+            focusWhenAttached(pane)
+        } else {
+            isArtifactPanelVisible = true
+            inspectorTab = .context
+        }
+        if session.state == .done {
+            LivenessAck.write(barrackPath: barrack.path, sessionID: session.id, runID: session.runID)
+            liveness.refresh()
+        }
+        return session
+    }
+
+    /// The pane whose process tree contains the session's agent pid.
+    func pane(running session: LiveSession, in barrackID: Barrack.ID) -> TerminalPane? {
+        guard session.pid > 0 else { return nil }
+        return grids[barrackID]?.panes.first { pane in
+            pane.processID.map { ProcessTree.isDescendant(session.pid, of: $0) } ?? false
+        }
+    }
+
+    func focusWhenAttached(_ pane: TerminalPane) {
+        Task { @MainActor in
+            for _ in 0..<AppConstants.Layout.focusHandoffAttempts {
+                if let view = pane.probeView, let window = view.window {
+                    window.makeFirstResponder(view)
+                    return
+                }
+                try? await Task.sleep(for: AppConstants.SelfTest.pollInterval)
+            }
         }
     }
 }

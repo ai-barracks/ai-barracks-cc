@@ -101,6 +101,8 @@ enum CriteriaCatalog {
     private static let product: [Criterion] = [
         .init(id: "LV-01", title: "liveness 접기·sidecar 읽기 = aib 규칙", blocking: false, requires: ["LV-01a", "LV-01b", "LV-01c"]),
         .init(id: "MD-08", title: "문서 표시에서 aib 메타데이터 주석 숨김", blocking: false, requires: ["MD-08a"]),
+        .init(id: "AG-01", title: "⌘N 에이전트 시작(aib start)", blocking: false, requires: ["AG-01a", "AG-01b", "AG-01c"]),
+        .init(id: "AT-01", title: "⌘⇧A 주의 항목 이동·done 확인", blocking: false, requires: ["AT-01a", "AT-01b", "AT-01c"]),
     ]
 
     /// Reproduction suites for observations that never became bugs (run

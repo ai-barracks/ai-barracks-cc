@@ -24,6 +24,7 @@ struct MainView: View {
                 }
         }
         .toolbar { toolbarContent }
+        .sheet(isPresented: $workspace.isNewAgentSheetPresented) { NewAgentSheet(workspace: workspace) }
         .navigationTitle(workspace.selectedBarrack?.name ?? "AIBCC")
         .navigationSubtitle(workspace.destination.label)
         .onChange(of: workspace.selectedBarrackID, initial: true) {

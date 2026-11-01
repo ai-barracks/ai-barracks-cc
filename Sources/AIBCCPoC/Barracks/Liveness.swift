@@ -52,6 +52,7 @@ struct LiveSession: Identifiable, Sendable, Equatable {
     let ageSeconds: Int
     let pid: Int32
     let cwd: String?
+    var runID = ""
 
     /// The ring is for what needs you now. A `blocked` process is waiting
     /// for as long as it lives; a `done` or `crashed` nobody looked at for
@@ -83,7 +84,7 @@ enum LivenessReader {
                 ack: ack(for: file), now: now, pid: pidState(pid), staleAfter: staleAfter
             )
             return LiveSession(id: id, state: folded, ageSeconds: max(now - timestamp, 0), pid: pid,
-                               cwd: json["cwd"] as? String)
+                               cwd: json["cwd"] as? String, runID: json["run_id"] as? String ?? "")
         }
         .sorted { $0.ageSeconds < $1.ageSeconds }
     }

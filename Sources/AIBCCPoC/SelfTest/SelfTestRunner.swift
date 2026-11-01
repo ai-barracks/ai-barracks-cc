@@ -77,7 +77,7 @@ struct SelfTestRunner {
         return verdict(parents, measured: measured)
     }
 
-    static let suiteOrder = ["unit", "packaging", "input", "resize", "selection", "lifecycle", "load", "integration"]
+    static let suiteOrder = ["unit", "packaging", "input", "resize", "selection", "lifecycle", "agents", "load", "integration"]
     /// Run only when named (they need a daemon and two app launches).
     static let explicitSuites = ["persist1", "persist2", "repro10", "repro-r5", "rs06"]
     static let allSuites = Set(suiteOrder)
@@ -86,6 +86,7 @@ struct SelfTestRunner {
     private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {
         switch name {
         case "unit": return UnitSuite().run()
+        case "agents": return await AgentSuite(harness: harness).run()
         case "packaging": return await PackagingSuite(harness: harness).run()
         case "input": return await InputSuite(harness: harness).run()
         case "resize": return await ResizeSuite(harness: harness).run()
