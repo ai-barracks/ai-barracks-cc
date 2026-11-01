@@ -26,7 +26,7 @@ struct MarkdownWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.show(source: source, documentURL: documentURL, revision: revision, in: webView)
+        context.coordinator.show(source: MarkdownSource.forDisplay(source), documentURL: documentURL, revision: revision, in: webView)
     }
 
     @MainActor

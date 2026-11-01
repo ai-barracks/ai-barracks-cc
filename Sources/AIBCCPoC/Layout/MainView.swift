@@ -14,9 +14,9 @@ struct MainView: View {
                     ideal: AppConstants.Layout.sidebarMinWidth + 40
                 )
         } detail: {
-            TerminalGridView(workspace: workspace)
+            center
                 .inspector(isPresented: $workspace.isArtifactPanelVisible) {
-                    ArtifactPanel(store: artifacts)
+                    InspectorView(workspace: workspace, artifacts: artifacts)
                         .inspectorColumnWidth(
                             min: AppConstants.Layout.inspectorMinWidth,
                             ideal: AppConstants.Layout.inspectorIdealWidth
@@ -24,11 +24,24 @@ struct MainView: View {
                 }
         }
         .toolbar { toolbarContent }
+        .navigationTitle(workspace.selectedBarrack?.name ?? "AIBCC")
+        .navigationSubtitle(workspace.destination.label)
         .onChange(of: workspace.selectedBarrackID, initial: true) {
             artifacts.watch(root: workspace.selectedBarrack?.url)
         }
         .task {
             await SelfTestLauncher.runIfRequested(workspace: workspace, artifacts: artifacts)
+        }
+    }
+
+    /// Terminals leave the hierarchy while a document is shown; panes keep
+    /// their views and shells (same as a barrack switch, WS-01).
+    @ViewBuilder
+    private var center: some View {
+        if workspace.destination == .sessions || workspace.selectedBarrack == nil {
+            TerminalGridView(workspace: workspace)
+        } else if let barrack = workspace.selectedBarrack {
+            DocumentView(barrack: barrack, destination: workspace.destination)
         }
     }
 
@@ -42,6 +55,7 @@ struct MainView: View {
             }
             .pickerStyle(.segmented)
             .help("터미널 분할")
+            .disabled(workspace.destination != .sessions)
         }
         ToolbarItem(placement: .primaryAction) {
             Button {

@@ -2,6 +2,37 @@ import AppKit
 import GhosttyTerminal
 import Observation
 
+/// What the center shows for the selected barrack (spec §4 destinations).
+enum Destination: String, CaseIterable, Identifiable, Sendable {
+    case sessions, rules, wiki
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .sessions: "세션"
+        case .rules: "규칙"
+        case .wiki: "Wiki"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .sessions: "terminal"
+        case .rules: "list.bullet.rectangle"
+        case .wiki: "books.vertical"
+        }
+    }
+}
+
+/// Right inspector tabs (spec §4): artifacts first (P1).
+enum InspectorTab: String, CaseIterable, Identifiable, Sendable {
+    case artifacts, context
+
+    var id: String { rawValue }
+    var label: String { self == .artifacts ? "산출물" : "문맥" }
+}
+
 /// Terminal grid owned by one barrack: its panes, preset and split positions.
 struct BarrackGrid {
     var panes: [TerminalPane]
@@ -40,12 +71,16 @@ final class WorkspaceModel {
     @ObservationIgnored private(set) var restoreSummary = "not attempted"
     @ObservationIgnored private var pendingPersist: Task<Void, Never>?
     var isArtifactPanelVisible = true
+    var destination: Destination = .sessions
+    var inspectorTab: InspectorTab = .artifacts
+    let liveness: LivenessStore
     private(set) var grids: [String: BarrackGrid] = [:]
 
     init(barracks: [Barrack] = BarrackRegistry.load(), daemon: DaemonBackend? = DaemonBackend.fromArguments()) {
         controller = TerminalAppearance.makeController()
         self.barracks = barracks
         self.daemon = daemon
+        liveness = LivenessStore(barracks: barracks)
         // Restore first: with @Observable the didSet below already runs in
         // init, and it would save a fresh grid over the saved layout.
         let restoredSelection = daemon.flatMap { restore(from: $0) }

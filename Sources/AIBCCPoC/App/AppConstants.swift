@@ -64,6 +64,17 @@ enum AppConstants {
         static let persistDebounce: Duration = .milliseconds(400)
     }
 
+    enum Documents {
+        static let ruleFiles = ["RULES.md", "SOUL.md", "GROWTH.md", "agent.yaml"]
+        static let listWidth: CGFloat = 220
+    }
+
+    enum Liveness {
+        static let refreshInterval: TimeInterval = 2
+        /// done/crashed ring only this long after the event (seconds).
+        static let attentionWindow = 12 * 3600
+    }
+
     enum Layout {
         static let minWindowWidth: CGFloat = 960
         static let minWindowHeight: CGFloat = 600

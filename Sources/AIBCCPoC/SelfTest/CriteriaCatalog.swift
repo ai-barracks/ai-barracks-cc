@@ -16,7 +16,7 @@ enum CriteriaCatalog {
     }
 
     static let criteria: [Criterion] = input + resize + selection + readability + stability + regression + markdown
-        + persistence + reproductions
+        + persistence + reproductions + product
 
     private static let input: [Criterion] = [
         .init(id: "IN-01", title: "한글 조합 표시·확정 1회", blocking: true, requires: ["IN-01a", "IN-01-phys"], optional: ["IN-01-syn"]),
@@ -95,6 +95,12 @@ enum CriteriaCatalog {
         .init(id: "PS-01", title: "앱 종료 후 세션 생존·재부착", blocking: false,
               requires: ["PS-01a", "PS-01b", "PS-01c", "PS-01d", "PS-01e"]),
         .init(id: "PS-02", title: "재부착 실패·데몬 종료 복구", blocking: false, requires: ["PS-02a", "PS-02b"]),
+    ]
+
+    /// v2 product logic (not Go/No-go gates).
+    private static let product: [Criterion] = [
+        .init(id: "LV-01", title: "liveness 접기·sidecar 읽기 = aib 규칙", blocking: false, requires: ["LV-01a", "LV-01b", "LV-01c"]),
+        .init(id: "MD-08", title: "문서 표시에서 aib 메타데이터 주석 숨김", blocking: false, requires: ["MD-08a"]),
     ]
 
     /// Reproduction suites for observations that never became bugs (run

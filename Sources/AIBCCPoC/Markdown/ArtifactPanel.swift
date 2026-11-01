@@ -65,7 +65,7 @@ struct ArtifactPanel: View {
 }
 
 /// Plain-text fallback when the renderer cannot load or run (MD-02).
-private struct RawSourceView: View {
+struct RawSourceView: View {
     let source: String
     let reason: String
 
