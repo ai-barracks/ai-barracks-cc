@@ -37,6 +37,15 @@ open -W dist/AIBCC-PoC.app --args --selftest
 cat ~/Library/Application\ Support/AIBCCPoC/selftest/*/summary.txt
 ```
 
+PTY 데몬 백엔드(세션이 앱 종료 후에도 유지되는 opt-in 경로, 알려진 이슈 #4):
+
+```bash
+open -n dist/AIBCC-PoC.app --args --backend=daemon            # 기본 소켓 ~/Library/Application Support/AIBCCPoC/ptyd.sock
+./scripts/run-persist-test.sh                                  # PS-01/02: 앱 종료→재실행 재부착 (테스트 전용 소켓)
+python3 scripts/ptyd-smoke.py dist/AIBCC-PoC.app/Contents/MacOS/AIBCCPtyDaemon   # 데몬 단독 프로토콜·처리량·흐름 제어
+dist/AIBCC-PoC.app/Contents/MacOS/AIBCCPtyDaemon --socket <path> --list|--shutdown
+```
+
 종료 코드: 0 = 모든 차단 기준 통과(사람 검사 결과 병합 시에만 가능) · 1 = 차단 기준 실패 · 2 = 준비 실패 · 3 = 실패 없음·미검증 남음(자동 실행의 최선) · 4 = 보고서 저장 실패. 상위 ID(IN-01 등)는 하위 결과가 **모두** pass일 때만 pass다. 알려진 제약: [docs/known-issues.md](docs/known-issues.md).
 
 `swift build`는 GitHub에서 프리빌트 `GhosttyKit.xcframework`(약 76MB zip)를 받는다. 출처·체크섬은 `Package.swift`가 고정한 태그의 매니페스트에 있다.
