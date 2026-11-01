@@ -27,6 +27,7 @@ enum Keyboard {
         "ctrl-c": Stroke(code: 8, flags: .maskControl), "ctrl-d": Stroke(code: 2, flags: .maskControl),
         "ctrl-u": Stroke(code: 32, flags: .maskControl),
         "cmd-n": Stroke(code: 45, flags: .maskCommand),
+        "cmd-k": Stroke(code: 40, flags: .maskCommand),
     ]
 
     static func stroke(for character: Character) -> Stroke? {

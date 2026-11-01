@@ -142,7 +142,12 @@ final class ScriptRunner {
     private func waitFile(_ path: String, contains: String?, timeout: Int) async -> (Bool, String) {
         let deadline = Date().addingTimeInterval(Double(timeout) / 1000)
         while Date() < deadline {
-            if let text = try? String(contentsOfFile: path, encoding: .utf8), contains.map(text.contains) ?? true {
+            // Captures are binary: without `contains` only existence counts.
+            if let contains {
+                if let text = try? String(contentsOfFile: path, encoding: .utf8), text.contains(contains) {
+                    return (true, path)
+                }
+            } else if FileManager.default.fileExists(atPath: path) {
                 return (true, path)
             }
             try? await Task.sleep(for: .milliseconds(25))

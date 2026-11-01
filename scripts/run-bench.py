@@ -35,10 +35,23 @@ MIN_VALID_SAMPLES = 15
 # Where a click lands on the terminal (fraction of the window frame).
 TARGETS = {
     "poc": {"bundle": "com.aibarracks.commandcenter.swiftpoc", "click": (0.45, 0.55)},
-    "v161": {"bundle": "com.aibarracks.commandcenter", "click": (0.55, 0.6)},
+    # v1.6.1 shows terminals in its "sessions" tab: open one through the
+    # command palette (Cmd+K -> "New Terminal") in the selected barrack.
+    "v161": {"bundle": "com.aibarracks.commandcenter", "click": (0.8, 0.5),
+             "open_terminal": [{"op": "key", "key": "cmd-k"}, {"op": "wait", "ms": 600},
+                               {"op": "type", "text": "New Terminal"}, {"op": "wait", "ms": 400},
+                               {"op": "key", "key": "return"}, {"op": "wait", "ms": 2500}]},
     "terminal": {"bundle": "com.apple.Terminal", "click": (0.5, 0.5)},
-    "iterm": {"bundle": "com.googlecode.iterm2", "click": (0.5, 0.5)},
+    # Not in the default set: iTerm is usually already running with the
+    # user's own sessions (possibly this agent's host), and typing into its
+    # front window is unsafe; on 2026-11-01 its update dialog also took
+    # the keys. Run it only on purpose.
+    "iterm": {"bundle": "com.googlecode.iterm2", "click": (0.5, 0.5), "opt_in": True},
 }
+# The pre-registered ST-02 load is 100k lines; the PoC drains that in
+# ~60 ms (too short a window), so it gets 1M lines like the in-app ST-02c.
+FLOOD_LINES = {"poc": 1_000_000}
+DEFAULT_FLOOD_LINES = 100_000
 
 
 def prepare(target):
@@ -49,6 +62,7 @@ def prepare(target):
         {"op": "front", "bundle": spec["bundle"]},
         {"op": "frame", "bundle": spec["bundle"], **FRAME},
         {"op": "wait", "ms": 1200},
+        *spec.get("open_terminal", []),
         {"op": "click", "bundle": spec["bundle"], "rx": rx, "ry": ry},
         {"op": "wait", "ms": 300},
     ]
@@ -61,7 +75,11 @@ def run_steps(target, kind, steps):
     result = os.path.join(run_dir, "result.json")
     with open(script, "w") as handle:
         json.dump({"captureDir": run_dir, "steps": steps}, handle, indent=2)
-    subprocess.run(["open", "-n", "-W", BENCH, "--args", "--script", script, "--out", result], check=False)
+    # Run the binary directly: Accessibility then comes from the app that
+    # hosts this shell (granted by the user); launched through `open` the
+    # bundle is judged on its own entry, which is tied to one ad-hoc build.
+    binary = os.path.join(BENCH, "Contents", "MacOS", "AIBCCBench")
+    subprocess.run([binary, "--script", script, "--out", result], check=False)
     data = json.load(open(result)) if os.path.exists(result) else {"ok": False, "log": [], "sent": []}
     failed = [entry for entry in data.get("log", []) if not entry["ok"]]
     print(f"[{target}] {kind}: steps ok={data.get('ok')} failed={[(f['op'], f['detail']) for f in failed]}")
@@ -72,7 +90,8 @@ def latency(target):
     token = uuid.uuid4().hex[:8]
     log = f"/tmp/aibcc-bench-flood-{target}-{token}.jsonl"
     go = f"/tmp/aibcc-bench-go-{target}-{token}"
-    command = f"clear; env FLOOD_LINES=100000 AIBCC_GO_FILE={go} /usr/bin/python3 {FLOOD} {log}"
+    lines = FLOOD_LINES.get(target, DEFAULT_FLOOD_LINES)
+    command = f"clear; env FLOOD_LINES={lines} AIBCC_GO_FILE={go} /usr/bin/python3 {FLOOD} {log}"
     bundle = TARGETS[target]["bundle"]
     steps = prepare(target) + [
         {"op": "type", "text": command},
@@ -88,7 +107,7 @@ def latency(target):
     ]
     run_dir, data = run_steps(target, "latency", steps)
     stats = judge(data.get("sent", []), log)
-    stats["run"] = os.path.basename(run_dir)
+    stats.update({"run": os.path.basename(run_dir), "flood_lines_requested": lines})
     with open(os.path.join(run_dir, "latency.json"), "w") as handle:
         json.dump(stats, handle, indent=2)
     print(f"[{target}] {json.dumps(stats)}")
@@ -103,6 +122,8 @@ def judge(sent, log_path):
     done = (first("flood_done") or {}).get("wall", float("inf"))
     arrivals = [(byte, e.get("wall")) for e in events if e["kind"] == "bytes"
                 for byte in bytes.fromhex(e["hex"].replace(" ", ""))]
+    # The scenario ends the fixture with Ctrl+D after the burst.
+    arrivals = [a for a in arrivals if a[0] != 0x04]
     ordered = [b for b, _ in arrivals] == [s["byte"] for s in sent]
     pairs = [(s, a) for s, a in zip(sent, arrivals) if start <= s["wall"] <= done]
     latencies = sorted((a[1] - s["wall"]) * 1000 for s, a in pairs if a[1] is not None)
@@ -148,7 +169,7 @@ def probe(target):
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in ("latency", "rs06", "probe"):
         sys.exit(__doc__)
-    targets = sys.argv[2:] or list(TARGETS)
+    targets = sys.argv[2:] or [name for name, spec in TARGETS.items() if not spec.get("opt_in")]
     for target in targets:
         {"latency": latency, "rs06": rs06, "probe": probe}[sys.argv[1]](target)
 
