@@ -138,7 +138,11 @@ public enum PtyProtocol {
     /// below InMemoryTerminalSession's 1 MiB pre-attach buffer, which drops
     /// the oldest bytes past its cap.
     public static let replayLimit = 960 * 1024
-    public static let defaultSocketName = "ptyd.sock"
+    /// Bumped on any incompatible frame change; part of the socket name,
+    /// so an updated app never talks to an older daemon (whose sessions
+    /// stay reachable to the older app).
+    public static let version = 1
+    public static let defaultSocketName = "ptyd-v\(version).sock"
 
     public static func json<T: Encodable>(_ value: T) -> Data {
         (try? JSONEncoder().encode(value)) ?? Data()

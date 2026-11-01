@@ -4,7 +4,8 @@ import SwiftUI
 @main
 struct AIBCCPoCApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var workspace = WorkspaceModel()
+    @State private var workspace = { SingleInstance.enforce(); return WorkspaceModel() }()
+    @AppStorage(AppConstants.Daemon.keepSessionsOnQuitKey) private var keepSessionsOnQuit = true
     @State private var artifacts = ArtifactStore()
 
     var body: some Scene {
@@ -37,6 +38,11 @@ struct AIBCCPoCApp: App {
                     .keyboardShortcut("n", modifiers: .command)
                 Button("다음 주의 항목으로") { workspace.goToNextAttention() }
                     .keyboardShortcut("a", modifiers: [.command, .shift])
+                Divider()
+                Toggle("앱 종료 시 세션 유지", isOn: $keepSessionsOnQuit)
+                    .disabled(workspace.daemon == nil)
+                Button("세션 모두 종료…") { workspace.confirmEndAllSessions() }
+                    .disabled(workspace.daemon == nil)
             }
             CommandMenu("레이아웃") {
                 ForEach(PaneLayout.allCases) { preset in
@@ -73,5 +79,27 @@ private struct ResponderCommand: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         true
+    }
+
+    /// "앱 종료 시 세션 유지" off: end the shells with the app.
+    func applicationWillTerminate(_: Notification) {
+        let keep = UserDefaults.standard.object(forKey: AppConstants.Daemon.keepSessionsOnQuitKey) as? Bool ?? true
+        guard !keep, let socket = DaemonBackend.socketPath(for: CommandLine.arguments) else { return }
+        DaemonBackend.shutdownSessions(at: socket)
+    }
+}
+
+/// One app per user: two instances would share the daemon's saved layout
+/// and treat each other's sessions as orphans (known issue #4). Self-test
+/// runs use their own socket and are exempt.
+enum SingleInstance {
+    static func enforce(arguments: [String] = CommandLine.arguments) {
+        let selfTest = arguments.contains { $0.hasPrefix("--selftest") }
+        guard !selfTest, let id = Bundle.main.bundleIdentifier else { return }
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: id)
+            .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+        guard let other = others.first else { return }
+        other.activate()
+        exit(0)
     }
 }

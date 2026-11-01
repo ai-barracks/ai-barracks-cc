@@ -39,10 +39,15 @@ enum AppConstants {
 
     /// Opt-in daemon PTY backend (persistence spike, known issue #4).
     enum Daemon {
+        /// The daemon backend is the default (spec v1 decision 2).
+        static let execArgument = "--backend=exec"
         static let backendArgument = "--backend=daemon"
         static let socketArgumentPrefix = "--ptyd-socket="
         static let executableName = "AIBCCPtyDaemon"
-        static let defaultSocket = "~/Library/Application Support/AIBCCPoC/ptyd.sock"
+        static let supportDirectory = "~/Library/Application Support/AIBCCPoC"
+        /// Self-tests never touch the user's sessions or saved layout.
+        static let selfTestSocketName = "ptyd-selftest.sock"
+        static let keepSessionsOnQuitKey = "keepSessionsOnQuit"
         static let sessionStoreSuffix = ".sessions.json"
         static let logSuffix = ".log"
         static let startTimeout: TimeInterval = 3

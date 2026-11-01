@@ -424,3 +424,20 @@ extension WorkspaceModel {
         }
     }
 }
+
+// MARK: - Daemon sessions
+
+extension WorkspaceModel {
+    /// Ends every shell and agent the daemon holds, after confirmation.
+    func confirmEndAllSessions() {
+        guard let daemon else { return }
+        let alert = NSAlert()
+        alert.messageText = "모든 세션을 종료할까요?"
+        alert.informativeText = "모든 배럭의 터미널과 에이전트가 종료됩니다. 실행 중인 작업은 중단됩니다."
+        alert.addButton(withTitle: "모두 종료")
+        alert.addButton(withTitle: "취소")
+        alert.alertStyle = .warning
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        daemon.shutdownSessions()
+    }
+}

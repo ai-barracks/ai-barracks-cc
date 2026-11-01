@@ -18,18 +18,36 @@ struct DaemonBackend: Sendable {
         URL(fileURLWithPath: socketPath + AppConstants.Daemon.logSuffix)
     }
 
-    /// nil unless the daemon backend was requested and is reachable.
+    /// The daemon backend unless `--backend=exec`; nil if unreachable.
     static func fromArguments(_ arguments: [String] = CommandLine.arguments) -> DaemonBackend? {
-        guard arguments.contains(AppConstants.Daemon.backendArgument) else { return nil }
-        let prefix = AppConstants.Daemon.socketArgumentPrefix
-        let socket = arguments.first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
-            ?? (AppConstants.Daemon.defaultSocket as NSString).expandingTildeInPath
+        guard let socket = socketPath(for: arguments) else { return nil }
         guard let executable = Bundle.main.executableURL?.deletingLastPathComponent()
             .appendingPathComponent(AppConstants.Daemon.executableName),
             FileManager.default.isExecutableFile(atPath: executable.path)
         else { return nil }
         let backend = DaemonBackend(socketPath: socket, executable: executable)
         return backend.ensureRunning() ? backend : nil
+    }
+
+    /// Which socket a launch uses: explicit `--ptyd-socket=`, else the
+    /// self-test socket for self-test runs, else the versioned default.
+    static func socketPath(for arguments: [String]) -> String? {
+        guard !arguments.contains(AppConstants.Daemon.execArgument) else { return nil }
+        let prefix = AppConstants.Daemon.socketArgumentPrefix
+        if let explicit = arguments.first(where: { $0.hasPrefix(prefix) }) { return String(explicit.dropFirst(prefix.count)) }
+        let selfTest = arguments.contains { $0 == AppConstants.SelfTest.argument || $0.hasPrefix(AppConstants.SelfTest.onlyArgumentPrefix) }
+        let name = selfTest ? AppConstants.Daemon.selfTestSocketName : PtyProtocol.defaultSocketName
+        return ((AppConstants.Daemon.supportDirectory as NSString).expandingTildeInPath as NSString).appendingPathComponent(name)
+    }
+
+    /// Hangs up every session (the "세션 모두 종료" action and quitting
+    /// with "keep sessions" off).
+    func shutdownSessions() {
+        Self.shutdownSessions(at: socketPath)
+    }
+
+    static func shutdownSessions(at socketPath: String) {
+        _ = FrameRequest.send(Frame(.shutdown), to: socketPath)
     }
 
     /// Connects to a running daemon or starts one in its own session

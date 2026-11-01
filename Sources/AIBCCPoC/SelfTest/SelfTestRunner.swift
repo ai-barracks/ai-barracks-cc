@@ -24,6 +24,11 @@ enum SelfTestLauncher {
         let runner = SelfTestRunner(workspace: workspace, artifacts: artifacts)
         let outcome = await runner.run()
         InputSourceGuard.restore()
+        // The self-test daemon's fixture sessions end with the run, except
+        // when the next launch must reattach (persist phase 1).
+        if let daemon = workspace.daemon, !CommandLine.arguments.contains(where: { $0.contains("persist1") }) {
+            daemon.shutdownSessions()
+        }
         exit(outcome.rawValue)
     }
 }

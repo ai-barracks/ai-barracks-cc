@@ -55,7 +55,7 @@ assemble_bundle() {
   rm -rf "$APP"
   mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
   cp "$bin_dir/$EXEC_NAME" "$APP/Contents/MacOS/$EXEC_NAME"
-  # PTY daemon helper (opt-in --backend=daemon); the app finds it next to itself.
+  # PTY daemon helper (the default backend; --backend=exec opts out); the app finds it next to itself.
   cp "$bin_dir/$DAEMON_NAME" "$APP/Contents/MacOS/$DAEMON_NAME"
   cp "$ROOT/Packaging/Info.plist" "$APP/Contents/Info.plist"
   # SwiftPM resource bundles (libghostty-spm Ghostty resources, terminfo).

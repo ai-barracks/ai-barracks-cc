@@ -7,7 +7,7 @@ import Foundation
 struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
-         processTree(), maintenanceParsing()]
+         processTree(), maintenanceParsing(), socketChoice()]
     }
 
     private func foldMatrix() -> TestResult {
@@ -138,6 +138,21 @@ struct UnitSuite {
                      evidence: ["quiet": "\(quiet.count)", "kinds": kinds.map(\.rawValue).joined(separator: ","),
                                 "counts": counts.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: ",")],
                      startedAt: start)
+    }
+
+    /// Daemon by default, but a self-test never lands on the user's socket.
+    private func socketChoice() -> TestResult {
+        let start = ContinuousClock.now
+        let user = DaemonBackend.socketPath(for: ["app"]) ?? "nil"
+        let test = DaemonBackend.socketPath(for: ["app", "--selftest"]) ?? "nil"
+        let only = DaemonBackend.socketPath(for: ["app", "--selftest-only=input"]) ?? "nil"
+        let explicit = DaemonBackend.socketPath(for: ["app", "--selftest", "--ptyd-socket=/tmp/x.sock"]) ?? "nil"
+        let exec = DaemonBackend.socketPath(for: ["app", "--backend=exec"])
+        let ok = user.hasSuffix("/ptyd-v1.sock") && test.hasSuffix("/ptyd-selftest.sock") && only == test
+            && explicit == "/tmp/x.sock" && exec == nil
+        return .make("DB-01a", "데몬 기본값·버전 소켓, self-test는 전용 소켓, --backend=exec는 데몬 없음",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["user": user, "selftest": test, "exec": exec ?? "nil"], startedAt: start)
     }
 
     private func readerAppliesAck() -> TestResult {
