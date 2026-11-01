@@ -28,6 +28,11 @@ enum EventSynthesizer {
     }
 
     static let space = Key(keyCode: UInt16(kVK_Space), characters: " ", unmodified: " ", modifiers: [])
+    static let returnKey = Key(keyCode: UInt16(kVK_Return), characters: "\r", unmodified: "\r", modifiers: [])
+    static let downArrow: Key = {
+        let arrow = String(UnicodeScalar(UInt16(NSDownArrowFunctionKey))!)
+        return Key(keyCode: UInt16(kVK_DownArrow), characters: arrow, unmodified: arrow, modifiers: [.function, .numericPad])
+    }()
     static let escape = Key(keyCode: UInt16(kVK_Escape), characters: "\u{1b}", unmodified: "\u{1b}", modifiers: [])
     static let delete = Key(keyCode: UInt16(kVK_Delete), characters: "\u{7f}", unmodified: "\u{7f}", modifiers: [])
 

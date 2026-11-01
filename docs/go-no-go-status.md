@@ -1,18 +1,17 @@
 # Go/No-go 현황 (2026-11-01 저녁 기준)
 
-출처: self-test `2026-11-01T08-52-02Z`(exec 전체 + 캡처) + 증거 병합(`scripts/merge-evidence.py <run> docs/evidence/2026-11-01-*.json` → `report.merged.json`): 캡처 육안 검토 RS-01b·RS-02b·RS-04c, standalone 실행 `08-53-31Z`의 PK-01b. 데몬 백엔드 전체 실행은 exec와 결과 상태가 같다.
+출처: self-test `2026-11-01T08-52-02Z`(exec 전체 + 캡처) + 증거 병합(`scripts/merge-evidence.py <run> docs/evidence/2026-11-01-*.json` → `report.merged.json`): 캡처 육안 검토 RS-01b·RS-02b·RS-04c, standalone 실행 `08-53-31Z`의 PK-01b, RS-06 PoC 실행 `09-59-09Z` 캡처 검토. 데몬 백엔드 전체 실행은 exec와 결과 상태가 같다.
 
-## 차단 기준 41개: pass 23 · fail 0 · unverified 18
+## 차단 기준 41개: pass 24 · fail 0 · unverified 17
 
-**pass (23)**: IN-05 IN-08 IN-09 IN-11 · RS-01 RS-02 RS-03 RS-04 · SC-01 SC-02 SC-03 SC-04 SC-05 SC-06 SC-08 · ST-01 · MD-01 MD-04 · WS-01 · PK-01 · RG-02 RG-03 RG-04
+**pass (24)**: IN-05 IN-08 IN-09 IN-11 · RS-01 RS-02 RS-03 RS-04 RS-06 · SC-01 SC-02 SC-03 SC-04 SC-05 SC-06 SC-08 · ST-01 · MD-01 MD-04 · WS-01 · PK-01 · RG-02 RG-03 RG-04
 
-**unverified (18) — 남은 방법별**
+**unverified (17) — 남은 방법별**
 
 | 방법 | 기준 | 누가·언제 |
 |---|---|---|
 | 사람 5분 검사(README 체크리스트, ⌥⇧⌘L로 IME 로그 저장; 결과는 `docs/evidence/*.json`으로 기록 후 merge) | IN-01 IN-02 IN-03 IN-04 IN-06 IN-07 IN-10 · RG-01 · RD-01 RD-02 · RS-05 · SC-07 · MD-02 MD-03 · ST-04 | 사용자 — 합성 이벤트는 한국어 입력기(IMK)를 거치지 않아 실물 키보드만 판정 가능 |
-| Claude Code TUI 리사이즈 잔해 비교 | RS-06 | Codex computer-use 또는 사용자(실제 claude 세션 실행이 필요해 부작용 동의 필요) |
-| v1.6.1 기준선 측정 후 판정 | ST-02 (ST-02-baseline; ST-02a는 폭주가 40ms에 끝나 측정 창 부족 — ST-02c 확대 측정 p95 16.3ms로 보완) | Claude — 현재 Tauri 앱에 같은 부하·지연 측정 필요 |
+| v1.6.1 기준선 측정 후 판정 | ST-02 (ST-02-baseline; ST-02a는 폭주가 40ms에 끝나 측정 창 부족 — ST-02c 확대 측정 p95 16.3ms로 보완) | Claude — `scripts/run-bench.py latency`(PoC·v1.6.1·Terminal·iTerm 같은 외부 입력 경로). AIBCC-Bench 손쉬운 사용 권한 대기 |
 | 코드 리뷰 | MD-05 (스크립트·외부 리소스 차단) | Codex — 사용 한도 해제(2026-11-04 19:40) 후 r4와 함께 |
 
 ## 비차단 스파이크
@@ -24,6 +23,10 @@
 
 - #1 리소스 bundle 빌드 경로 의존 → vendoring + resolver(PK-01).
 - #4 세션 생존 → 데몬 백엔드로 가능성 실증(기본값 전환은 미결).
+
+## RS-06 판정 근거
+
+PoC에서 Claude Code 2.1.287→(실행 중 자동 업데이트)2.1.316을 창 축소·확대, 패널 숨김·표시, 2/1분할, 20단계 빠른 드래그 2회 등 10회 레이아웃 변경에 통과시킨 캡처에서 잔해 0. 잔해 0은 어떤 레퍼런스 이하이므로 레퍼런스 캡처 없이 판정했다(레퍼런스 캡처는 `run-bench.py rs06`, 권한 대기). 실행 중 Claude Code가 스스로 업데이트를 설치했다(사용자 환경 변화).
 
 ## 재현 테스트(비차단)
 

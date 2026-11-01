@@ -123,11 +123,8 @@ def rs06(target):
         {"op": "type", "text": f"clear; mkdir -p {RS06_DIR} && cd {RS06_DIR} && claude"},
         {"op": "key", "key": "return"},
         {"op": "wait", "ms": 7000},
-        {"op": "capture", "bundle": bundle, "label": "0-start"},
-        # First run in the folder shows the trust dialog; Enter accepts it,
-        # and on an empty prompt it does nothing.
-        {"op": "key", "key": "return"},
-        {"op": "wait", "ms": 3000},
+        # The PoC half (self-test rs06) runs first and trusts the folder, so
+        # claude opens straight at its prompt here.
         {"op": "capture", "bundle": bundle, "label": "1-ready"},
     ]
     for index, (width, height) in enumerate(RS06_SIZES, start=2):

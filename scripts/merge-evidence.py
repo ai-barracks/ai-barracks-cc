@@ -6,7 +6,10 @@ usage: merge-evidence.py RUN_DIR EVIDENCE.json [EVIDENCE.json ...]
 EVIDENCE is a JSON list of {"id", "status": "pass"|"fail", "reviewer",
 "note", optional "run"} or {"id", "from_run"}: the latter copies a result
 measured by another automated run (e.g. PK-01b from
-scripts/verify-standalone.sh) after checking that run's report.json. An entry only fills a sub-result that the run left
+scripts/verify-standalone.sh) after checking that run's report.json. A
+review of captures taken by a dedicated run (e.g. RS-06 from
+--selftest-only=rs06) names it in "source_run" with its "captures"; the
+directory and every listed capture must exist. An entry only fills a sub-result that the run left
 `unverified` — measured results are never overwritten. An entry whose "run"
 names a different run directory is rejected (capture reviews belong to the
 run that produced the captures). Parents are re-aggregated with the same
@@ -37,6 +40,11 @@ def load_evidence(paths, run_name, base):
         for entry in json.load(open(path, encoding="utf-8")):
             if entry.get("from_run"):
                 entry = linked_result(entry, base)
+            if entry.get("source_run"):
+                source = os.path.join(base, entry["source_run"])
+                missing = [c for c in entry.get("captures", []) if not os.path.exists(os.path.join(source, c))]
+                if not os.path.isdir(source) or missing:
+                    sys.exit(f"{path}: {entry['id']} source run {entry['source_run']} missing {missing or 'directory'}")
             if entry.get("run") and entry["run"] != run_name:
                 sys.exit(f"{path}: {entry['id']} belongs to run {entry['run']}, not {run_name}")
             if entry["status"] not in ("pass", "fail"):

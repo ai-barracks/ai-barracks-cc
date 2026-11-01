@@ -1,0 +1,8 @@
+[
+  {"id": "RS-06-cu", "status": "pass", "source_run": "2026-11-01T09-59-09Z",
+   "captures": ["capture-rs06-1-ready.png", "capture-rs06-2-window-small.png", "capture-rs06-3-window-large.png",
+                "capture-rs06-4-panel-hidden.png", "capture-rs06-6-split-two.png", "capture-rs06-8-window-small.png",
+                "capture-rs06-9-window-restored.png", "capture-rs06-10-drag-narrow.png", "capture-rs06-11-drag-wide.png"],
+   "reviewer": "Claude (capture review)",
+   "note": "Claude Code 2.1.287 and, after its auto-update during the run, 2.1.316 in a PoC pane through window shrink/grow (45x33 <-> 98x47/103x47), artifact panel hide/show (143x47), split 2/1 (48x47) and two 20-step 30 ms drags: header, banner and input box re-render at every width, rules match the pane width, no duplicated or stale lines. Zero residue is at most any reference's, so RS-06 holds without the reference captures; Terminal/iTerm/v1.6.1 captures (scripts/run-bench.py rs06) wait for the AIBCC-Bench Accessibility grant. Same terminal code as run 2026-11-01T08-52-02Z (later builds changed self-test code only)."}
+]
