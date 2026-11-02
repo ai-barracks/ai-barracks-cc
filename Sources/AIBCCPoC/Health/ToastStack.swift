@@ -38,6 +38,7 @@ struct ToastStack: View {
         case .sync: "arrow.triangle.2.circlepath"
         case .attention: "exclamationmark.circle.fill"
         case .export: "square.and.arrow.up"
+        case .registry: "tray.full"
         }
     }
 

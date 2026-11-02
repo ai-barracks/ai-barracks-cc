@@ -89,6 +89,9 @@ final class WorkspaceModel {
     var inspectorTab: InspectorTab = .artifacts
     var isNewAgentSheetPresented = false
     var isCouncilSheetPresented = false
+    var isAddBarrackPresented = false
+    /// Asked to unregister (confirmation dialog shown while set).
+    var barrackToRemove: Barrack?
     var isPalettePresented = false
     /// Set by ⌘K results; the destination view selects it and clears it.
     var pendingDocument: URL?
@@ -533,6 +536,8 @@ extension WorkspaceModel {
             destination = .history
         case .sync:
             syncAll(paths: health?.outdatedBarracks ?? [])
+        case .registry:
+            break
         case .export:
             if let path = notice.sessionID { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
         case .attention:

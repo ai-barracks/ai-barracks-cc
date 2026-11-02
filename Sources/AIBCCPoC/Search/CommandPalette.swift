@@ -125,6 +125,11 @@ enum PaletteCommands {
                   run: pane("wiki lint", "aib wiki lint")),
             .init(id: "aib-barracks", title: "배럭 목록", detail: "aib barracks list", symbol: "list.bullet", section: "aib",
                   run: pane("barracks", "aib barracks list")),
+            .init(id: "barrack-add", title: "배럭 추가", detail: "폴더 선택 → aib init", symbol: "plus.rectangle.on.folder", section: "aib") {
+                workspace.isAddBarrackPresented = true
+            },
+            .init(id: "barrack-refresh", title: "배럭 목록 새로 고침", detail: "aib barracks refresh", symbol: "arrow.clockwise",
+                  section: "aib") { workspace.refreshBarracks() },
             .init(id: "git-status", title: "git status", detail: "", symbol: "arrow.triangle.branch", section: "git", run: pane("git status", "git status")),
             .init(id: "git-diff", title: "git diff", detail: "", symbol: "arrow.triangle.branch", section: "git", run: pane("git diff", "git diff")),
             .init(id: "git-add", title: "git add -p", detail: "대화형 스테이징", symbol: "arrow.triangle.branch", section: "git", run: pane("git add -p", "git add -p")),

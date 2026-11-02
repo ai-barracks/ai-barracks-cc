@@ -5,7 +5,7 @@ import UserNotifications
 /// In-app toasts and macOS notifications (v1: NotificationToast +
 /// tauri notification plugin).
 struct AppNotice: Identifiable, Sendable {
-    enum Kind: String, Sendable { case stale, sync, attention, export }
+    enum Kind: String, Sendable { case stale, sync, attention, export, registry }
 
     let id = UUID()
     let kind: Kind

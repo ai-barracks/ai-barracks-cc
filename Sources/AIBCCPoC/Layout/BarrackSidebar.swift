@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Left column (spec §4): Attention summary → barracks in fixed registry
@@ -10,10 +11,28 @@ struct BarrackSidebar: View {
             AttentionSummary(attention: workspace.liveness.attentionCount, running: workspace.liveness.runningCount)
                 .listRowSeparator(.hidden)
                 .selectionDisabled()
-            Section("배럭") {
+            Section {
                 ForEach(workspace.barracks) { barrack in
                     BarrackRow(barrack: barrack, liveness: workspace.liveness)
                         .tag(barrack.id)
+                        .contextMenu {
+                            Button("Finder에서 보기") { NSWorkspace.shared.activateFileViewerSelecting([barrack.url]) }
+                            Divider()
+                            Button("목록에서 제거…") { workspace.barrackToRemove = barrack }
+                        }
+                }
+            } header: {
+                HStack {
+                    Text("배럭")
+                    Spacer()
+                    Menu {
+                        Button("배럭 추가…") { workspace.isAddBarrackPresented = true }
+                        Button("목록 새로 고침 (aib barracks refresh)") { workspace.refreshBarracks() }
+                    } label: { Image(systemName: "plus") }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("배럭 추가·새로 고침")
                 }
             }
             if let barrack = workspace.selectedBarrack {
@@ -31,10 +50,26 @@ struct BarrackSidebar: View {
         .listStyle(.sidebar)
         .overlay {
             if workspace.barracks.isEmpty {
-                ContentUnavailableView("등록된 배럭 없음", systemImage: "tray",
-                                       description: Text("aib init으로 배럭을 등록하세요"))
+                ContentUnavailableView {
+                    Label("등록된 배럭 없음", systemImage: "tray")
+                } description: {
+                    Text("폴더를 골라 aib init으로 배럭을 만드세요")
+                } actions: {
+                    Button("배럭 추가…") { workspace.isAddBarrackPresented = true }
+                }
             }
         }
+        .sheet(isPresented: $workspace.isAddBarrackPresented) { AddBarrackSheet(workspace: workspace) }
+        .confirmationDialog(removeTitle, isPresented: Binding(get: { workspace.barrackToRemove != nil },
+                                                             set: { if !$0 { workspace.barrackToRemove = nil } })) {
+            Button("목록에서 제거", role: .destructive) { workspace.removeConfirmedBarrack() }
+        } message: {
+            Text("aib barracks remove — 파일은 지우지 않고 ~/.aib/barracks.json 목록에서만 뺍니다. 다시 추가하면 돌아옵니다.")
+        }
+    }
+
+    private var removeTitle: String {
+        "\(workspace.barrackToRemove?.name ?? "") 배럭을 목록에서 뺄까요?"
     }
 
     private func count(for destination: Destination, _ barrack: Barrack) -> Int? {
