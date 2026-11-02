@@ -8,7 +8,41 @@ struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
-         sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions()]
+         sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools()]
+    }
+
+    private func terminalTools() -> TestResult {
+        let start = ContinuousClock.now
+        let escaped = GhosttyText.escape("a\\b \"q\" 한글\u{1b}")
+        let action = GhosttyText.action(typing: "ls -l", pressEnter: true)
+        let suite = "aibcc-qc-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = QuickCommandStore(defaults: defaults)
+        store.add(label: "", command: "  git status  ")
+        store.add(label: "up", command: "docker compose up")
+        store.add(label: "x", command: "   ")
+        if let first = store.commands.first { store.remove(first.id) }
+        let reloaded = QuickCommandStore(defaults: defaults).commands.map(\.label)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-ex-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let now = Date(timeIntervalSince1970: 1_793_500_000)
+        let name = TerminalExport.fileName(title: "claude/a b", now: now)
+        let written = TerminalExport.write("output", barrackPath: root.path, title: "t", now: now)
+        let empty = TerminalExport.write("  \n", barrackPath: root.path, title: "t", now: now)
+        let again = TerminalExport.write("output", barrackPath: root.path, title: "t", now: now)
+        let decoy = root.appendingPathComponent("sessions/" + TerminalExport.fileName(title: "s", now: now))
+        try? FileManager.default.createSymbolicLink(at: decoy, withDestinationURL: URL(fileURLWithPath: "/tmp/aibcc-outside"))
+        let symlink = TerminalExport.write("output", barrackPath: root.path, title: "s", now: now)
+        let ok = escaped == "a\\\\b \\\"q\\\" 한글\\x1b" && action == "text:ls -l\\r"
+            && reloaded == ["up"] && name.hasPrefix("terminal-claude_a_b-") && name.hasSuffix(".txt")
+            && (try? written.get())?.lastPathComponent.hasPrefix("terminal-t-") == true
+            && empty == .failure(.empty) && again == .failure(.exists) && symlink == .failure(.exists)
+            && !FileManager.default.fileExists(atPath: "/tmp/aibcc-outside")
+        return .make("TT-01a", "Quick Command 저장·삭제·재로드, Ghostty text 이스케이프, 출력 내보내기(위치·빈 출력·덮어쓰기·심볼릭 링크 거부)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["escaped": escaped, "reloaded": reloaded.joined(separator: ","), "name": name], startedAt: start)
     }
 
     /// CC v1.6.1 watcher rules on a real-shaped SESSIONS.md, plus v2's

@@ -6,6 +6,7 @@ import SwiftUI
 struct TerminalPaneView: View {
     let pane: TerminalPane
     @ObservedObject var state: TerminalViewState
+    var workspace: WorkspaceModel?
     let onRestart: () -> Void
 
     var body: some View {
@@ -37,6 +38,7 @@ struct TerminalPaneView: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
+            if let workspace { PaneMenu(pane: pane, workspace: workspace) }
         }
         .font(.system(size: 11, weight: .medium))
         .padding(.horizontal, 10)

@@ -28,6 +28,7 @@ struct MainView: View {
         .sheet(isPresented: $workspace.isCouncilSheetPresented) { CouncilSheet(workspace: workspace) }
         .sheet(isPresented: $workspace.isPalettePresented) { CommandPalette(workspace: workspace) }
         .overlay(alignment: .topTrailing) { ToastStack(workspace: workspace) }
+        .sheet(item: $workspace.quickCommandDraft) { draft in QuickCommandSheet(workspace: workspace, draft: draft) }
         .navigationTitle(workspace.selectedBarrack?.name ?? "AIBCC")
         .navigationSubtitle(workspace.destination.label)
         .onChange(of: workspace.selectedBarrackID, initial: true) {
@@ -67,6 +68,9 @@ struct MainView: View {
             .pickerStyle(.segmented)
             .help("터미널 분할")
             .disabled(workspace.destination != .sessions)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            TerminalListMenu(workspace: workspace)
         }
         ToolbarItem(placement: .primaryAction) {
             Button {

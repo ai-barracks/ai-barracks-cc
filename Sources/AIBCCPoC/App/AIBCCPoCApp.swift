@@ -69,6 +69,9 @@ struct AIBCCPoCApp: App {
         }
         // v1 tray parity: the app stays here when its window closes, so
         // notices and health checks keep running; Quit ends it.
+        Settings {
+            SettingsView(workspace: workspace)
+        }
         MenuBarExtra {
             MenuBarContent(workspace: workspace)
         } label: {
@@ -110,6 +113,10 @@ private struct ResponderCommand: View {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_: Notification) {
+        if !AppSettings.isSelfTest { AppSettings.applyAppearance() }
+    }
+
     /// Closing the window keeps the app in the menu bar (v1: tray). Self-
     /// tests still end with their window.
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {

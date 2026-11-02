@@ -15,5 +15,10 @@ still fetched by the unchanged `binaryTarget` URL + checksum.
    (localized menu titles) uses the same resolver. Adds
    `GhosttyRuntimeResources.bundleURL` so the host can verify the source.
 2. The `GhosttyKitTest` test target is removed (tests are not vendored).
+3. **Full screen text** (`Surface/TerminalSurface+ScreenText.swift`):
+   `AppTerminalView.readScreenText()` reads scrollback + viewport through
+   `ghostty_surface_read_text` (SCREEN top-left to bottom-right) for the
+   app's "export output" (CC v1 parity). Read-only; no input, no selection
+   change.
 
 Upstream candidate: patch 1 (a resolver that also checks `resourceURL`).

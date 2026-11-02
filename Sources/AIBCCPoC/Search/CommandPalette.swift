@@ -131,6 +131,12 @@ enum PaletteCommands {
             .init(id: "git-graph", title: "git log --graph", detail: "", symbol: "arrow.triangle.branch", section: "git",
                   run: pane("git log", "git log --graph --oneline --decorate -50")),
         ]
+        items += workspace.quickCommands.commands.map { quick in
+            PaletteItem(id: "quick-\(quick.id)", title: "Quick: \(quick.label)", detail: quick.command, symbol: "bolt",
+                        section: "Quick") { workspace.run(quick) }
+        }
+        items.append(PaletteItem(id: "quick-manage", title: "Quick Commands 추가·관리", detail: "", symbol: "bolt.badge.clock",
+                                 section: "Quick") { workspace.quickCommandDraft = QuickCommand(label: "", command: "") })
         items += Destination.allCases.map { destination in
             PaletteItem(id: "go-\(destination.rawValue)", title: "이동: \(destination.label)", detail: "", symbol: destination.symbol,
                         section: "이동") { workspace.destination = destination }

@@ -9,16 +9,23 @@ import GhosttyTerminal
 @MainActor
 enum TerminalAppearance {
     static func makeController() -> TerminalController {
-        let base = TerminalConfiguration.default
-            .fontSize(AppConstants.Terminal.fontSize)
+        TerminalController(configuration: configuration(AppSettings.terminal()))
+    }
+
+    /// The user's terminal settings over the readability baseline; the
+    /// font family is only set when the user chose one.
+    static func configuration(_ settings: AppSettings.Terminal) -> TerminalConfiguration {
+        var base = TerminalConfiguration.default
+            .fontSize(Float(settings.fontSize))
             .minimumContrast(AppConstants.Terminal.minimumContrast)
             .windowPaddingX(AppConstants.Terminal.paddingX)
             .windowPaddingY(AppConstants.Terminal.paddingY)
+            .cursorStyle(settings.cursor)
+        if !settings.fontFamily.isEmpty { base = base.fontFamily(settings.fontFamily) }
         // Unbind Ghostty defaults that collide with app menu shortcuts so the
         // menu, not the terminal, receives them.
-        let configuration = AppConstants.Terminal.appReservedChords.reduce(base) { config, chord in
+        return AppConstants.Terminal.appReservedChords.reduce(base) { config, chord in
             config.custom("keybind", "\(chord)=unbind")
         }
-        return TerminalController(configuration: configuration)
     }
 }

@@ -11,7 +11,7 @@ struct AgentSuite {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
-         await registryReload()]
+         await registryReload(), await terminalManagement(), await settingsApply()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -215,6 +215,61 @@ struct AgentSuite {
         let restored = workspace.barracks == original
         return .make("RG-02a", "배럭 레지스트리 변경 반영(제거된 배럭을 보던 중이면 첫 배럭으로)",
                      status: removedHandled && restored ? .pass : .fail, cause: .app, startedAt: start)
+    }
+
+    /// Quick Command typed into a pane, full-text read, bring to front,
+    /// close (process ends, preset shrinks).
+    private func terminalManagement() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let a = harness.makeRecorderPane(name: "tm-a"), let b = harness.makeRecorderPane(name: "tm-b"),
+              let c = harness.makeRecorderPane(name: "tm-c") else {
+            return .make("TT-01b", "터미널 관리", status: .fail, cause: .app, evidence: ["reason": "setup"], startedAt: start)
+        }
+        await harness.install([a.pane, b.pane, c.pane], layout: .double)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { a.log.isReady && b.log.isReady }
+        let mark = a.log.mark()
+        workspace.run(QuickCommand(label: "t", command: "abc"), in: a.pane)
+        let typed = await harness.settledBytes(a.log, since: mark, expectingAtLeast: 4)
+        let text = a.pane.probeView?.readScreenText() ?? ""
+        workspace.bringToFront(id: c.pane.id)
+        let front = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            workspace.panes.first?.id == c.pane.id && c.pane.probeView?.window != nil
+        }
+        let pid = b.pane.processID ?? 0
+        workspace.closePane(id: b.pane.id)
+        let ended = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { !ProcessCWD.isAlive(pid) }
+        let ok = typed == Hex.bytes("abc\r") && text.contains("TL") && text.contains("BR") && front && ended
+            && workspace.panes.count == 2 && workspace.layout == .double
+        return .make("TT-01b", "Quick Command 입력·전체 텍스트 읽기·숨은 터미널 앞으로·닫기(프로세스 종료)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["typed": Hex.string(typed), "text_has_markers": "\(text.contains("TL") && text.contains("BR"))",
+                                "front": "\(front)", "closed_process_ended": "\(ended)", "panes": "\(workspace.panes.count)"],
+                     startedAt: start)
+    }
+
+    private func settingsApply() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let recorder = harness.makeRecorderPane(name: "settings") else {
+            return .make("SE-01a", "설정", status: .fail, cause: .app, evidence: ["reason": "setup"], startedAt: start)
+        }
+        await harness.install([recorder.pane], layout: .single)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
+        let before = recorder.pane.state.surfaceSize?.columns ?? 0
+        workspace.applySettings(AppSettings.Terminal(fontSize: 20, cursor: .bar, fontFamily: ""))
+        let grew = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            (recorder.pane.state.surfaceSize?.columns ?? 0) < before
+        }
+        let larger = recorder.pane.state.surfaceSize?.columns ?? 0
+        workspace.applySettings(AppSettings.Terminal())
+        let restored = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            recorder.pane.state.surfaceSize?.columns == before
+        }
+        return .make("SE-01a", "설정의 글꼴 크기가 열린 터미널에 바로 적용되고 되돌아감",
+                     status: grew && restored ? .pass : .fail, cause: .app,
+                     evidence: ["columns": "\(before) → \(larger) → \(recorder.pane.state.surfaceSize?.columns ?? 0)"],
+                     startedAt: start)
     }
 
     private func matchesPaneByProcess() async -> TestResult {

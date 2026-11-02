@@ -46,7 +46,7 @@ struct TerminalGridView: View {
                     spacing: AppConstants.Layout.paneSpacing
                 ) {
                     ForEach(workspace.panes) { pane in
-                        TerminalPaneView(pane: pane, state: pane.state) {
+                        TerminalPaneView(pane: pane, state: pane.state, workspace: workspace) {
                             workspace.restartPane(id: pane.id)
                         }
                     }

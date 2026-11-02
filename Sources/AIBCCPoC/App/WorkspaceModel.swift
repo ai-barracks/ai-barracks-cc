@@ -95,6 +95,9 @@ final class WorkspaceModel {
     var pendingSessionID: String?
     let maintenance = MaintenanceStore()
     let notices = NoticeCenter()
+    let quickCommands = QuickCommandStore()
+    /// Non-nil while the Quick Command sheet is open.
+    var quickCommandDraft: QuickCommand?
     @ObservationIgnored private(set) var health: HealthMonitor?
     @ObservationIgnored private var registryWatcher: DirectoryWatcher?
     let liveness: LivenessStore
@@ -528,6 +531,8 @@ extension WorkspaceModel {
             destination = .history
         case .sync:
             syncAll(paths: health?.outdatedBarracks ?? [])
+        case .export:
+            if let path = notice.sessionID { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
         case .attention:
             if let barrack = notice.barrackID { selectedBarrackID = barrack }
             destination = .sessions
@@ -552,6 +557,71 @@ enum SyncAll {
     static func command(quotedPaths: String) -> String {
         MaintenanceScanner.confirmThenApply("for p in \(quotedPaths); do aib sync --dry-run \"$p\"; done",
                                             "for p in \(quotedPaths); do aib sync \"$p\"; done")
+    }
+}
+
+// MARK: - Terminal management (v1 terminal tab bar parity)
+
+extension WorkspaceModel {
+    /// The pane with keyboard focus, else the first visible one.
+    var focusedPane: TerminalPane? {
+        let visible = panes.prefix(layout.paneCount)
+        return visible.first { pane in
+            guard let view = pane.probeView, let responder = view.window?.firstResponder as? NSView else { return false }
+            return responder === view || responder.isDescendant(of: view)
+        } ?? visible.first
+    }
+
+    /// Ends the pane's shell; the preset shrinks to fit what is left, and
+    /// a barrack never ends up without a terminal.
+    func closePane(id paneID: UUID) {
+        let current = grid
+        let remaining = current.panes.filter { $0.id != paneID }
+        let panes = remaining.isEmpty ? [makePane(title: "shell 1")] : remaining
+        let fitting = PaneLayout.allCases.first { $0.paneCount >= min(panes.count, current.layout.paneCount) } ?? .single
+        store(BarrackGrid(panes: panes, layout: fitting, splitX: current.splitX, splitY: current.splitY))
+    }
+
+    /// Moves a (possibly hidden) pane into the first slot and focuses it.
+    func bringToFront(id paneID: UUID) {
+        let current = grid
+        guard let pane = current.panes.first(where: { $0.id == paneID }) else { return }
+        store(BarrackGrid(panes: [pane] + current.panes.filter { $0.id != paneID }, layout: current.layout,
+                          splitX: current.splitX, splitY: current.splitY))
+        destination = .sessions
+        focusWhenAttached(pane)
+    }
+
+    /// Types the command into the pane and presses Enter.
+    @discardableResult
+    func run(_ quick: QuickCommand, in pane: TerminalPane? = nil) -> Bool {
+        guard let target = pane ?? focusedPane else { return false }
+        destination = .sessions
+        focusWhenAttached(target)
+        return target.state.performBindingAction(GhosttyText.action(typing: quick.command, pressEnter: true))
+    }
+
+    func exportOutput(of pane: TerminalPane) {
+        guard let barrack = selectedBarrack else { return }
+        let text = pane.probeView?.readScreenText() ?? ""
+        switch TerminalExport.write(text, barrackPath: barrack.path, title: pane.title) {
+        case let .success(url):
+            notices.post(AppNotice(kind: .export, title: "출력 내보냄", body: url.path, actionLabel: "Finder에서 보기",
+                                   barrackID: nil, sessionID: url.path))
+        case let .failure(failure):
+            notices.post(AppNotice(kind: .export, title: "내보내지 못함",
+                                   body: failure == .empty ? "내보낼 출력이 없습니다" : "sessions 폴더에 쓸 수 없습니다",
+                                   actionLabel: nil, barrackID: nil, sessionID: nil))
+        }
+    }
+}
+
+// MARK: - Settings
+
+extension WorkspaceModel {
+    /// Re-applies terminal settings to every open surface.
+    func applySettings(_ settings: AppSettings.Terminal = AppSettings.terminal()) {
+        controller.setTerminalConfiguration(TerminalAppearance.configuration(settings))
     }
 }
 
