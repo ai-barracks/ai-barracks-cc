@@ -1,0 +1,103 @@
+import Foundation
+import SQLite3
+
+/// Bringing CC v1.6.1 settings over (parity plan I2). v1 keeps them in its
+/// WebKit localStorage (an SQLite `ItemTable`, values UTF-16LE), read here
+/// read-only: Quick Commands, terminal font size / cursor, model profiles.
+/// The activation schedule needs no import — v2 uses v1's file itself.
+enum V1SettingsImport {
+    struct Found: Equatable {
+        var quickCommands: [(label: String, command: String)] = []
+        var fontSize: Double?
+        var cursor: String?
+        var profiles: [AgentClient: ProviderProfile] = [:]
+
+        var isEmpty: Bool { quickCommands.isEmpty && fontSize == nil && cursor == nil && profiles.isEmpty }
+
+        static func == (lhs: Found, rhs: Found) -> Bool {
+            lhs.quickCommands.map { "\($0.label)\u{0}\($0.command)" } == rhs.quickCommands.map { "\($0.label)\u{0}\($0.command)" }
+                && lhs.fontSize == rhs.fontSize && lhs.cursor == rhs.cursor && lhs.profiles == rhs.profiles
+        }
+    }
+
+    static var websiteData: URL {
+        URL(fileURLWithPath: ("~/Library/WebKit/com.aibarracks.commandcenter/WebsiteData" as NSString).expandingTildeInPath)
+    }
+
+    /// `Default/<origin>/<origin>/LocalStorage/localstorage.sqlite3` files.
+    static func storeFiles(under root: URL = websiteData) -> [URL] {
+        let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
+        return (enumerator?.allObjects as? [URL] ?? []).filter {
+            $0.lastPathComponent == "localstorage.sqlite3" && $0.deletingLastPathComponent().lastPathComponent == "LocalStorage"
+        }
+    }
+
+    /// key → value, opened read-only (v1 may be running).
+    static func items(in file: URL) -> [String: String] {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(file.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            sqlite3_close(db)
+            return [:]
+        }
+        defer { sqlite3_close(db) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT key, value FROM ItemTable", -1, &statement, nil) == SQLITE_OK else { return [:] }
+        defer { sqlite3_finalize(statement) }
+        var result: [String: String] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let key = sqlite3_column_text(statement, 0), let bytes = sqlite3_column_blob(statement, 1) else { continue }
+            let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 1)))
+            result[String(cString: key)] = String(data: data, encoding: .utf16LittleEndian)
+        }
+        return result
+    }
+
+    /// What v1 stored that v2 can use; anything malformed is skipped.
+    static func parse(_ items: [String: String]) -> Found {
+        var found = Found()
+        let json = { (key: String) in items[key].flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } }
+        if let commands = json("cc-quick-commands") as? [[String: Any]] {
+            found.quickCommands = commands.compactMap { item in
+                guard let command = (item["command"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty else { return nil }
+                return ((item["label"] as? String) ?? command, command)
+            }
+        }
+        if let settings = json("cc-terminal-settings") as? [String: Any] {
+            found.fontSize = (settings["fontSize"] as? Double).map { min(max($0, AppSettings.fontSizeRange.lowerBound), AppSettings.fontSizeRange.upperBound) }
+            found.cursor = (settings["cursorStyle"] as? String).flatMap { ["block", "bar", "underline"].contains($0) ? $0 : nil }
+        }
+        for client in ProviderProfiles.clients {
+            guard let value = items["aib-profile-\(client.rawValue)"],
+                  let profile = try? JSONDecoder().decode(ProviderProfile.self, from: Data(value.utf8)),
+                  profile != ProviderProfile(), ProviderProfiles.isValid(profile, for: client) else { continue }
+            found.profiles[client] = profile
+        }
+        return found
+    }
+
+    static func find() -> Found {
+        storeFiles().map { parse(items(in: $0)) }.first { !$0.isEmpty } ?? Found()
+    }
+
+    /// Adds Quick Commands not already present and sets the rest.
+    @MainActor
+    static func apply(_ found: Found, quickCommands: QuickCommandStore, defaults: UserDefaults = .standard) -> [String] {
+        var applied: [String] = []
+        let existing = Set(quickCommands.commands.map(\.command))
+        let new = found.quickCommands.filter { !existing.contains($0.command) }
+        new.forEach { quickCommands.add(label: $0.label, command: $0.command) }
+        if !new.isEmpty { applied.append("Quick Commands \(new.count)개") }
+        if let size = found.fontSize {
+            defaults.set(size, forKey: AppSettings.fontSizeKey)
+            applied.append("글꼴 \(Int(size))pt")
+        }
+        if let cursor = found.cursor {
+            defaults.set(cursor, forKey: AppSettings.cursorKey)
+            applied.append("커서 \(cursor)")
+        }
+        for (client, profile) in found.profiles where ProviderProfiles.save(profile, for: client, defaults: defaults) {
+            applied.append("\(client.label) 모델 \(ProviderProfiles.summary(profile))")
+        }
+        return applied
+    }
+}
