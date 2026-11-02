@@ -45,6 +45,21 @@ enum RulesDocument {
         return .success(current)
     }
 
+    /// Lists the form cannot save in this file (probed with a dummy edit),
+    /// so the editor can say so before the user types.
+    static func blocked(_ raw: String) -> [Failure] {
+        Field.allCases.compactMap { field in
+            var probe = parse(raw)
+            switch field {
+            case .mustAlways: probe.mustAlways.append("probe")
+            case .mustNever: probe.mustNever.append("probe")
+            case .learned: probe.learned.append("probe")
+            }
+            if case let .failure(failure) = patch(raw, to: probe) { return failure }
+            return nil
+        }
+    }
+
     static func list(_ data: RulesData, _ field: Field) -> [String] {
         switch field {
         case .mustAlways: data.mustAlways
@@ -54,35 +69,11 @@ enum RulesDocument {
     }
 
     private static func managedBullets(_ sectionRaw: String) -> [String] {
-        var fence = MarkdownPatch.Fence()
-        return MarkdownPatch.splitLines(sectionRaw).dropFirst().compactMap { line in
-            let content = MarkdownPatch.stripEol(line)
-            if fence.consume(content) || fence.inside { return nil }
-            return Regex.capture(#"^[ \t]*[-*+][ \t]+(.*)$"#, content)?[1]
-        }
+        MarkdownPatch.managedBullets(sectionRaw)
     }
 
     private static func patchSection(_ raw: String, _ field: Field, old: [String], new: [String]) -> Result<String, Failure> {
-        let all = MarkdownPatch.sections(raw)
-        let matching = all.indices.filter { all[$0].level == 2 && all[$0].heading == field.rawValue }
-        guard let index = matching.first else { return .failure(Failure(field: field, reason: .sectionNotFound)) }
-        guard matching.count == 1 else { return .failure(Failure(field: field, reason: .multipleSections)) }
-        let lines = MarkdownPatch.splitLines(all[index].raw)
-        let runs = MarkdownPatch.bulletRuns(lines, from: 1)
-        guard runs.count <= 1 else { return .failure(Failure(field: field, reason: .multipleBulletRuns)) }
-        if runs.count == 1 {
-            return MarkdownPatch.patchBulletRun(raw, level: 2, heading: field.rawValue, bullets: new)
-                .mapError { Failure(field: field, reason: $0 == .noBulletRun ? .multipleBulletRuns : $0) }
-        }
-        // No run: only fill a section that was empty.
-        guard old.isEmpty else { return .failure(Failure(field: field, reason: .multipleBulletRuns)) }
-        guard !new.isEmpty else { return .success(raw) }
-        let eol = MarkdownPatch.detectEol(raw)
-        let heading = lines.first ?? ""
-        let fixedHeading = MarkdownPatch.lineEol(heading).isEmpty ? heading + eol : heading
-        let patched = [fixedHeading] + new.map { "- \($0)\(eol)" } + Array(lines.dropFirst())
-        var updated = all
-        updated[index] = MarkdownPatch.Section(level: 2, heading: field.rawValue, raw: patched.joined())
-        return .success(updated.map(\.raw).joined())
+        MarkdownPatch.patchListSection(raw, level: 2, heading: field.rawValue, old: old, new: new)
+            .mapError { Failure(field: field, reason: $0) }
     }
 }

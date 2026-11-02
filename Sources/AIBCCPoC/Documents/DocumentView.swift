@@ -11,10 +11,14 @@ struct DocumentView: View {
     var changes = 0
     /// A document ⌘K asked for; taken once, then cleared.
     @Binding var pending: URL?
+    /// Asks for the form editor of the selected document; taken once.
+    @Binding var pendingEdit: Bool
     @State private var selection: URL?
     @State private var source: String?
     @State private var failure: String?
     @State private var original: String?
+    /// The file `original` was read from (selection can run ahead of it).
+    @State private var loadedFile: URL?
     @State private var draft = ""
     @State private var isEditing = false
     @State private var isListEditing = false
@@ -66,6 +70,7 @@ struct DocumentView: View {
         .onChange(of: pending) { if let next = takePending() { selection = next } }
         .onChange(of: selection, initial: true) { load() }
         .onChange(of: changes) { if !isEditing && !isListEditing { load() } }
+        .onChange(of: pendingEdit) { takePendingEdit() }
     }
 
     @ViewBuilder
@@ -79,8 +84,11 @@ struct DocumentView: View {
                 editControls
             }
             .padding(Tokens.Spacing.m)
-            if isListEditing, let original {
-                RulesEditorView(original: original, onSave: { saveStructured($0) }, onCancel: { isListEditing = false })
+            if isListEditing, let original, let file = loadedFile, file == selection, let kind = StructuredKind(file: file) {
+                // Identity = file + text it was opened on: the form's state
+                // must never carry over from another file or an older text.
+                kind.editor(original: original, onSave: { saveStructured($0) }, onCancel: { isListEditing = false })
+                    .id([file.absoluteString, original])
             } else if isEditing {
                 TextEditor(text: $draft)
                     .font(.system(size: 13).monospaced())
@@ -114,10 +122,9 @@ struct DocumentView: View {
                 Button("취소") { isEditing = false; saveError = nil }
                 Button("저장") { save() }.keyboardShortcut("s", modifiers: .command)
             } else if !isListEditing {
-                if file.lastPathComponent == "RULES.md" {
-                    Button("목록 편집") { isListEditing = true }
-                }
-                Button(file.lastPathComponent == "RULES.md" ? "원문 편집" : "편집") { draft = original ?? ""; isEditing = true }
+                let kind = StructuredKind(file: file)
+                if let kind { Button(kind.editLabel) { isListEditing = true } }
+                Button(kind == nil ? "편집" : "원문 편집") { draft = original ?? ""; isEditing = true }
             }
         }
     }
@@ -177,6 +184,14 @@ struct DocumentView: View {
         return wanted
     }
 
+    private func takePendingEdit() {
+        guard pendingEdit, pending == nil, original != nil, let file = selection, loadedFile == file else { return }
+        pendingEdit = false
+        if StructuredKind(file: file) != nil, DocumentEditing.isEditable(file, in: barrack.url, destination: destination) {
+            isListEditing = true
+        }
+    }
+
     private func title(of file: URL) -> String {
         destination == .skills ? file.deletingLastPathComponent().lastPathComponent : file.deletingPathExtension().lastPathComponent
     }
@@ -185,6 +200,7 @@ struct DocumentView: View {
         failure = nil
         isEditing = false
         isListEditing = false
+        loadedFile = selection
         guard let file = selection, let text = try? String(contentsOf: file, encoding: .utf8) else {
             source = nil
             original = nil
@@ -194,5 +210,6 @@ struct DocumentView: View {
         // YAML is shown as a fenced block; the renderer handles Markdown.
         // A SKILL.md's frontmatter becomes a short header instead of raw YAML.
         source = file.pathExtension == "md" ? BarrackDocuments.frontmatterAsHeader(text) : "```yaml\n" + text + "\n```"
+        takePendingEdit()
     }
 }

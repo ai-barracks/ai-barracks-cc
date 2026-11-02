@@ -127,6 +127,60 @@ enum MarkdownPatch {
         return .success(updated.map(\.raw).joined())
     }
 
+    /// Bullet texts of a section, skipping fenced code (v1 extractManagedBullets).
+    static func managedBullets(_ sectionRaw: String) -> [String] {
+        var fence = Fence()
+        return splitLines(sectionRaw).dropFirst().compactMap { line in
+            let content = stripEol(line)
+            if fence.consume(content) || fence.inside { return nil }
+            return Regex.capture(#"^[ \t]*[-*+][ \t]+(.*)$"#, content)?[1]
+        }
+    }
+
+    /// The one section `level`/`heading`, or why it cannot be edited.
+    static func uniqueSection(_ all: [Section], level: Int, heading: String) -> Result<Int, Failure> {
+        let matching = all.indices.filter { all[$0].level == level && all[$0].heading == heading }
+        guard let index = matching.first else { return .failure(.sectionNotFound) }
+        return matching.count == 1 ? .success(index) : .failure(.multipleSections)
+    }
+
+    /// v1 rules/soul `patchListSection`: replace the section's single bullet
+    /// run, or fill a section that had no bullets. A run that cannot be
+    /// located unambiguously is reported as `multipleBulletRuns`.
+    static func patchListSection(_ raw: String, level: Int, heading: String, old: [String], new: [String]) -> Result<String, Failure> {
+        let all = sections(raw)
+        let index: Int
+        switch uniqueSection(all, level: level, heading: heading) {
+        case let .success(found): index = found
+        case let .failure(failure): return .failure(failure)
+        }
+        let lines = splitLines(all[index].raw)
+        let runs = bulletRuns(lines, from: 1)
+        guard runs.count <= 1 else { return .failure(.multipleBulletRuns) }
+        if runs.count == 1 {
+            return patchBulletRun(raw, level: level, heading: heading, bullets: new)
+                .mapError { $0 == .noBulletRun ? .multipleBulletRuns : $0 }
+        }
+        // No run: only fill a section that was empty.
+        guard old.isEmpty else { return .failure(.multipleBulletRuns) }
+        guard !new.isEmpty else { return .success(raw) }
+        let eol = detectEol(raw)
+        return .success(replacing(all, at: index, lines: [headingLine(lines, eol)] + new.map { "- \($0)\(eol)" } + Array(lines.dropFirst())))
+    }
+
+    /// The section's heading line, given an ending if it had none.
+    static func headingLine(_ lines: [String], _ eol: String) -> String {
+        let heading = lines.first ?? ""
+        return lineEol(heading).isEmpty ? heading + eol : heading
+    }
+
+    /// The document with section `index` rebuilt from `lines`.
+    static func replacing(_ all: [Section], at index: Int, lines: [String]) -> String {
+        var updated = all
+        updated[index] = Section(level: all[index].level, heading: all[index].heading, raw: lines.joined())
+        return updated.map(\.raw).joined()
+    }
+
     /// Fenced-code tracking (``` or ~~~, closed by the same char, ≥ length).
     struct Fence {
         private var char: Character?

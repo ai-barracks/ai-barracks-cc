@@ -93,6 +93,8 @@ final class WorkspaceModel {
     /// Set by ⌘K results; the destination view selects it and clears it.
     var pendingDocument: URL?
     var pendingSessionID: String?
+    /// Opens the selected document's form editor (gallery; later ⌘K).
+    var pendingStructuredEdit = false
     let maintenance = MaintenanceStore()
     let notices = NoticeCenter()
     let quickCommands = QuickCommandStore()

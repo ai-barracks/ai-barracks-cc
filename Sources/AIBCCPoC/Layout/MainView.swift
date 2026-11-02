@@ -53,7 +53,8 @@ struct MainView: View {
             DocumentView(barrack: barrack, destination: workspace.destination,
                          startCouncil: { workspace.isCouncilSheetPresented = true },
                          changes: artifacts.fileEvents,
-                         pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }))
+                         pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),
+                         pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }))
         }
     }
 

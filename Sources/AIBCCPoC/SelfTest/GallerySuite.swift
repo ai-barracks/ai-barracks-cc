@@ -37,6 +37,17 @@ struct GallerySuite {
             workspace.isPalettePresented = false
             await harness.pause(.milliseconds(500))
         }
+        if let barrack = workspace.selectedBarrack {
+            for name in ["RULES.md", "SOUL.md", "GROWTH.md"] {
+                workspace.destination = .rules
+                await harness.pause(.milliseconds(500))
+                workspace.pendingDocument = barrack.url.appendingPathComponent(name)
+                workspace.pendingStructuredEdit = true
+                await harness.pause(.seconds(2))
+                if let image = await harness.requestCapture(label: "gallery-form-\(name)") { captures.append(image.lastPathComponent) }
+                workspace.pendingStructuredEdit = false
+            }
+        }
         workspace.destination = .history
         await harness.pause(.seconds(2))
         if let image = await harness.requestCapture(label: "gallery-history") { captures.append(image.lastPathComponent) }
