@@ -8,7 +8,59 @@ struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
-         sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics()]
+         sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions()]
+    }
+
+    /// CC v1.6.1 watcher rules on a real-shaped SESSIONS.md, plus v2's
+    /// sync dedupe (v1 re-announced every 30 s).
+    private func healthRules() -> TestResult {
+        let start = ContinuousClock.now
+        let index = """
+        # Active Sessions
+        | Session ID | Client | Started | Last Update | Working On |
+        |------------|--------|---------|-------------|------------|
+        | claude-1 | Claude Code | 10-24 10:13 | 10-24 10:13 | (starting) |
+        | codex-2 | Codex CLI | 10-25 09:00 | 10-25 09:30 | 리뷰 |
+        """
+        let active = HealthRules.activeSessions(fromSessionsIndex: index)
+        let now = Date()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-hm-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try? FileManager.default.createDirectory(at: root.appendingPathComponent("sessions"), withIntermediateDirectories: true)
+        try? index.write(to: root.appendingPathComponent("SESSIONS.md"), atomically: true, encoding: .utf8)
+        for (id, age) in [("claude-1", 3.0 * 3600), ("codex-2", 600.0)] {
+            let file = root.appendingPathComponent("sessions/\(id).md")
+            try? "x".write(to: file, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-age)], ofItemAtPath: file.path)
+        }
+        try? "aib_version: 1.5.0".write(to: root.appendingPathComponent("agent.yaml"), atomically: true, encoding: .utf8)
+        let barrack = Barrack(name: "b", path: root.path, description: nil)
+        let stale = HealthMonitor.staleSessions([barrack], now: now).map { "\($0.1.id):\($0.2)h" }
+        let outdated = HealthMonitor.outdated([barrack], cliVersion: "1.6.0").count
+        let first = HealthRules.shouldAnnounceSync(outdated: ["b"], cliVersion: "1.6.0", last: nil, now: now)
+        let signature = HealthRules.syncSignature(outdated: ["b"], cliVersion: "1.6.0")
+        let repeatSoon = HealthRules.shouldAnnounceSync(outdated: ["b"], cliVersion: "1.6.0", last: (signature, now), now: now.addingTimeInterval(30))
+        let changed = HealthRules.shouldAnnounceSync(outdated: ["b", "c"], cliVersion: "1.6.0", last: (signature, now), now: now.addingTimeInterval(30))
+        let suppressed = !HealthRules.shouldNotify(key: "k", notified: ["k": now], now: now.addingTimeInterval(600))
+        let ok = active.map(\.id) == ["claude-1", "codex-2"] && active[0].task == "(no task recorded)" && active[1].task == "리뷰"
+            && stale == ["claude-1:3h"] && outdated == 1 && first && !repeatSoon && changed && suppressed
+        return .make("HM-01a", "Health 규칙 = v1(SESSIONS.md 활성 행, 2시간 stale, 1시간 억제, 버전 drift) + sync 알림 중복 제거",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["active": active.map(\.id).joined(separator: ","), "stale": stale.joined(separator: ","),
+                                "outdated": "\(outdated)", "repeat_soon": "\(repeatSoon)"], startedAt: start)
+    }
+
+    private func attentionTransitions() -> TestResult {
+        let start = ContinuousClock.now
+        let session = { (id: String, state: Liveness) in LiveSession(id: id, state: state, ageSeconds: 5, pid: 1, cwd: nil) }
+        let first = HealthRules.newlyNeedingAttention(previous: nil, current: ["b": [session("a", .done)]])
+        let fresh = HealthRules.newlyNeedingAttention(previous: ["b": [session("a", .working)]], current: ["b": [session("a", .blocked)]])
+        let again = HealthRules.newlyNeedingAttention(previous: ["b": [session("a", .blocked)]], current: ["b": [session("a", .blocked)]])
+        let next = HealthRules.newlyNeedingAttention(previous: ["b": [session("a", .blocked)]], current: ["b": [session("a", .done)]])
+        let ok = first.isEmpty && fresh.map(\.id) == ["a"] && again.isEmpty && next.map(\.state) == [.done]
+            && SyncAll.command(quotedPaths: "'/a' '/b'").hasPrefix("for p in '/a' '/b'; do aib sync --dry-run \"$p\"; done && printf")
+        return .make("HM-01b", "주의 알림: 첫 화면은 조용히, 새로 blocked·done이 된 것만, 같은 상태는 다시 알리지 않음",
+                     status: ok ? .pass : .fail, cause: .app, startedAt: start)
     }
 
     /// CC v1.6.1 search_all: sources, case, 3 per file, snippet, min query.

@@ -10,7 +10,8 @@ struct AgentSuite {
     func run() async -> [TestResult] {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
-         await sealsAgreeWithAib(), await searchHitOpens()]
+         await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
+         await registryReload()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -160,6 +161,60 @@ struct AgentSuite {
         return .make("PL-01a", "검색 결과 → 해당 배럭·Wiki 목적지·토픽 선택",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["destination": workspace.destination.rawValue, "consumed": "\(consumed)"], startedAt: start)
+    }
+
+    private func noticeActionLands() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let other = workspace.barracks.last, let original = workspace.selectedBarrackID else {
+            return .make("NC-01a", "알림 동작", status: .unverified, startedAt: start)
+        }
+        workspace.destination = .wiki
+        let notice = AppNotice(kind: .attention, title: "t", body: "b", actionLabel: "이동", barrackID: other.id, sessionID: nil)
+        workspace.notices.post(notice)
+        let shown = workspace.notices.notices.contains { $0.id == notice.id }
+        workspace.perform(notice)
+        let ok = shown && workspace.selectedBarrackID == other.id && workspace.destination == .sessions
+            && !workspace.notices.notices.contains { $0.id == notice.id }
+        workspace.selectedBarrackID = original
+        await harness.pause(.milliseconds(500))
+        return .make("NC-01a", "알림 토스트 표시 → 동작: 해당 배럭 터미널로 이동, 토스트 닫힘",
+                     status: ok ? .pass : .fail, cause: .app, evidence: ["shown": "\(shown)"], startedAt: start)
+    }
+
+    /// v1 file-changed: a write under the watched barrack reaches the views.
+    private func fileEventsRefresh() async -> TestResult {
+        let start = ContinuousClock.now
+        let store = harness.artifacts
+        let previous = store.watchedRoot
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-fe-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        store.watch(root: root)
+        await harness.pause(.milliseconds(500))
+        let before = store.fileEvents
+        try? "# new".write(to: root.appendingPathComponent("RULES.md"), atomically: true, encoding: .utf8)
+        let seen = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { store.fileEvents > before }
+        store.watch(root: previous)
+        return .make("AR-01a", "배럭 파일 변경이 문서·기록 화면 새로고침 신호로 전달됨",
+                     status: seen ? .pass : .fail, cause: .app, startedAt: start)
+    }
+
+    private func registryReload() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        let original = workspace.barracks
+        guard original.count >= 2 else { return .make("RG-02a", "레지스트리", status: .unverified, startedAt: start) }
+        let selected = workspace.selectedBarrackID
+        workspace.selectedBarrackID = original[0].id
+        workspace.reloadRegistry(Array(original.dropFirst()))
+        let removedHandled = workspace.barracks.count == original.count - 1 && workspace.selectedBarrackID == original[1].id
+        workspace.reloadRegistry(original)
+        workspace.selectedBarrackID = selected
+        await harness.pause(.milliseconds(500))
+        let restored = workspace.barracks == original
+        return .make("RG-02a", "배럭 레지스트리 변경 반영(제거된 배럭을 보던 중이면 첫 배럭으로)",
+                     status: removedHandled && restored ? .pass : .fail, cause: .app, startedAt: start)
     }
 
     private func matchesPaneByProcess() async -> TestResult {

@@ -70,6 +70,13 @@ enum AppConstants {
         static let persistDebounce: Duration = .milliseconds(400)
     }
 
+    enum Health {
+        static let firstCheckDelay: Duration = .seconds(10)
+        static let interval: TimeInterval = 30
+        static let toastLifetime: Duration = .seconds(10)
+        static let maxToasts = 4
+    }
+
     enum Documents {
         static let ruleFiles = ["RULES.md", "SOUL.md", "GROWTH.md", "agent.yaml"]
         static let listWidth: CGFloat = 220

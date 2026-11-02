@@ -6,6 +6,7 @@ import SwiftUI
 struct SessionHistoryView: View {
     let workspace: WorkspaceModel
     let barrack: Barrack
+    var changes = 0
     @State private var records: [SessionRecord] = []
     @State private var status = StatusFilter.all
     @State private var client = "all"
@@ -48,6 +49,10 @@ struct SessionHistoryView: View {
         .task(id: barrack.id) { reload(); takePending() }
         .onChange(of: workspace.pendingSessionID) { takePending() }
         .onChange(of: workspace.liveness.sessions) { reload() }
+        .onChange(of: changes) {
+            reload()
+            detail = selection.flatMap { SessionRecords.detail(barrackPath: barrack.path, id: $0) }
+        }
         .onChange(of: selection) {
             detail = selection.flatMap { SessionRecords.detail(barrackPath: barrack.path, id: $0) }
             acknowledgeIfDone()

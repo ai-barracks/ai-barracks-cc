@@ -7,6 +7,8 @@ struct DocumentView: View {
     let barrack: Barrack
     let destination: Destination
     var startCouncil: () -> Void = {}
+    /// Bumped on any file event in the barrack (v1 file-changed refresh).
+    var changes = 0
     /// A document ⌘K asked for; taken once, then cleared.
     @Binding var pending: URL?
     @State private var selection: URL?
@@ -62,6 +64,7 @@ struct DocumentView: View {
         .onChange(of: barrack.id) { selection = takePending() ?? documents.first }
         .onChange(of: pending) { if let next = takePending() { selection = next } }
         .onChange(of: selection, initial: true) { load() }
+        .onChange(of: changes) { if !isEditing { load() } }
     }
 
     @ViewBuilder

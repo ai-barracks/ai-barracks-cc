@@ -8,7 +8,10 @@ import Observation
 final class LivenessStore {
     private(set) var sessions: [Barrack.ID: [LiveSession]] = [:]
     @ObservationIgnored private var timer: Timer?
-    @ObservationIgnored private let barracks: [Barrack]
+    @ObservationIgnored private var barracks: [Barrack]
+    @ObservationIgnored private var hasLooked = false
+    /// Sessions that started needing the user since the last refresh.
+    @ObservationIgnored var onNewAttention: (([LiveSession]) -> Void)?
 
     init(barracks: [Barrack]) {
         self.barracks = barracks
@@ -22,7 +25,19 @@ final class LivenessStore {
         let snapshot = barracks.reduce(into: [Barrack.ID: [LiveSession]]()) { result, barrack in
             result[barrack.id] = LivenessReader.read(barrackPath: barrack.path)
         }
+        let fresh = HealthRules.newlyNeedingAttention(previous: hasLooked ? sessions : nil, current: snapshot)
+        hasLooked = true
         if snapshot != sessions { sessions = snapshot }
+        if !fresh.isEmpty { onNewAttention?(fresh) }
+    }
+
+    func update(barracks newBarracks: [Barrack]) {
+        barracks = newBarracks
+        refresh()
+    }
+
+    func barrackID(of session: LiveSession) -> Barrack.ID? {
+        sessions.first { $0.value.contains { $0.id == session.id } }?.key
     }
 
     func sessions(of barrack: Barrack.ID) -> [LiveSession] { sessions[barrack] ?? [] }

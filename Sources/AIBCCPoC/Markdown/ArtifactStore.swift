@@ -13,6 +13,9 @@ final class ArtifactStore {
     private(set) var loadError: String?
     /// Bumped whenever `content` changes so the web view re-renders.
     private(set) var revision = 0
+    /// Every file event under the watched barrack (documents and session
+    /// records reload on it, as v1's file-changed event).
+    private(set) var fileEvents = 0
 
     /// Directory currently watched (read-only, for tests and diagnostics).
     var watchedRoot: URL? { root }
@@ -34,6 +37,7 @@ final class ArtifactStore {
         files = []
         guard let newRoot else { return }
         let newWatcher = DirectoryWatcher(url: newRoot) { [weak self] in
+            self?.fileEvents += 1
             self?.refresh()
         }
         newWatcher.start()

@@ -119,6 +119,8 @@ enum PaletteCommands {
                   run: pane("aib status", "aib status")),
             .init(id: "aib-sync", title: "aib sync", detail: "dry-run 후 Enter로 적용", symbol: "arrow.triangle.2.circlepath", section: "aib",
                   run: pane("aib sync", MaintenanceScanner.confirmThenApply("aib sync --dry-run .", "aib sync ."))),
+            .init(id: "sync-all", title: "모든 배럭 Sync", detail: "Sync All · dry-run 후 Enter로 적용",
+                  symbol: "arrow.triangle.2.circlepath.circle", section: "aib") { workspace.syncAll(paths: []) },
             .init(id: "aib-lint", title: "aib wiki lint", detail: "위키 검증", symbol: "checkmark.seal", section: "aib",
                   run: pane("wiki lint", "aib wiki lint")),
             .init(id: "aib-barracks", title: "배럭 목록", detail: "aib barracks list", symbol: "list.bullet", section: "aib",

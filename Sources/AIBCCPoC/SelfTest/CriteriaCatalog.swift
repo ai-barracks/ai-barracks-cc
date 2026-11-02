@@ -107,6 +107,8 @@ enum CriteriaCatalog {
         .init(id: "SR-01", title: "세션 기록·봉인·Continue(v1 패리티 B1~B3)", blocking: false,
               requires: ["SR-01a", "SR-01b", "SR-01c", "SR-01d"]),
         .init(id: "SR-02", title: "⌘K 명령·통합 검색(v1 패리티 G1)", blocking: false, requires: ["SR-02a", "PL-01a"]),
+        .init(id: "HM-01", title: "Health 감시·알림·자동 새로고침(v1 패리티 A3·A5·H4·C8)", blocking: false,
+              requires: ["HM-01a", "HM-01b", "NC-01a", "AR-01a", "RG-02a"]),
         .init(id: "PO-01", title: "자식 프로세스 출력 읽기(파이프 교착 없음)", blocking: false, requires: ["PO-01a"]),
         .init(id: "ED-01", title: "규칙 문서 편집(허용 범위·충돌 감지)", blocking: false, requires: ["ED-01a", "ED-01b"]),
         .init(id: "DS-01", title: "목적지 왕복 후 터미널 보존", blocking: false, requires: ["DS-01a"]),

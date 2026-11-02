@@ -67,6 +67,33 @@ struct AIBCCPoCApp: App {
                 .keyboardShortcut("l", modifiers: [.command, .option, .shift])
             }
         }
+        // v1 tray parity: the app stays here when its window closes, so
+        // notices and health checks keep running; Quit ends it.
+        MenuBarExtra {
+            MenuBarContent(workspace: workspace)
+        } label: {
+            let attention = workspace.liveness.attentionCount
+            Image(systemName: attention > 0 ? "exclamationmark.circle.fill" : "square.grid.2x2")
+        }
+    }
+}
+
+private struct MenuBarContent: View {
+    let workspace: WorkspaceModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Text("주의 \(workspace.liveness.attentionCount) · 실행 \(workspace.liveness.runningCount)")
+        Button("AIBCC 열기") { show() }
+        Button("다음 주의 항목으로") { show(); workspace.goToNextAttention() }
+            .disabled(workspace.liveness.attentionCount == 0)
+        Divider()
+        Button("종료") { NSApp.terminate(nil) }
+    }
+
+    private func show() {
+        openWindow(id: "main")
+        NSApp.activate()
     }
 }
 
@@ -83,8 +110,10 @@ private struct ResponderCommand: View {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Closing the window keeps the app in the menu bar (v1: tray). Self-
+    /// tests still end with their window.
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
-        true
+        CommandLine.arguments.contains { $0.hasPrefix("--selftest") }
     }
 
     /// "앱 종료 시 세션 유지" off: end the shells with the app.

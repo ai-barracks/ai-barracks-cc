@@ -66,7 +66,7 @@ struct BarrackGrid {
 @Observable
 final class WorkspaceModel {
     let controller: TerminalController
-    let barracks: [Barrack]
+    private(set) var barracks: [Barrack]
     /// nil = Ghostty's exec backend (shells end with the app).
     let daemon: DaemonBackend?
 
@@ -94,6 +94,9 @@ final class WorkspaceModel {
     var pendingDocument: URL?
     var pendingSessionID: String?
     let maintenance = MaintenanceStore()
+    let notices = NoticeCenter()
+    @ObservationIgnored private(set) var health: HealthMonitor?
+    @ObservationIgnored private var registryWatcher: DirectoryWatcher?
     let liveness: LivenessStore
     private(set) var grids: [String: BarrackGrid] = [:]
 
@@ -107,6 +110,7 @@ final class WorkspaceModel {
         let restoredSelection = daemon.flatMap { restore(from: $0) }
         selectedBarrackID = restoredSelection ?? barracks.first?.id
         activateSelectedGrid()
+        startBackgroundWork()
     }
 
     var selectedBarrack: Barrack? {
@@ -473,6 +477,81 @@ extension WorkspaceModel {
             pendingDocument = hit.file
             destination = .rules
         }
+    }
+}
+
+// MARK: - Health, notices, registry (v1 watcher parity)
+
+extension WorkspaceModel {
+    /// Self-tests run without background checks or toasts over the window.
+    private var isSelfTest: Bool { CommandLine.arguments.contains { $0.hasPrefix("--selftest") } }
+
+    fileprivate func startBackgroundWork() {
+        liveness.onNewAttention = { [weak self] sessions in self?.announce(sessions) }
+        guard !isSelfTest else { return }
+        let monitor = HealthMonitor(workspace: self, notices: notices)
+        health = monitor
+        monitor.start()
+        let registry = URL(fileURLWithPath: (AppConstants.Paths.barracksRegistry as NSString).expandingTildeInPath)
+        let watcher = DirectoryWatcher(url: registry.deletingLastPathComponent()) { [weak self] in self?.reloadRegistry() }
+        watcher.start()
+        registryWatcher = watcher
+    }
+
+    /// ~/.aib/barracks.json changed (aib init / barracks remove): new list,
+    /// same grids for barracks that remain.
+    func reloadRegistry(_ loaded: [Barrack] = BarrackRegistry.load()) {
+        guard loaded != barracks, !loaded.isEmpty else { return }
+        barracks = loaded
+        liveness.update(barracks: loaded)
+        if let selected = selectedBarrackID, !loaded.contains(where: { $0.id == selected }) {
+            selectedBarrackID = loaded.first?.id
+        }
+    }
+
+    private func announce(_ sessions: [LiveSession]) {
+        for session in sessions {
+            let barrackID = liveness.barrackID(of: session)
+            let name = barracks.first { $0.id == barrackID }?.name ?? ""
+            notices.post(AppNotice(kind: .attention, title: "\(name): \(session.state.label)",
+                                   body: session.id, actionLabel: "이동", barrackID: barrackID, sessionID: session.id))
+        }
+    }
+
+    /// A toast's action.
+    func perform(_ notice: AppNotice) {
+        notices.dismiss(notice.id)
+        switch notice.kind {
+        case .stale:
+            if let barrack = notice.barrackID { selectedBarrackID = barrack }
+            pendingSessionID = notice.sessionID
+            destination = .history
+        case .sync:
+            syncAll(paths: health?.outdatedBarracks ?? [])
+        case .attention:
+            if let barrack = notice.barrackID { selectedBarrackID = barrack }
+            destination = .sessions
+            if let id = notice.sessionID, let barrack = notice.barrackID,
+               let session = liveness.sessions(of: barrack).first(where: { $0.id == id }),
+               let pane = pane(running: session, in: barrack) {
+                focusWhenAttached(pane)
+            }
+        }
+    }
+
+    /// v1 "Sync All Barracks": every given barrack (all if none), dry run
+    /// first, applied on Enter, in a pane.
+    @discardableResult
+    func syncAll(paths: [String]) -> TerminalPane? {
+        let targets = (paths.isEmpty ? barracks.map(\.path) : paths).map(AgentLauncher.shellQuote).joined(separator: " ")
+        return runInPane(title: "Sync All", command: SyncAll.command(quotedPaths: targets))
+    }
+}
+
+enum SyncAll {
+    static func command(quotedPaths: String) -> String {
+        MaintenanceScanner.confirmThenApply("for p in \(quotedPaths); do aib sync --dry-run \"$p\"; done",
+                                            "for p in \(quotedPaths); do aib sync \"$p\"; done")
     }
 }
 
