@@ -48,17 +48,6 @@ struct GitView: View {
 
 enum GitReader {
     static func run(_ arguments: [String], in directory: String) async -> String {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            let pipe = Pipe()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-            process.arguments = ["-C", directory] + arguments
-            process.standardOutput = pipe
-            process.standardError = pipe
-            process.terminationHandler = { _ in
-                continuation.resume(returning: String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
-            }
-            if (try? process.run()) == nil { continuation.resume(returning: "") }
-        }
+        await ProcessOutput.run(URL(fileURLWithPath: "/usr/bin/git"), ["-C", directory] + arguments, in: directory)
     }
 }

@@ -7,7 +7,19 @@ import Foundation
 struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
-         processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict()]
+         processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
+         sessionParsing(), sealStatuses(), sessionCommands()]
+    }
+
+    /// Incident class: reading after exit deadlocks past the pipe buffer.
+    func runAsync() async -> [TestResult] {
+        let start = ContinuousClock.now
+        let output = await ProcessOutput.run(URL(fileURLWithPath: "/bin/sh"), ["-c", "head -c 300000 /dev/zero | tr '\\0' x"],
+                                             in: NSTemporaryDirectory())
+        let elapsed = (ContinuousClock.now - start).milliseconds
+        return [.make("PO-01a", "자식 출력 300KB(파이프 버퍼 초과)를 멈춤 없이 읽음",
+                      status: output.count == 300_000 && elapsed < 5000 ? .pass : .fail, cause: .app,
+                      evidence: ["bytes": "\(output.count)", "ms": String(format: "%.0f", elapsed)], startedAt: start)]
     }
 
     private func foldMatrix() -> TestResult {
@@ -220,6 +232,80 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["unchanged": "\(unchanged)", "saved": "\(saved)", "conflict": "\(conflict)"],
                      startedAt: start)
+    }
+
+    /// Same rules as CC v1.6.1 sessions.rs (fields, sections, client).
+    private func sessionParsing() -> TestResult {
+        let start = ContinuousClock.now
+        let text = """
+        # Session: claude-1
+        - **Client**: Claude Code
+        - **Started**: 2026-11-01 07:40
+        - **Ended**: (active)
+        - **Status**: active
+        - **Task**: 패리티 플랜
+        - **Continues**: claude-0
+        ## Log
+        <!-- Format hint -->
+        - [07:45] a
+        - [08:00] b
+        ## Decisions
+        - d1
+        ## Blockers
+        """
+        let record = SessionRecords.record(id: "claude-1", text: text)
+        let log = SessionRecords.section("Log", in: text)
+        let ok = record.client == "Claude Code" && record.status == "active" && record.task == "패리티 플랜"
+            && record.continues == "claude-0" && log == ["[07:45] a", "[08:00] b"]
+            && SessionRecords.section("Decisions", in: text) == ["d1"] && SessionRecords.section("Blockers", in: text).isEmpty
+            && SessionRecords.record(id: "codex-9", text: "").client == "Codex CLI"
+            && SessionRecords.record(id: "x", text: "").client == "Unknown" && record.clientKey == "claude"
+        return .make("SR-01a", "세션 기록 해석 = v1 규칙(필드·섹션·주석 제외·클라이언트 추정)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["log": log.joined(separator: "|"), "client": record.client], startedAt: start)
+    }
+
+    /// v1 seal tests: intact, modified, unsealed, and the invalid cases.
+    private func sealStatuses() -> TestResult {
+        let start = ContinuousClock.now
+        let body = Data("- **Status**: completed\n## Log\n- [10:00] work\n".utf8)
+        let hex = { (data: Data) in SHA256Hex.of(data) }
+        let line = "\(hex(body))  sessions/s1.md\n"
+        let cases: [(SessionRecords.SealRead, Data, Bool, SessionDetail.Seal)] = [
+            (.record(line), body, false, .intact),
+            (.record(line), Data("changed".utf8), false, .modified),
+            (.missing, body, false, .unsealed),
+            (.unusable, body, false, .invalid),
+            (.record("nothex  sessions/s1.md"), body, false, .invalid),
+            (.record("\(hex(body))  sessions/other.md"), body, false, .invalid),
+            (.record(line), body, true, .invalid),
+        ]
+        let failures = cases.enumerated().compactMap { index, item -> String? in
+            let got = SessionRecords.sealStatus(item.0, id: "s1", bytes: item.1, isSymlink: item.2)
+            return got == item.3 ? nil : "#\(index) \(got.rawValue)"
+        }
+        // A symlinked .seals directory is unusable, not missing.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-seal-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try? FileManager.default.createDirectory(at: root.appendingPathComponent("sessions"), withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: root.appendingPathComponent("real"), withIntermediateDirectories: true)
+        try? FileManager.default.createSymbolicLink(at: root.appendingPathComponent("sessions/.seals"),
+                                                    withDestinationURL: root.appendingPathComponent("real"))
+        let symlinked = SessionRecords.readSeal(barrack: root, id: "s1")
+        let ok = failures.isEmpty && symlinked == .unusable
+        return .make("SR-01b", "봉인 검증 = aib sessions verify(무결·변경·미봉인·무효, 심볼릭 링크 거부)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: ","), "symlinked_dir": "\(symlinked)"], startedAt: start)
+    }
+
+    private func sessionCommands() -> TestResult {
+        let start = ContinuousClock.now
+        let resume = SessionRecords.continueCommand(client: "codex", sessionID: "claude-1")
+        let expected = "aib start codex '이전 세션 claude-1의 작업을 이어서 진행해주세요. sessions/claude-1.md 파일을 읽고 작업을 계속하세요.'"
+        let monitor = SessionRecords.monitorCommand(sessionID: "claude-1")
+        let ok = resume == expected && monitor.contains("tail -30 'sessions/claude-1.md'") && monitor.contains("sleep 3")
+        return .make("SR-01c", "Continue 명령 = v1 프롬프트(aib start <대상>), Monitor = 3초 tail",
+                     status: ok ? .pass : .fail, cause: .app, evidence: ["continue": resume], startedAt: start)
     }
 
     private func readerAppliesAck() -> TestResult {

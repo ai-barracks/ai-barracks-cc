@@ -73,6 +73,7 @@ enum AppConstants {
     enum Documents {
         static let ruleFiles = ["RULES.md", "SOUL.md", "GROWTH.md", "agent.yaml"]
         static let listWidth: CGFloat = 220
+        static let historyListWidth: CGFloat = 300
     }
 
     enum Liveness {

@@ -145,7 +145,7 @@ struct DocumentView: View {
             return BarrackDocuments.skills(in: root)
         case .council:
             return BarrackDocuments.councilMinutes(in: root)
-        case .sessions, .git:
+        case .sessions, .history, .git:
             return []
         }
     }

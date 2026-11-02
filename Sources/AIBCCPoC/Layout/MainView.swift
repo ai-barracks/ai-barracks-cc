@@ -42,6 +42,8 @@ struct MainView: View {
     private var center: some View {
         if workspace.destination == .sessions || workspace.selectedBarrack == nil {
             TerminalGridView(workspace: workspace)
+        } else if let barrack = workspace.selectedBarrack, workspace.destination == .history {
+            SessionHistoryView(workspace: workspace, barrack: barrack)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
             GitView(workspace: workspace, barrack: barrack)
         } else if let barrack = workspace.selectedBarrack {

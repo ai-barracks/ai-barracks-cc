@@ -79,22 +79,41 @@ enum MaintenanceScanner {
     // MARK: - Helpers
 
     private static func run(_ command: String, in directory: String) async -> String {
+        await AibShell.run(command, in: directory)
+    }
+}
+
+/// Runs a command in the user's login shell (PATH finds aib), in a directory.
+enum AibShell {
+    static func run(_ command: String, in directory: String) async -> String {
+        await ProcessOutput.run(URL(fileURLWithPath: "/bin/zsh"), ["-lc", command], in: directory)
+    }
+}
+
+/// Output of a child process, read while it runs: reading only after exit
+/// deadlocks once the output fills the 64 KiB pipe (git status of a big
+/// repo, a long lint).
+enum ProcessOutput {
+    static func run(_ executable: URL, _ arguments: [String], in directory: String) async -> String {
         await withCheckedContinuation { continuation in
             let process = Process()
             let pipe = Pipe()
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-lc", command]
+            process.executableURL = executable
+            process.arguments = arguments
             process.currentDirectoryURL = URL(fileURLWithPath: directory)
             process.standardOutput = pipe
             process.standardError = pipe
-            process.terminationHandler = { _ in
+            guard (try? process.run()) != nil else { return continuation.resume(returning: "") }
+            DispatchQueue.global().async {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
                 continuation.resume(returning: String(decoding: data, as: UTF8.self))
             }
-            if (try? process.run()) == nil { continuation.resume(returning: "") }
         }
     }
+}
 
+extension MaintenanceScanner {
     static func lines(_ output: String) -> [String] {
         output.replacingOccurrences(of: "\u{1B}\\[[0-9;]*m", with: "", options: .regularExpression)
             .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }

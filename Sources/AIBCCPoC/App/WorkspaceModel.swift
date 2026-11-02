@@ -4,13 +4,14 @@ import Observation
 
 /// What the center shows for the selected barrack (spec §4 destinations).
 enum Destination: String, CaseIterable, Identifiable, Sendable {
-    case sessions, rules, wiki, skills, council, git
+    case sessions, history, rules, wiki, skills, council, git
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .sessions: "세션"
+        case .history: "기록"
         case .rules: "규칙"
         case .wiki: "Wiki"
         case .skills: "Skills"
@@ -22,6 +23,7 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
     var symbol: String {
         switch self {
         case .sessions: "terminal"
+        case .history: "clock.arrow.circlepath"
         case .rules: "list.bullet.rectangle"
         case .wiki: "books.vertical"
         case .skills: "puzzlepiece.extension"

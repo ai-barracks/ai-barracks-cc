@@ -9,7 +9,8 @@ struct AgentSuite {
 
     func run() async -> [TestResult] {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
-         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip()]
+         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
+         await sealsAgreeWithAib()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -113,6 +114,32 @@ struct AgentSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["detached_while_away": "\(detached)", "reattached": "\(back)",
                                 "same_process": "\(recorder.pane.processID == pid)", "typed": Hex.string(typed)],
+                     startedAt: start)
+    }
+
+    /// Every sealed session of every barrack: our verdict vs `aib sessions
+    /// verify --quiet` (which lists only the changed ones).
+    private func sealsAgreeWithAib() async -> TestResult {
+        let start = ContinuousClock.now
+        var checked = 0
+        var disagreements: [String] = []
+        for barrack in harness.workspace.barracks {
+            let seals = (try? FileManager.default.contentsOfDirectory(atPath: barrack.path + "/sessions/.seals")) ?? []
+            guard !seals.isEmpty else { continue }
+            let changed = Set(MaintenanceScanner.lines(await AibShell.run("aib sessions verify --quiet", in: barrack.path))
+                .flatMap { $0.split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) }
+                .map(String.init))
+            for seal in seals where seal.hasSuffix(".sha256") {
+                let id = String(seal.dropLast(7))
+                guard let detail = SessionRecords.detail(barrackPath: barrack.path, id: id) else { continue }
+                checked += 1
+                let aibSaysChanged = changed.contains(id)
+                if (detail.seal != .intact) != aibSaysChanged { disagreements.append("\(barrack.name)/\(id)=\(detail.seal.rawValue)") }
+            }
+        }
+        return .make("SR-01d", "실데이터 봉인 판정 = aib sessions verify (\(checked)건)",
+                     status: disagreements.isEmpty ? (checked > 0 ? .pass : .unverified) : .fail, cause: .app,
+                     evidence: ["checked": "\(checked)", "disagreements": disagreements.prefix(10).joined(separator: ",")],
                      startedAt: start)
     }
 

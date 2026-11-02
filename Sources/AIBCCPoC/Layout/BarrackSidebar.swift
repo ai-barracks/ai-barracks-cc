@@ -51,6 +51,9 @@ struct BarrackSidebar: View {
         case .council:
             let count = BarrackDocuments.councilMinutes(in: barrack.url).count
             return count > 0 ? count : nil
+        case .history:
+            let count = SessionRecords.count(barrackPath: barrack.path)
+            return count > 0 ? count : nil
         case .rules, .git:
             return nil
         }
