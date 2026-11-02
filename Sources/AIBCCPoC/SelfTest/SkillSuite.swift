@@ -132,7 +132,7 @@ struct SkillSuite {
         let registry = scratch.appendingPathComponent("barracks.json")
         try? Data("[]".utf8).write(to: registry)
         try? Data("name: t\nversion: 0.1.0\ndescription: \"t\"\nmodels:\n  primary: x\n".utf8).write(to: barrack.appendingPathComponent("agent.yaml"))
-        let sync = SkillSync.runner(registry: registry.path)
+        let sync = AibSync.runner(registry: registry.path)
         var failures: [String] = []
         let content = SkillDocument.render(slug: "open-pr", fields: SkillFields(description: "Use when opening a pull request"), body: "# Open PR")
         _ = SkillFiles.create(in: barrack, slug: "open-pr", content: content)
@@ -144,9 +144,14 @@ struct SkillSuite {
         _ = SkillFiles.rename(in: barrack, from: "open-pr", to: "pull-request")
         if await sync(barrack) != .ok || link("pull-request") != "../../skills/pull-request" || link("open-pr") != nil { failures.append("rename relinked") }
         if case .ok = await sync(scratch) { failures.append("non-barrack must fail") }
+        // The post-save check (v1 FilesTab): a dry run passes and writes nothing.
+        let yaml = try? Data(contentsOf: barrack.appendingPathComponent("agent.yaml"))
+        let dryRun = AibSync.runner(dryRun: true, registry: registry.path)
+        if await dryRun(barrack) != .ok || (try? Data(contentsOf: barrack.appendingPathComponent("agent.yaml"))) != yaml { failures.append("dry run") }
+        if case .ok = await dryRun(scratch) { failures.append("dry run outside barrack must fail") }
         if (try? Data(contentsOf: userRegistry)) != before { failures.append("USER REGISTRY CHANGED") }
         if (try? String(contentsOf: registry, encoding: .utf8))?.contains(barrack.lastPathComponent) == true { failures.append("temp barrack registered") }
-        return check("SK-02d", "저장 후 aib sync = v1(.claude/skills 링크·CLAUDE.md 카탈로그 갱신, 실패 감지) · 사용자 레지스트리 무변경", failures, start)
+        return check("SK-02d", "저장 후 aib sync = v1(.claude/skills 링크·CLAUDE.md 카탈로그 갱신, 실패 감지) · 문서 저장 후 dry-run 검증 · 사용자 레지스트리 무변경", failures, start)
     }
 
     private func makeBarrack() -> URL? {

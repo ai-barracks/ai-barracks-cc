@@ -26,6 +26,11 @@ struct DocumentView: View {
     /// The form's changes while its save is pending a conflict decision.
     @State private var structuredPatch: StructuredPatch?
     @State private var saveError: String?
+    /// A file picked in the list while an edit was open (asks first).
+    @State private var leaveTarget: URL?
+    /// `aib sync --dry-run` after a save, when it objected (v1 FilesTab).
+    @State private var validation: String?
+    var validate: AibSync.Runner = AibSync.check
 
     var body: some View {
         if documents.isEmpty {
@@ -54,8 +59,13 @@ struct DocumentView: View {
 
     private var browser: some View {
         HStack(spacing: 0) {
-            List(documents, id: \.self, selection: $selection) { file in
-                Text(title(of: file)).font(Tokens.Font.body).lineLimit(1)
+            List(documents, id: \.self, selection: guardedSelection) { file in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title(of: file)).font(Tokens.Font.body).lineLimit(1)
+                    if destination == .rules, let role = BarrackDocuments.role(of: file.lastPathComponent) {
+                        Text(role).font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(2)
+                    }
+                }
             }
             .listStyle(.sidebar)
             .frame(width: AppConstants.Documents.listWidth)
@@ -70,6 +80,30 @@ struct DocumentView: View {
         .onChange(of: selection, initial: true) { load() }
         .onChange(of: changes) { if !isEditing && !isListEditing { load() } }
         .onChange(of: pendingEdit) { takePendingEdit() }
+        .alert("편집 중입니다", isPresented: Binding(get: { leaveTarget != nil }, set: { if !$0 { leaveTarget = nil } })) {
+            Button("편집 버리고 이동", role: .destructive) {
+                isEditing = false
+                isListEditing = false
+                selection = leaveTarget
+                leaveTarget = nil
+            }
+            Button("계속 편집", role: .cancel) { leaveTarget = nil }
+        } message: {
+            Text("저장하지 않은 편집이 있을 수 있습니다(v1과 같이 이동 전에 묻습니다).")
+        }
+    }
+
+    /// Picking another file while editing asks first instead of dropping
+    /// the edit (v1 FilesTab confirm).
+    private var guardedSelection: Binding<URL?> {
+        Binding(get: { selection }, set: { next in
+            guard next != selection else { return }
+            if isEditing && draft != original || isListEditing {
+                leaveTarget = next
+            } else {
+                selection = next
+            }
+        })
     }
 
     @ViewBuilder
@@ -127,6 +161,7 @@ struct DocumentView: View {
             } else if isListEditing {
                 if let saveError { Text(saveError).font(Tokens.Font.meta).foregroundStyle(Tokens.red).lineLimit(2) }
             } else {
+                if let validation { Text(validation).font(Tokens.Font.meta).foregroundStyle(Tokens.orange).lineLimit(2) }
                 let kind = StructuredKind(file: file)
                 if let kind { Button(kind.editLabel) { isListEditing = true } }
                 Button(kind == nil ? "편집" : "원문 편집") { draft = original ?? ""; isEditing = true }
@@ -151,6 +186,14 @@ struct DocumentView: View {
         if result == .conflict { conflict = true } else { finish(result) }
     }
 
+    private func runValidation() {
+        validation = nil
+        let barrackURL = barrack.url
+        Task {
+            if case let .failed(reason) = await validate(barrackURL) { validation = "저장됨 · aib sync --dry-run 경고: \(reason)" }
+        }
+    }
+
     private func cancelStructured() {
         isListEditing = false
         structuredPatch = nil
@@ -170,6 +213,7 @@ struct DocumentView: View {
     private func finish(_ result: DocumentEditing.SaveResult) {
         switch result {
         case .saved, .unchanged:
+            if result == .saved, destination == .rules { runValidation() }
             structuredPatch = nil
             isListEditing = false
             isEditing = false
@@ -221,6 +265,7 @@ struct DocumentView: View {
 
     private func load() {
         failure = nil
+        if loadedFile != selection { validation = nil }
         structuredPatch = nil
         saveError = nil
         isEditing = false

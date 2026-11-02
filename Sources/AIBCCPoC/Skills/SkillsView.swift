@@ -10,7 +10,7 @@ struct SkillsView: View {
     @Binding var pending: URL?
     /// Opens the selected skill's editor (gallery).
     @Binding var pendingEdit: Bool
-    var sync: SkillSync.Runner = SkillSync.aib
+    var sync: AibSync.Runner = AibSync.apply
     @State private var skills: [SkillEntry] = []
     @State private var query = ""
     @State private var selection: String?

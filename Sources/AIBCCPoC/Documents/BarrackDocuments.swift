@@ -3,6 +3,17 @@ import Foundation
 /// Where the fixed viewers find their documents in a barrack.
 enum BarrackDocuments {
     /// `skills/<name>/SKILL.md` (aib's skill layout).
+    /// What each fixed barrack file is for (v1 FilesTab descriptions).
+    static func role(of name: String) -> String? {
+        switch name {
+        case "SOUL.md": "에이전트의 이름·전문성·성격"
+        case "GROWTH.md": "성장 트리거와 지식 기록 규칙"
+        case "RULES.md": "세션에서 배운 행동 규칙(에이전트가 덧붙임)"
+        case "agent.yaml": "배럭 메타데이터·모델·aib 버전"
+        default: nil
+        }
+    }
+
     /// The catalog's SKILL.md files (same symlink rules as the Skills view).
     static func skills(in root: URL) -> [URL] {
         SkillFiles.list(in: root).map(\.file)
