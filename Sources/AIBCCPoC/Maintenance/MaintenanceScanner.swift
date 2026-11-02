@@ -95,19 +95,31 @@ enum AibShell {
 /// repo, a long lint).
 enum ProcessOutput {
     static func run(_ executable: URL, _ arguments: [String], in directory: String) async -> String {
+        await runWithStatus(executable, arguments, in: directory).output
+    }
+
+    /// Output and exit status; a process that cannot start reports -1, an
+    /// exit not seen within the grace after its output ended reports
+    /// `unknownStatus`. `waitUntilExit()` is not used: on a GCD worker it
+    /// spins that thread's run loop and was seen waiting forever after the
+    /// child had exited (self-test hang 2026-11-02).
+    static func runWithStatus(_ executable: URL, _ arguments: [String], in directory: String) async -> (output: String, status: Int32) {
         await withCheckedContinuation { continuation in
             let process = Process()
             let pipe = Pipe()
+            let exited = DispatchSemaphore(value: 0)
             process.executableURL = executable
             process.arguments = arguments
             process.currentDirectoryURL = URL(fileURLWithPath: directory)
             process.standardOutput = pipe
             process.standardError = pipe
-            guard (try? process.run()) != nil else { return continuation.resume(returning: "") }
+            process.terminationHandler = { _ in exited.signal() }
+            guard (try? process.run()) != nil else { return continuation.resume(returning: ("", -1)) }
             DispatchQueue.global().async {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                continuation.resume(returning: String(decoding: data, as: UTF8.self))
+                let seen = exited.wait(timeout: .now() + AppConstants.ChildProcess.exitGrace) == .success
+                let status = seen ? process.terminationStatus : AppConstants.ChildProcess.unknownStatus
+                continuation.resume(returning: (String(decoding: data, as: UTF8.self), status))
             }
         }
     }

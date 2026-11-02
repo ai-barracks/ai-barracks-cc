@@ -136,7 +136,32 @@ struct UnitSuite {
         let elapsed = (ContinuousClock.now - start).milliseconds
         return [.make("PO-01a", "자식 출력 300KB(파이프 버퍼 초과)를 멈춤 없이 읽음",
                       status: output.count == 300_000 && elapsed < 5000 ? .pass : .fail, cause: .app,
-                      evidence: ["bytes": "\(output.count)", "ms": String(format: "%.0f", elapsed)], startedAt: start)]
+                      evidence: ["bytes": "\(output.count)", "ms": String(format: "%.0f", elapsed)], startedAt: start),
+                await exitStatusBurst()]
+    }
+
+    /// Incident 2026-11-02: a self-test hung for good in waitUntilExit after
+    /// the child had exited. Many short children at once must all return,
+    /// each with its own exit status.
+    private func exitStatusBurst() async -> TestResult {
+        let start = ContinuousClock.now
+        let statuses = await withTaskGroup(of: (Int32, Int32).self) { group in
+            for index in 0..<40 {
+                let code = Int32(index % 5)
+                group.addTask {
+                    (code, await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/sh"), ["-c", "exit \(code)"], in: NSTemporaryDirectory()).status)
+                }
+            }
+            var results: [(Int32, Int32)] = []
+            for await result in group { results.append(result) }
+            return results
+        }
+        let wrong = statuses.filter { $0.0 != $0.1 }
+        let elapsed = (ContinuousClock.now - start).milliseconds
+        return .make("PO-01b", "자식 40개 동시 실행: 모두 돌아오고 각자의 종료 코드(무한 대기 없음)",
+                     status: statuses.count == 40 && wrong.isEmpty && elapsed < 10_000 ? .pass : .fail, cause: .app,
+                     evidence: ["returned": "\(statuses.count)", "wrong": wrong.prefix(5).map { "\($0.0)->\($0.1)" }.joined(separator: ","),
+                                "ms": String(format: "%.0f", elapsed)], startedAt: start)
     }
 
     private func foldMatrix() -> TestResult {

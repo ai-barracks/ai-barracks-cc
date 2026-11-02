@@ -121,6 +121,13 @@ enum AppConstants {
         static let rendererReadyTimeout: Duration = .seconds(3)
     }
 
+    enum ChildProcess {
+        /// How long to wait for the exit after a child's output ended. The
+        /// exit normally follows at once; past this the status is unknown.
+        static let exitGrace: DispatchTimeInterval = .seconds(5)
+        static let unknownStatus: Int32 = -2
+    }
+
     enum SelfTest {
         static let argument = "--selftest"
         static let onlyArgumentPrefix = "--selftest-only="
