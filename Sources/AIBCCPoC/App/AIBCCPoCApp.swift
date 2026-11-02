@@ -125,6 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// "앱 종료 시 세션 유지" off: end the shells with the app.
     func applicationWillTerminate(_: Notification) {
+        // An activation request in flight must not outlive the app.
+        BoundedProcess.killAll()
         let keep = UserDefaults.standard.object(forKey: AppConstants.Daemon.keepSessionsOnQuitKey) as? Bool ?? true
         guard !keep, let socket = DaemonBackend.socketPath(for: CommandLine.arguments) else { return }
         DaemonBackend.shutdownSessions(at: socket)

@@ -108,6 +108,8 @@ final class WorkspaceModel {
     /// Non-nil while the Quick Command sheet is open.
     var quickCommandDraft: QuickCommand?
     @ObservationIgnored private(set) var health: HealthMonitor?
+    /// Scheduled activation (not in self-tests).
+    @ObservationIgnored private(set) var activation: ActivationScheduler?
     @ObservationIgnored private var registryWatcher: DirectoryWatcher?
     let liveness: LivenessStore
     private(set) var grids: [String: BarrackGrid] = [:]
@@ -509,6 +511,10 @@ extension WorkspaceModel {
         let monitor = HealthMonitor(workspace: self, notices: notices)
         health = monitor
         monitor.start()
+        // Shares v1's file and lock: only one app schedules.
+        let scheduler = ActivationScheduler(directory: AppConstants.Activation.directory)
+        activation = scheduler
+        scheduler.start()
         let registry = URL(fileURLWithPath: (AppConstants.Paths.barracksRegistry as NSString).expandingTildeInPath)
         let watcher = DirectoryWatcher(url: registry.deletingLastPathComponent()) { [weak self] in self?.reloadRegistry() }
         watcher.start()

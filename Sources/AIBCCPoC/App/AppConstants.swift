@@ -121,6 +121,13 @@ enum AppConstants {
         static let rendererReadyTimeout: Duration = .seconds(3)
     }
 
+    enum Activation {
+        /// v1's support directory: v1 and v2 share activation.json and its lock.
+        static var directory: URL {
+            URL(fileURLWithPath: ("~/Library/Application Support/com.aibarracks.commandcenter" as NSString).expandingTildeInPath)
+        }
+    }
+
     /// Terminal output archive (v1 scrollback.rs defaults).
     enum Scrollback {
         static let directory = "scrollback"

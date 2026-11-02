@@ -75,6 +75,7 @@ struct SettingsView: View {
             Section("세션") {
                 Toggle("앱 종료 시 세션 유지", isOn: $keepSessions).disabled(workspace.daemon == nil)
             }
+            ActivationSettingsSection(scheduler: workspace.activation)
             Section {
                 ForEach(ProviderProfiles.clients) { ProviderProfileRow(client: $0) }
             } header: {
