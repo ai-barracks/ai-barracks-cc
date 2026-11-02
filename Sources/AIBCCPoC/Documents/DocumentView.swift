@@ -17,6 +17,7 @@ struct DocumentView: View {
     @State private var original: String?
     @State private var draft = ""
     @State private var isEditing = false
+    @State private var isListEditing = false
     @State private var conflict = false
     @State private var saveError: String?
 
@@ -64,7 +65,7 @@ struct DocumentView: View {
         .onChange(of: barrack.id) { selection = takePending() ?? documents.first }
         .onChange(of: pending) { if let next = takePending() { selection = next } }
         .onChange(of: selection, initial: true) { load() }
-        .onChange(of: changes) { if !isEditing { load() } }
+        .onChange(of: changes) { if !isEditing && !isListEditing { load() } }
     }
 
     @ViewBuilder
@@ -78,7 +79,9 @@ struct DocumentView: View {
                 editControls
             }
             .padding(Tokens.Spacing.m)
-            if isEditing {
+            if isListEditing, let original {
+                RulesEditorView(original: original, onSave: { saveStructured($0) }, onCancel: { isListEditing = false })
+            } else if isEditing {
                 TextEditor(text: $draft)
                     .font(.system(size: 13).monospaced())
                     .padding(.horizontal, Tokens.Spacing.s)
@@ -110,8 +113,11 @@ struct DocumentView: View {
                 if let saveError { Text(saveError).font(Tokens.Font.meta).foregroundStyle(Tokens.red) }
                 Button("취소") { isEditing = false; saveError = nil }
                 Button("저장") { save() }.keyboardShortcut("s", modifiers: .command)
-            } else {
-                Button("편집") { draft = original ?? ""; isEditing = true }
+            } else if !isListEditing {
+                if file.lastPathComponent == "RULES.md" {
+                    Button("목록 편집") { isListEditing = true }
+                }
+                Button(file.lastPathComponent == "RULES.md" ? "원문 편집" : "편집") { draft = original ?? ""; isEditing = true }
             }
         }
     }
@@ -122,9 +128,18 @@ struct DocumentView: View {
         if result == .conflict { conflict = true } else { finish(result) }
     }
 
+    /// The structured editor's output goes through the same conflict check.
+    private func saveStructured(_ patched: String) {
+        guard let file = selection, let original else { return }
+        draft = patched
+        let result = DocumentEditing.save(edited: patched, original: original, to: file)
+        if result == .conflict { conflict = true } else { finish(result) }
+    }
+
     private func finish(_ result: DocumentEditing.SaveResult) {
         switch result {
         case .saved, .unchanged:
+            isListEditing = false
             isEditing = false
             saveError = nil
             load()
@@ -169,6 +184,7 @@ struct DocumentView: View {
     private func load() {
         failure = nil
         isEditing = false
+        isListEditing = false
         guard let file = selection, let text = try? String(contentsOf: file, encoding: .utf8) else {
             source = nil
             original = nil

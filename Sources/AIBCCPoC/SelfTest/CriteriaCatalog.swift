@@ -111,6 +111,8 @@ enum CriteriaCatalog {
               requires: ["HM-01a", "HM-01b", "NC-01a", "AR-01a", "RG-02a"]),
         .init(id: "TT-01", title: "터미널 관리·Quick Commands·내보내기·설정(v1 패리티 C2~C6·B4·H3)", blocking: false,
               requires: ["TT-01a", "TT-01b", "SE-01a"]),
+        .init(id: "DC-01", title: "구조화 편집기 문서 모델 = v1 테스트 케이스", blocking: false,
+              requires: ["DP-01a", "DP-01b", "RD-01a", "RD-01b"]),
         .init(id: "PO-01", title: "자식 프로세스 출력 읽기(파이프 교착 없음)", blocking: false, requires: ["PO-01a"]),
         .init(id: "ED-01", title: "규칙 문서 편집(허용 범위·충돌 감지)", blocking: false, requires: ["ED-01a", "ED-01b"]),
         .init(id: "DS-01", title: "목적지 왕복 후 터미널 보존", blocking: false, requires: ["DS-01a"]),
