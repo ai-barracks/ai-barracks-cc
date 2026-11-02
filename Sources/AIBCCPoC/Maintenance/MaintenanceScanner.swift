@@ -103,7 +103,8 @@ enum ProcessOutput {
     /// `unknownStatus`. `waitUntilExit()` is not used: on a GCD worker it
     /// spins that thread's run loop and was seen waiting forever after the
     /// child had exited (self-test hang 2026-11-02).
-    static func runWithStatus(_ executable: URL, _ arguments: [String], in directory: String) async -> (output: String, status: Int32) {
+    static func runWithStatus(_ executable: URL, _ arguments: [String], in directory: String,
+                              environment: [String: String] = [:]) async -> (output: String, status: Int32) {
         await withCheckedContinuation { continuation in
             let process = Process()
             let pipe = Pipe()
@@ -111,6 +112,9 @@ enum ProcessOutput {
             process.executableURL = executable
             process.arguments = arguments
             process.currentDirectoryURL = URL(fileURLWithPath: directory)
+            if !environment.isEmpty {
+                process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+            }
             process.standardOutput = pipe
             process.standardError = pipe
             process.terminationHandler = { _ in exited.signal() }

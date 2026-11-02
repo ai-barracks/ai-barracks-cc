@@ -48,7 +48,7 @@ struct MainView: View {
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .history {
             SessionHistoryView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
-            GitView(workspace: workspace, barrack: barrack)
+            GitView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .skills {
             SkillsView(barrack: barrack, changes: artifacts.fileEvents,
                        pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),

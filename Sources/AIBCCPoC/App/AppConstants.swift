@@ -121,6 +121,11 @@ enum AppConstants {
         static let rendererReadyTimeout: Duration = .seconds(3)
     }
 
+    enum Git {
+        /// Changes listed in the Git destination (the counts cover all).
+        static let visibleChanges = 200
+    }
+
     enum ChildProcess {
         /// How long to wait for the exit after a child's output ended. The
         /// exit normally follows at once; past this the status is unknown.

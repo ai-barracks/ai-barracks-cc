@@ -111,6 +111,7 @@ enum CriteriaCatalog {
               requires: ["HM-01a", "HM-01b", "NC-01a", "AR-01a", "RG-02a"]),
         .init(id: "TT-01", title: "터미널 관리·Quick Commands·내보내기·설정(v1 패리티 C2~C6·B4·H3)", blocking: false,
               requires: ["TT-01a", "TT-01b", "SE-01a"]),
+        .init(id: "GT-01", title: "Git 상태·커밋·push = v1 + 모노레포 커밋 격리", blocking: false, requires: ["GT-01a", "GT-01b"]),
         .init(id: "SK-02", title: "Skills CRUD = v1(폼·이름 변경·삭제·경로 안전)", blocking: false, requires: ["SK-02a", "SK-02b", "SK-02c", "SK-02d"]),
         .init(id: "DC-01", title: "구조화 편집기 문서 모델 = v1 테스트 케이스", blocking: false,
               requires: ["DP-01a", "DP-01b", "RU-01a", "RU-01b", "SD-01a", "SD-01b", "GR-01a", "GR-01b", "YM-01a", "YM-01b", "SM-01a"]),
