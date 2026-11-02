@@ -33,7 +33,7 @@ enum AppConstants {
         /// (Cmd+Opt+I is Ghostty's inspector toggle; found by IN-11b).
         static let appReservedChords = [
             "super+alt+i", "super+alt+1", "super+alt+2", "super+alt+4", "super+alt+shift+l",
-            "super+n", "super+shift+a", "super+shift+c",
+            "super+n", "super+shift+a", "super+shift+c", "super+k",
         ]
     }
 

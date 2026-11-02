@@ -8,7 +8,38 @@ struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
-         sessionParsing(), sealStatuses(), sessionCommands()]
+         sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics()]
+    }
+
+    /// CC v1.6.1 search_all: sources, case, 3 per file, snippet, min query.
+    private func searchSemantics() -> TestResult {
+        let start = ContinuousClock.now
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-search-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for directory in ["sessions", "wiki/topics"] {
+            try? FileManager.default.createDirectory(at: root.appendingPathComponent(directory), withIntermediateDirectories: true)
+        }
+        let write = { (path: String, body: String) in
+            try? body.write(to: root.appendingPathComponent(path), atomically: true, encoding: .utf8)
+        }
+        write("sessions/claude-1.md", "Ghostty one\nghostty two\nGHOSTTY three\nghostty four")
+        write("wiki/topics/t.md", "about ghostty " + String(repeating: "x", count: 200))
+        write("RULES.md", "rule ghostty")
+        write("SOUL.md", "nothing")
+        write("GROWTH.md", "growth ghostty")
+        let barrack = Barrack(name: "b", path: root.path, description: nil)
+        let hits = SearchIndex.search("GhOsTtY", in: [barrack])
+        let bySource = Dictionary(grouping: hits, by: \.source).mapValues(\.count)
+        let wikiSnippet = hits.first { $0.source == .wiki }?.snippet ?? ""
+        let ok = bySource[.session] == 3 && bySource[.wiki] == 1 && bySource[.rules] == 1 && bySource[.config] == 1
+            && wikiSnippet.hasSuffix("...") && wikiSnippet.count == 123
+            && SearchIndex.search("g", in: [barrack]).isEmpty
+            && !PaletteCommands.matches(PaletteItem(id: "barrack-x", title: "배럭: x", detail: "", symbol: "", section: "", run: {}), "")
+            && PaletteCommands.matches(PaletteItem(id: "aib-sync", title: "aib sync", detail: "", symbol: "", section: "", run: {}), "SYNC")
+        return .make("SR-02a", "⌘K 검색 = v1 search_all 규칙(출처 5종·대소문자·파일당 3개·120자 발췌·2자 미만 없음), 명령 필터",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["counts": bySource.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: ","),
+                                "snippet_len": "\(wikiSnippet.count)"], startedAt: start)
     }
 
     /// Incident class: reading after exit deadlocks past the pipe buffer.

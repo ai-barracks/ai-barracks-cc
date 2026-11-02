@@ -26,6 +26,7 @@ struct MainView: View {
         .toolbar { toolbarContent }
         .sheet(isPresented: $workspace.isNewAgentSheetPresented) { NewAgentSheet(workspace: workspace) }
         .sheet(isPresented: $workspace.isCouncilSheetPresented) { CouncilSheet(workspace: workspace) }
+        .sheet(isPresented: $workspace.isPalettePresented) { CommandPalette(workspace: workspace) }
         .navigationTitle(workspace.selectedBarrack?.name ?? "AIBCC")
         .navigationSubtitle(workspace.destination.label)
         .onChange(of: workspace.selectedBarrackID, initial: true) {
@@ -48,7 +49,8 @@ struct MainView: View {
             GitView(workspace: workspace, barrack: barrack)
         } else if let barrack = workspace.selectedBarrack {
             DocumentView(barrack: barrack, destination: workspace.destination,
-                         startCouncil: { workspace.isCouncilSheetPresented = true })
+                         startCouncil: { workspace.isCouncilSheetPresented = true },
+                         pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }))
         }
     }
 

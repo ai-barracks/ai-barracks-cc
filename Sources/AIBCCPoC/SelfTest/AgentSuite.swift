@@ -10,7 +10,7 @@ struct AgentSuite {
     func run() async -> [TestResult] {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
-         await sealsAgreeWithAib()]
+         await sealsAgreeWithAib(), await searchHitOpens()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -141,6 +141,25 @@ struct AgentSuite {
                      status: disagreements.isEmpty ? (checked > 0 ? .pass : .unverified) : .fail, cause: .app,
                      evidence: ["checked": "\(checked)", "disagreements": disagreements.prefix(10).joined(separator: ",")],
                      startedAt: start)
+    }
+
+    /// A ⌘K hit lands on its document: barrack, destination, selection.
+    private func searchHitOpens() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let barrack = workspace.selectedBarrack,
+              let topic = BarrackDocuments.firstWikiTopic(in: barrack.url) else {
+            return .make("PL-01a", "검색 결과 열기", status: .unverified, evidence: ["reason": "no wiki topic"], startedAt: start)
+        }
+        workspace.open(SearchHit(barrackID: barrack.id, barrackName: barrack.name, source: .wiki,
+                                 title: topic.lastPathComponent, snippet: "", file: topic))
+        let consumed = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { workspace.pendingDocument == nil }
+        let ok = workspace.destination == .wiki && consumed
+        workspace.destination = .sessions
+        await harness.pause(.milliseconds(400))
+        return .make("PL-01a", "검색 결과 → 해당 배럭·Wiki 목적지·토픽 선택",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["destination": workspace.destination.rawValue, "consumed": "\(consumed)"], startedAt: start)
     }
 
     private func matchesPaneByProcess() async -> TestResult {

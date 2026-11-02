@@ -28,6 +28,19 @@ struct GallerySuite {
             }
         }
         workspace.inspectorTab = .artifacts
+        if let window = harness.window {
+            workspace.isPalettePresented = true
+            await harness.pause(.seconds(1))
+            EventSynthesizer.type("ghostty", in: window)
+            await harness.pause(.seconds(2))
+            if let image = await harness.requestCapture(label: "gallery-palette") { captures.append(image.lastPathComponent) }
+            workspace.isPalettePresented = false
+            await harness.pause(.milliseconds(500))
+        }
+        workspace.destination = .history
+        await harness.pause(.seconds(2))
+        if let image = await harness.requestCapture(label: "gallery-history") { captures.append(image.lastPathComponent) }
+        workspace.destination = .sessions
         return [.make("GL-01", "화면 갤러리 \(captures.count)장 — 육안 검토", status: .unverified,
                       evidence: ["captures": captures.joined(separator: ", ")], startedAt: start)]
     }

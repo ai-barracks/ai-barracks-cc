@@ -45,7 +45,8 @@ struct SessionHistoryView: View {
             }
         }
         .background(Tokens.work)
-        .task(id: barrack.id) { reload() }
+        .task(id: barrack.id) { reload(); takePending() }
+        .onChange(of: workspace.pendingSessionID) { takePending() }
         .onChange(of: workspace.liveness.sessions) { reload() }
         .onChange(of: selection) {
             detail = selection.flatMap { SessionRecords.detail(barrackPath: barrack.path, id: $0) }
@@ -72,6 +73,14 @@ struct SessionHistoryView: View {
 
     private func live(for record: SessionRecord) -> LiveSession? {
         workspace.liveness.sessions(of: barrack.id).first { $0.id == record.id }
+    }
+
+    private func takePending() {
+        guard let wanted = workspace.pendingSessionID, records.contains(where: { $0.id == wanted }) else { return }
+        workspace.pendingSessionID = nil
+        status = .all
+        client = "all"
+        selection = wanted
     }
 
     private func reload() {

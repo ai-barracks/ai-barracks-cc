@@ -10,6 +10,12 @@ enum BarrackDocuments {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
+    static func firstWikiTopic(in root: URL) -> URL? {
+        let directory = root.appendingPathComponent("wiki/topics")
+        return ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
+            .filter { $0.hasSuffix(".md") }.sorted().first.map { directory.appendingPathComponent($0) }
+    }
+
     /// Council outputs kept in `resources/council`, newest first; prompts
     /// and run logs are inputs, not minutes.
     static func councilMinutes(in root: URL) -> [URL] {

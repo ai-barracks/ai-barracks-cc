@@ -33,6 +33,10 @@ struct AIBCCPoCApp: App {
                 ResponderCommand(title: "붙여넣기", selector: #selector(NSText.paste(_:)), key: "v")
                 ResponderCommand(title: "전체 선택", selector: #selector(NSText.selectAll(_:)), key: "a")
             }
+            CommandGroup(after: .newItem) {
+                Button("명령·검색…") { workspace.isPalettePresented = true }
+                    .keyboardShortcut("k", modifiers: .command)
+            }
             CommandMenu("에이전트") {
                 Button("새 에이전트…") { workspace.isNewAgentSheetPresented = true }
                     .keyboardShortcut("n", modifiers: .command)

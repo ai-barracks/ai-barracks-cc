@@ -7,6 +7,8 @@ struct DocumentView: View {
     let barrack: Barrack
     let destination: Destination
     var startCouncil: () -> Void = {}
+    /// A document ⌘K asked for; taken once, then cleared.
+    @Binding var pending: URL?
     @State private var selection: URL?
     @State private var source: String?
     @State private var failure: String?
@@ -55,9 +57,10 @@ struct DocumentView: View {
             reader
         }
         .background(Tokens.work)
-        .onAppear { selection = selection ?? documents.first }
-        .onChange(of: destination) { selection = documents.first }
-        .onChange(of: barrack.id) { selection = documents.first }
+        .onAppear { selection = takePending() ?? selection ?? documents.first }
+        .onChange(of: destination) { selection = takePending() ?? documents.first }
+        .onChange(of: barrack.id) { selection = takePending() ?? documents.first }
+        .onChange(of: pending) { if let next = takePending() { selection = next } }
         .onChange(of: selection, initial: true) { load() }
     }
 
@@ -148,6 +151,12 @@ struct DocumentView: View {
         case .sessions, .history, .git:
             return []
         }
+    }
+
+    private func takePending() -> URL? {
+        guard let wanted = pending, documents.contains(wanted) else { return nil }
+        pending = nil
+        return wanted
     }
 
     private func title(of file: URL) -> String {

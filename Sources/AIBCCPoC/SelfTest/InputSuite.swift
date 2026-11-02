@@ -199,9 +199,14 @@ struct InputSuite {
         await harness.drain()
         await harness.pause(.milliseconds(300))
         let bytes = rec.log.bytes(since: mark)
-        return .make("IN-11c", "⌘K가 PTY로 바이트를 보내지 않음",
-                     status: bytes.isEmpty ? .pass : .fail,
-                     evidence: ["hex": Hex.string(bytes)], startedAt: start)
+        // ⌘K is the palette (v1 parity); close it so later keys reach the pane.
+        let opened = harness.workspace.isPalettePresented
+        harness.workspace.isPalettePresented = false
+        await harness.pause(.milliseconds(400))
+        harness.focus(rec.pane)
+        return .make("IN-11c", "⌘K는 명령 팔레트를 열고 PTY로 바이트를 보내지 않음",
+                     status: bytes.isEmpty && opened ? .pass : .fail,
+                     evidence: ["hex": Hex.string(bytes), "palette": "\(opened)"], startedAt: start)
     }
 
     // MARK: - IME callback contract (scripted IMK)

@@ -89,6 +89,10 @@ final class WorkspaceModel {
     var inspectorTab: InspectorTab = .artifacts
     var isNewAgentSheetPresented = false
     var isCouncilSheetPresented = false
+    var isPalettePresented = false
+    /// Set by ⌘K results; the destination view selects it and clears it.
+    var pendingDocument: URL?
+    var pendingSessionID: String?
     let maintenance = MaintenanceStore()
     let liveness: LivenessStore
     private(set) var grids: [String: BarrackGrid] = [:]
@@ -450,3 +454,25 @@ extension WorkspaceModel {
         daemon.shutdownSessions()
     }
 }
+
+// MARK: - ⌘K results
+
+extension WorkspaceModel {
+    /// Opens a search hit where it lives: its barrack, then the session
+    /// record, the Wiki topic or the rules document.
+    func open(_ hit: SearchHit) {
+        selectedBarrackID = hit.barrackID
+        switch hit.source {
+        case .session:
+            pendingSessionID = hit.title
+            destination = .history
+        case .wiki:
+            pendingDocument = hit.file
+            destination = .wiki
+        case .rules, .config:
+            pendingDocument = hit.file
+            destination = .rules
+        }
+    }
+}
+
