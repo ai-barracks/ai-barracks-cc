@@ -5,14 +5,14 @@ import SwiftUI
 /// top-level blocks are listed as preserved, editable only as raw text.
 struct AgentYamlEditorView: View {
     let original: String
-    let onSave: (String) -> Void
+    let onSave: (@escaping StructuredPatch) -> Void
     let onCancel: () -> Void
     @State private var config: AgentConfig
     @State private var error: String?
     private let blocked: [String]
     private let otherKeys: [String]
 
-    init(original: String, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+    init(original: String, onSave: @escaping (@escaping StructuredPatch) -> Void, onCancel: @escaping () -> Void) {
         self.original = original
         self.onSave = onSave
         self.onCancel = onCancel
@@ -54,9 +54,20 @@ struct AgentYamlEditorView: View {
         next.description = line(config.description)
         next.primaryModel = line(config.primaryModel)
         next.fallbackModels = StructuredEditing.cleaned(config.fallbackModels).map(line)
-        switch AgentYamlDocument.patch(original, to: next) {
-        case let .success(raw): onSave(raw)
-        case let .failure(failure): error = StructuredEditing.ambiguous(failure.field.rawValue, "\(failure.reason)")
+        let patch = StructuredEditing.patch(original: original, mine: next, parse: AgentYamlDocument.parse, merge: AgentYamlDocument.merge) { raw, data in
+            AgentYamlDocument.patch(raw, to: data).mapError { StructuredEditing.ambiguous($0.field.rawValue, $0.reason) }
         }
+        submit(patch)
+    }
+
+    /// Checks the patch on the text the form was opened on, then hands it
+    /// to the document view (which owns the conflict check).
+    private func submit(_ patch: @escaping StructuredPatch) {
+        if case let .failure(failure) = patch(original) {
+            error = failure.message
+            return
+        }
+        error = nil
+        onSave(patch)
     }
 }

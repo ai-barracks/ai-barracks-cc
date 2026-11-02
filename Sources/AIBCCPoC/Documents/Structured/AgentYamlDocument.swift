@@ -114,6 +114,17 @@ enum AgentYamlDocument {
         }
     }
 
+    static func merge(base: AgentConfig, mine: AgentConfig, theirs: AgentConfig) -> AgentConfig? {
+        guard let name = StructuredEditing.pick(base.name, mine.name, theirs.name),
+              let version = StructuredEditing.pick(base.version, mine.version, theirs.version),
+              let description = StructuredEditing.pick(base.description, mine.description, theirs.description),
+              let primary = StructuredEditing.pick(base.primaryModel, mine.primaryModel, theirs.primaryModel),
+              let fallback = StructuredEditing.pick(base.fallbackModels, mine.fallbackModels, theirs.fallbackModels),
+              let aib = StructuredEditing.pick(base.aibVersion, mine.aibVersion, theirs.aibVersion) else { return nil }
+        return AgentConfig(name: name, version: version, description: description, primaryModel: primary,
+                           fallbackModels: fallback, aibVersion: aib)
+    }
+
     /// Top-level keys the form does not edit (shown as preserved).
     static func otherKeys(_ raw: String) -> [String] {
         let known = Set(scalarKeys.map(\.1) + ["models"])

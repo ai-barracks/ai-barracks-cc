@@ -5,13 +5,13 @@ import SwiftUI
 /// (audit rules, custom sections) is kept byte for byte.
 struct GrowthEditorView: View {
     let original: String
-    let onSave: (String) -> Void
+    let onSave: (@escaping StructuredPatch) -> Void
     let onCancel: () -> Void
     @State private var data: GrowthData
     @State private var error: String?
     private let blocked: [String]
 
-    init(original: String, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+    init(original: String, onSave: @escaping (@escaping StructuredPatch) -> Void, onCancel: @escaping () -> Void) {
         self.original = original
         self.onSave = onSave
         self.onCancel = onCancel
@@ -77,13 +77,24 @@ struct GrowthEditorView: View {
             return
         }
         let next = GrowthData(decisionTable: rows, notGrowthWorthy: StructuredEditing.cleaned(data.notGrowthWorthy))
-        switch GrowthDocument.patch(original, to: next) {
-        case let .success(raw): onSave(raw)
-        case let .failure(failure): error = StructuredEditing.ambiguous(failure.field.rawValue, "\(failure.reason)")
+        let patch = StructuredEditing.patch(original: original, mine: next, parse: GrowthDocument.parse, merge: GrowthDocument.merge) { raw, data in
+            GrowthDocument.patch(raw, to: data).mapError { StructuredEditing.ambiguous($0.field.rawValue, $0.reason) }
         }
+        submit(patch)
     }
 
     private func clean(_ text: String) -> String {
         StructuredEditing.singleLine(text).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Checks the patch on the text the form was opened on, then hands it
+    /// to the document view (which owns the conflict check).
+    private func submit(_ patch: @escaping StructuredPatch) {
+        if case let .failure(failure) = patch(original) {
+            error = failure.message
+            return
+        }
+        error = nil
+        onSave(patch)
     }
 }

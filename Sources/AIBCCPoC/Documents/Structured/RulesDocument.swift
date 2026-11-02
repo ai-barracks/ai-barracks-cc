@@ -60,6 +60,13 @@ enum RulesDocument {
         }
     }
 
+    static func merge(base: RulesData, mine: RulesData, theirs: RulesData) -> RulesData? {
+        guard let always = StructuredEditing.pick(base.mustAlways, mine.mustAlways, theirs.mustAlways),
+              let never = StructuredEditing.pick(base.mustNever, mine.mustNever, theirs.mustNever),
+              let learned = StructuredEditing.pick(base.learned, mine.learned, theirs.learned) else { return nil }
+        return RulesData(mustAlways: always, mustNever: never, learned: learned)
+    }
+
     static func list(_ data: RulesData, _ field: Field) -> [String] {
         switch field {
         case .mustAlways: data.mustAlways

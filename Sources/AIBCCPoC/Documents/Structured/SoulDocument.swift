@@ -76,6 +76,15 @@ enum SoulDocument {
         }
     }
 
+    static func merge(base: SoulData, mine: SoulData, theirs: SoulData) -> SoulData? {
+        guard let name = StructuredEditing.pick(base.name, mine.name, theirs.name),
+              let expertise = StructuredEditing.pick(base.expertise, mine.expertise, theirs.expertise),
+              let personality = StructuredEditing.pick(base.personality, mine.personality, theirs.personality),
+              let coreValues = StructuredEditing.pick(base.coreValues, mine.coreValues, theirs.coreValues),
+              let constraints = StructuredEditing.pick(base.constraints, mine.constraints, theirs.constraints) else { return nil }
+        return SoulData(name: name, expertise: expertise, personality: personality, coreValues: coreValues, constraints: constraints)
+    }
+
     static func list(_ data: SoulData, _ field: Field) -> [String] {
         switch field {
         case .name: [data.name]

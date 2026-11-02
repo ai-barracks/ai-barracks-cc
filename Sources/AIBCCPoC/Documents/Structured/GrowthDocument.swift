@@ -100,6 +100,12 @@ enum GrowthDocument {
         }
     }
 
+    static func merge(base: GrowthData, mine: GrowthData, theirs: GrowthData) -> GrowthData? {
+        guard let table = StructuredEditing.pick(base.decisionTable, mine.decisionTable, theirs.decisionTable),
+              let list = StructuredEditing.pick(base.notGrowthWorthy, mine.notGrowthWorthy, theirs.notGrowthWorthy) else { return nil }
+        return GrowthData(decisionTable: table, notGrowthWorthy: list)
+    }
+
     private enum TableState { case outside, expectSeparator, rows }
 
     private static func isHeader(_ trimmed: String) -> Bool {

@@ -6,7 +6,7 @@ import Foundation
 struct DocumentSuite {
     func run() -> [TestResult] {
         [patchPrimitives(), patchBulletRuns(), rulesParsing(), rulesPatching(), soulParsing(), soulPatching(),
-         growthParsing(), growthPatching(), yamlParsing(), yamlPatching()]
+         growthParsing(), growthPatching(), yamlParsing(), yamlPatching(), mergeOnConflict()]
     }
 
     static let richRules = [
@@ -356,5 +356,36 @@ struct DocumentSuite {
         }
         if !AgentYamlDocument.blocked(rich).isEmpty || base.aibVersion != "1.1" { failures.append("blocked rich") }
         return check("YM-01b", "agent.yaml 패치 = v1(주석·따옴표 유지, fallback 삽입·삭제, 모호하면 실패) + v1 YAML 손상 4건 수정", failures, start)
+    }
+
+    /// A form saved after an agent changed the file: only the sections the
+    /// user changed are applied to the new text.
+    private func mergeOnConflict() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let original = DocumentSuite.richRules
+        var mine = RulesDocument.parse(original)
+        mine.mustAlways.append("use timezones")
+        let apply = { (raw: String, data: RulesData) in
+            RulesDocument.patch(raw, to: data).mapError { StructuredEditing.ambiguous($0.field.rawValue, $0.reason) }
+        }
+        let patch = StructuredEditing.patch(original: original, mine: mine, parse: RulesDocument.parse, merge: RulesDocument.merge, apply: apply)
+        if (try? patch(original).get()) != (try? RulesDocument.patch(original, to: mine).get()) { failures.append("plain save") }
+        // An agent appended a learned rule meanwhile.
+        let agent = original.replacingOccurrences(of: "- log before mutating shared state\n", with: "- log before mutating shared state\n- agent rule\n")
+        let merged = (try? patch(agent).get()) ?? ""
+        if !merged.contains("- write tests\n- use timezones\n") || !merged.contains("- agent rule\n") { failures.append("merge keeps both") }
+        // The agent changed the same section differently.
+        let clash = original.replacingOccurrences(of: "- write tests\n", with: "- write tests\n- agent always\n")
+        if case .success = patch(clash) { failures.append("same section must fail") }
+        var soulMine = SoulDocument.parse(DocumentSuite.richSoul)
+        soulMine.name = "Nyx"
+        let soulPatch = StructuredEditing.patch(original: DocumentSuite.richSoul, mine: soulMine, parse: SoulDocument.parse, merge: SoulDocument.merge) {
+            SoulDocument.patch($0, to: $1).mapError { StructuredEditing.ambiguous($0.field.rawValue, $0.reason) }
+        }
+        let soulAgent = DocumentSuite.richSoul.replacingOccurrences(of: "- ko-first\n", with: "- ko-first\n- no PII\n")
+        let soulMerged = (try? soulPatch(soulAgent).get()) ?? ""
+        if !soulMerged.contains("\nNyx\n") || !soulMerged.contains("- no PII\n") { failures.append("soul merge") }
+        return check("SM-01a", "충돌 시 내 변경만 새 내용에 적용(섹션 단위 3-way): 다른 섹션 변경 보존, 같은 섹션이면 거부", failures, start)
     }
 }

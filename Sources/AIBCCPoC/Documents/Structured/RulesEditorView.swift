@@ -5,13 +5,13 @@ import SwiftUI
 /// and refuses a file whose shape is ambiguous (the raw editor remains).
 struct RulesEditorView: View {
     let original: String
-    let onSave: (String) -> Void
+    let onSave: (@escaping StructuredPatch) -> Void
     let onCancel: () -> Void
     @State private var data: RulesData
     @State private var error: String?
     private let blocked: [String]
 
-    init(original: String, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+    init(original: String, onSave: @escaping (@escaping StructuredPatch) -> Void, onCancel: @escaping () -> Void) {
         self.original = original
         self.onSave = onSave
         self.onCancel = onCancel
@@ -31,9 +31,20 @@ struct RulesEditorView: View {
         let cleaned = RulesData(mustAlways: StructuredEditing.cleaned(data.mustAlways),
                                 mustNever: StructuredEditing.cleaned(data.mustNever),
                                 learned: StructuredEditing.cleaned(data.learned))
-        switch RulesDocument.patch(original, to: cleaned) {
-        case let .success(raw): onSave(raw)
-        case let .failure(failure): error = StructuredEditing.ambiguous(failure.field.rawValue, failure.reason)
+        let patch = StructuredEditing.patch(original: original, mine: cleaned, parse: RulesDocument.parse, merge: RulesDocument.merge) { raw, data in
+            RulesDocument.patch(raw, to: data).mapError { StructuredEditing.ambiguous($0.field.rawValue, $0.reason) }
         }
+        submit(patch)
+    }
+
+    /// Checks the patch on the text the form was opened on, then hands it
+    /// to the document view (which owns the conflict check).
+    private func submit(_ patch: @escaping StructuredPatch) {
+        if case let .failure(failure) = patch(original) {
+            error = failure.message
+            return
+        }
+        error = nil
+        onSave(patch)
     }
 }

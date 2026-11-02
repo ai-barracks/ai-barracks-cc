@@ -23,6 +23,8 @@ struct DocumentView: View {
     @State private var isEditing = false
     @State private var isListEditing = false
     @State private var conflict = false
+    /// The form's changes while its save is pending a conflict decision.
+    @State private var structuredPatch: StructuredPatch?
     @State private var saveError: String?
 
     var body: some View {
@@ -87,7 +89,7 @@ struct DocumentView: View {
             if isListEditing, let original, let file = loadedFile, file == selection, let kind = StructuredKind(file: file) {
                 // Identity = file + text it was opened on: the form's state
                 // must never carry over from another file or an older text.
-                kind.editor(original: original, onSave: { saveStructured($0) }, onCancel: { isListEditing = false })
+                kind.editor(original: original, onSave: { saveStructured($0) }, onCancel: cancelStructured)
                     .id([file.absoluteString, original])
             } else if isEditing {
                 TextEditor(text: $draft)
@@ -104,13 +106,17 @@ struct DocumentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .alert("파일이 바뀌었습니다", isPresented: $conflict) {
+            if structuredPatch != nil {
+                Button("내 변경만 새 내용에 적용") { rebase() }
+            }
             Button("내 편집으로 덮어쓰기", role: .destructive) {
                 if let file = selection { finish(DocumentEditing.overwrite(edited: draft, to: file)) }
             }
             Button("다시 불러오기(내 편집 버림)") { isEditing = false; load() }
             Button("계속 편집", role: .cancel) {}
         } message: {
-            Text("편집하는 동안 다른 곳(에이전트 등)이 이 파일을 고쳤습니다.")
+            Text(structuredPatch == nil ? "편집하는 동안 다른 곳(에이전트 등)이 이 파일을 고쳤습니다."
+                 : "편집하는 동안 다른 곳(에이전트 등)이 이 파일을 고쳤습니다. 내가 바꾼 섹션만 새 내용에 적용하면 다른 곳의 변경도 남습니다.")
         }
     }
 
@@ -121,7 +127,9 @@ struct DocumentView: View {
                 if let saveError { Text(saveError).font(Tokens.Font.meta).foregroundStyle(Tokens.red) }
                 Button("취소") { isEditing = false; saveError = nil }
                 Button("저장") { save() }.keyboardShortcut("s", modifiers: .command)
-            } else if !isListEditing {
+            } else if isListEditing {
+                if let saveError { Text(saveError).font(Tokens.Font.meta).foregroundStyle(Tokens.red).lineLimit(2) }
+            } else {
                 let kind = StructuredKind(file: file)
                 if let kind { Button(kind.editLabel) { isListEditing = true } }
                 Button(kind == nil ? "편집" : "원문 편집") { draft = original ?? ""; isEditing = true }
@@ -131,21 +139,41 @@ struct DocumentView: View {
 
     private func save() {
         guard let file = selection, let original else { return }
+        structuredPatch = nil
         let result = DocumentEditing.save(edited: draft, original: original, to: file)
         if result == .conflict { conflict = true } else { finish(result) }
     }
 
     /// The structured editor's output goes through the same conflict check.
-    private func saveStructured(_ patched: String) {
-        guard let file = selection, let original else { return }
+    private func saveStructured(_ patch: @escaping StructuredPatch) {
+        guard let file = selection, let original, case let .success(patched) = patch(original) else { return }
         draft = patched
+        structuredPatch = patch
+        saveError = nil
         let result = DocumentEditing.save(edited: patched, original: original, to: file)
         if result == .conflict { conflict = true } else { finish(result) }
+    }
+
+    private func cancelStructured() {
+        isListEditing = false
+        structuredPatch = nil
+        saveError = nil
+    }
+
+    /// Re-applies the form's changes to the file as it is now.
+    private func rebase() {
+        guard let file = selection, let patch = structuredPatch,
+              let current = try? String(contentsOf: file, encoding: .utf8) else { return }
+        switch patch(current) {
+        case let .success(rebased): finish(DocumentEditing.save(edited: rebased, original: current, to: file))
+        case let .failure(failure): saveError = failure.message
+        }
     }
 
     private func finish(_ result: DocumentEditing.SaveResult) {
         switch result {
         case .saved, .unchanged:
+            structuredPatch = nil
             isListEditing = false
             isEditing = false
             saveError = nil
@@ -198,6 +226,8 @@ struct DocumentView: View {
 
     private func load() {
         failure = nil
+        structuredPatch = nil
+        saveError = nil
         isEditing = false
         isListEditing = false
         loadedFile = selection
