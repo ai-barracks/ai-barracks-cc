@@ -6,7 +6,7 @@ import Foundation
 struct DocumentSuite {
     func run() -> [TestResult] {
         [patchPrimitives(), patchBulletRuns(), rulesParsing(), rulesPatching(), soulParsing(), soulPatching(),
-         growthParsing(), growthPatching()]
+         growthParsing(), growthPatching(), yamlParsing(), yamlPatching()]
     }
 
     static let richRules = [
@@ -39,6 +39,13 @@ struct DocumentSuite {
         "## End-of-Session Audit", "", "세션 종료 전 누락을 점검한다.", "",
         "## Custom Section", "custom prose should stay", "```md", "| 세션 중 이벤트 | fake | table |",
         "**NOT growth-worthy** — fake inside code", "- fake not-growth item", "```",
+    ].joined(separator: "\n")
+
+    static let richYaml = [
+        "# agent config", "name: old-agent # keep name comment", "version: 1.4.0",
+        "description: \"Old description # not comment\" # keep desc comment", "",
+        "models:", "  # model comment", "  primary: gpt-5.5 # keep primary comment", "  fallback:", "    - claude-opus-4-8", "    - gemini-3", "",
+        "memory:", "  sessions: sessions/", "", "skills:", "  discovery: auto", "", "custom_policy:", "  x: y", "", "aib_version: 1.1",
     ].joined(separator: "\n")
 
     private func check(_ id: String, _ title: String, _ failures: [String], _ start: ContinuousClock.Instant) -> TestResult {
@@ -275,5 +282,79 @@ struct DocumentSuite {
             failures.append("blocked preflight soul/rules")
         }
         return check("GR-01b", "GROWTH 패치 = v1(표 행·목록만 교체, 빈 표·목록 채우기, 모호하면 실패) + 저장 불가 섹션 사전 표시", failures, start)
+    }
+
+    private func yamlParsing() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        if AgentYamlDocument.parse(DocumentSuite.richYaml) != AgentConfig(name: "old-agent", version: "1.4.0", description: "Old description # not comment",
+                                                                         primaryModel: "gpt-5.5", fallbackModels: ["claude-opus-4-8", "gemini-3"], aibVersion: "1.1") {
+            failures.append("rich parse")
+        }
+        let outside = "name: a\nversion: 1\ndescription: d\nmodels:\n  primary: model-primary\nmetadata:\n  primary: metadata-primary\n  fallback:\n    - metadata-fallback\naib_version: 1.1"
+        let parsed = AgentYamlDocument.parse(outside)
+        if parsed.primaryModel != "model-primary" || !parsed.fallbackModels.isEmpty { failures.append("keys outside models") }
+        let crlf = DocumentSuite.richYaml.replacingOccurrences(of: "\n", with: "\r\n")
+        for raw in [DocumentSuite.richYaml, crlf] where (try? AgentYamlDocument.patch(raw, to: AgentYamlDocument.parse(raw)).get()) != raw {
+            failures.append("unchanged round trip")
+        }
+        if AgentYamlDocument.otherKeys(DocumentSuite.richYaml) != ["memory", "skills", "custom_policy"] { failures.append("other keys") }
+        if YamlScalar.unquote(#""a\"b\\c\n""#) != "a\"b\\c\n" || YamlScalar.unquote("'it''s'") != "it's" { failures.append("unquote") }
+        return check("YM-01a", "agent.yaml 해석 = v1(주석·따옴표 인식, models 밖 키 무시) · 변경 없으면 원문 그대로", failures, start)
+    }
+
+    private func yamlPatching() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let rich = DocumentSuite.richYaml
+        let base = AgentYamlDocument.parse(rich)
+        let patched = { (raw: String, change: (inout AgentConfig) -> Void) -> Result<String, AgentYamlDocument.Failure> in
+            var next = AgentYamlDocument.parse(raw)
+            change(&next)
+            return AgentYamlDocument.patch(raw, to: next)
+        }
+        let renamed = (try? patched(rich) { $0.name = "new-agent" }.get()) ?? ""
+        for piece in ["name: new-agent # keep name comment", "description: \"Old description # not comment\" # keep desc comment",
+                      "memory:\n  sessions: sessions/", "custom_policy:\n  x: y"] where !renamed.contains(piece) { failures.append("scalar: \(piece.prefix(16))") }
+        if (try? patched(rich) { $0.description = "New # value" }.get())?.contains("description: \"New # value\" # keep desc comment") != true {
+            failures.append("quoted description")
+        }
+        let plain = "name: a\nversion: 1\ndescription: old\nmodels:\n  primary: p\naib_version: 1.1"
+        if (try? patched(plain) { $0.description = "New # value" }.get())?.contains("description: \"New # value\"") != true { failures.append("quote when needed") }
+        if (try? patched(plain) { $0.description = "[draft] x" }.get())?.contains("description: \"[draft] x\"") != true { failures.append("indicator quoted") }
+        let models = (try? patched(rich) { $0.primaryModel = "gpt-6"; $0.fallbackModels = ["claude-new"] }.get()) ?? ""
+        if !models.contains("  # model comment\n  primary: gpt-6 # keep primary comment\n  fallback:\n    - claude-new\n") || models.contains("gemini-3") {
+            failures.append("models")
+        }
+        let commented = "name: a\nversion: 1\ndescription: d\nmodels:\n  primary: p\n  fallback:\n    - f1 # first fallback\n    - \"f2 # value\" # second fallback\naib_version: 1.1"
+        if AgentYamlDocument.parse(commented).fallbackModels != ["f1", "f2 # value"] { failures.append("item comments parse") }
+        let items = (try? patched(commented) { $0.fallbackModels = ["f1-new", "f2-new # value"] }.get()) ?? ""
+        if !items.contains("    - f1-new # first fallback") || !items.contains("    - \"f2-new # value\" # second fallback") { failures.append("item comments") }
+        let inserted = (try? patched(plain) { $0.fallbackModels = ["f1", "f2"] }.get()) ?? ""
+        if !inserted.contains("models:\n  primary: p\n  fallback:\n    - f1\n    - f2\naib_version") { failures.append("insert fallback") }
+        if (try? patched(inserted) { $0.fallbackModels = [] }.get())?.contains("models:\n  primary: p\naib_version") != true { failures.append("remove fallback") }
+        // v1 glued the inserted block onto a last line without a newline.
+        if (try? patched("name: a\nmodels:\n  primary: p") { $0.fallbackModels = ["f"] }.get()) != "name: a\nmodels:\n  primary: p\n  fallback:\n    - f\n" {
+            failures.append("insert at eof")
+        }
+        // The aib template's empty flow list (v1 appended items after "[]").
+        let flowEmpty = "models:\n  primary: p  # meta\n  fallback: []  # none yet\n\nmemory:\n  x: y\n"
+        if (try? patched(flowEmpty) { $0.fallbackModels = ["a"] }.get()) != "models:\n  primary: p  # meta\n  fallback:  # none yet\n    - a\n\nmemory:\n  x: y\n" {
+            failures.append("empty flow list")
+        }
+        let failing: [(String, (inout AgentConfig) -> Void, AgentYamlDocument.Failure)] = [
+            ("version: 1\nmodels:\n  primary: p\n", { $0.name = "x" }, .init(field: .name, reason: .keyNotFound)),
+            ("name: a\nname: b\nmodels:\n  primary: p\n", { $0.name = "x" }, .init(field: .name, reason: .multipleKeys)),
+            ("name: a\nversion: 1\ndescription: d\naib_version: 1.1\n", { $0.primaryModel = "x" }, .init(field: .primaryModel, reason: .modelsNotFound)),
+            ("models:\n  primary: p\n  fallback: [a, b]\n", { $0.fallbackModels = ["x"] }, .init(field: .fallbackModels, reason: .fallbackNotBlockList)),
+            ("models:\n  fallback:\n    - a\n    # note\n    - b\n", { $0.fallbackModels = ["x"] }, .init(field: .fallbackModels, reason: .fallbackNotContiguous)),
+            ("models:\n  fallback:\n    - a\n\n    - b\n", { $0.fallbackModels = ["x"] }, .init(field: .fallbackModels, reason: .fallbackNotContiguous)),
+        ]
+        for (raw, change, want) in failing {
+            if case let .failure(got) = patched(raw, change), got == want { continue }
+            failures.append("fail closed \(want.reason)")
+        }
+        if !AgentYamlDocument.blocked(rich).isEmpty || base.aibVersion != "1.1" { failures.append("blocked rich") }
+        return check("YM-01b", "agent.yaml 패치 = v1(주석·따옴표 유지, fallback 삽입·삭제, 모호하면 실패) + v1 YAML 손상 4건 수정", failures, start)
     }
 }

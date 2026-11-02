@@ -87,13 +87,14 @@ enum StructuredEditing {
 
 /// Which structured editor a barrack file has, if any (v1 Rules tab forms).
 enum StructuredKind {
-    case rules, soul, growth
+    case rules, soul, growth, agentYaml
 
     init?(file: URL) {
         switch file.lastPathComponent {
         case "RULES.md": self = .rules
         case "SOUL.md": self = .soul
         case "GROWTH.md": self = .growth
+        case "agent.yaml": self = .agentYaml
         default: return nil
         }
     }
@@ -101,7 +102,7 @@ enum StructuredKind {
     var editLabel: String {
         switch self {
         case .rules: "목록 편집"
-        case .soul: "폼 편집"
+        case .soul, .agentYaml: "폼 편집"
         case .growth: "표 편집"
         }
     }
@@ -112,6 +113,7 @@ enum StructuredKind {
         case .rules: RulesEditorView(original: original, onSave: onSave, onCancel: onCancel)
         case .soul: SoulEditorView(original: original, onSave: onSave, onCancel: onCancel)
         case .growth: GrowthEditorView(original: original, onSave: onSave, onCancel: onCancel)
+        case .agentYaml: AgentYamlEditorView(original: original, onSave: onSave, onCancel: onCancel)
         }
     }
 }

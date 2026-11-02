@@ -38,7 +38,7 @@ struct GallerySuite {
             await harness.pause(.milliseconds(500))
         }
         if let barrack = workspace.selectedBarrack {
-            for name in ["RULES.md", "SOUL.md", "GROWTH.md"] {
+            for name in ["RULES.md", "SOUL.md", "GROWTH.md", "agent.yaml"] {
                 workspace.destination = .rules
                 await harness.pause(.milliseconds(500))
                 workspace.pendingDocument = barrack.url.appendingPathComponent(name)
