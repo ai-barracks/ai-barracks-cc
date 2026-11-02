@@ -21,6 +21,13 @@ struct NewAgentSheet: View {
             Toggle("권한 확인 건너뛰기 (--skip-permissions)", isOn: $skipPermissions)
                 .disabled(client == .terminal)
                 .font(Tokens.Font.body)
+            if ProviderProfiles.clients.contains(client) {
+                HStack(spacing: Tokens.Spacing.s) {
+                    Text("모델: \(ProviderProfiles.summary(ProviderProfiles.load(client)))")
+                        .font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary)
+                    SettingsLink { Text("설정에서 변경") }.font(Tokens.Font.meta).buttonStyle(.link)
+                }
+            }
             if full {
                 Text("터미널 4개가 모두 사용 중입니다. pane 하나를 닫거나 다른 배럭에서 시작하세요.")
                     .font(Tokens.Font.meta).foregroundStyle(Tokens.orange)

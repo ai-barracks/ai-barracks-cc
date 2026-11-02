@@ -13,10 +13,12 @@ enum AgentClient: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum AgentLauncher {
-    /// nil = a plain login shell (the "터미널" choice).
-    static func command(for client: AgentClient, skipPermissions: Bool) -> String? {
+    /// nil = a plain login shell (the "터미널" choice). `profile` adds the
+    /// client's model / effort (v1 Provider profiles).
+    static func command(for client: AgentClient, skipPermissions: Bool, profile: ProviderProfile = ProviderProfile()) -> String? {
         guard client != .terminal else { return nil }
         let start = ["aib", "start", client.rawValue] + (skipPermissions ? ["--skip-permissions"] : [])
+            + ProviderProfiles.arguments(profile, for: client).map(shellQuote)
         // Ghostty execs `command` without a shell: wrap in a login shell
         // (the user's PATH finds aib) and keep the shell after the agent.
         let inner = start.joined(separator: " ") + "; exec /bin/zsh -l"

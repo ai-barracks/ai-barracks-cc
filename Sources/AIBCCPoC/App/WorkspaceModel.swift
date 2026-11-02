@@ -387,7 +387,8 @@ extension WorkspaceModel {
     /// The preset grows to make room (1 → 2 → 4); nil when four are full.
     @discardableResult
     func launchAgent(_ client: AgentClient, skipPermissions: Bool) -> TerminalPane? {
-        openPane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions))
+        openPane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions,
+                                                                     profile: ProviderProfiles.load(client)))
     }
 
     /// 정비 actions run where the user sees them: a new pane in the

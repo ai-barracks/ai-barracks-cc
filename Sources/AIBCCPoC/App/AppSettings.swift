@@ -75,6 +75,14 @@ struct SettingsView: View {
             Section("세션") {
                 Toggle("앱 종료 시 세션 유지", isOn: $keepSessions).disabled(workspace.daemon == nil)
             }
+            Section {
+                ForEach(ProviderProfiles.clients) { ProviderProfileRow(client: $0) }
+            } header: {
+                Text("모델 프로필 (새 세션)")
+            } footer: {
+                Text("⌘N으로 여는 새 세션에만 적용(aib start --model/--effort). 목록 조회는 모델 요청을 보내지 않습니다 — Codex는 설치된 CLI·계정이 알리는 목록, Claude는 문서상 alias이며 실제 지원 여부는 CLI가 확인합니다.")
+                    .font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary)
+            }
             Section("정보") {
                 LabeledContent("AIBCC", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")
                 LabeledContent("aib CLI", value: aibVersion)
