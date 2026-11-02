@@ -121,6 +121,16 @@ enum AppConstants {
         static let rendererReadyTimeout: Duration = .seconds(3)
     }
 
+    /// Terminal output archive (v1 scrollback.rs defaults).
+    enum Scrollback {
+        static let directory = "scrollback"
+        static let selfTestDirectory = "scrollback-selftest"
+        static let maxBytesPerOutput = 1024 * 1024
+        static let maxTotalBytes = 100 * 1024 * 1024
+        static let retention: TimeInterval = 14 * 24 * 60 * 60
+        static let gcInterval: TimeInterval = 60
+    }
+
     enum Git {
         /// Changes listed in the Git destination (the counts cover all).
         static let visibleChanges = 200

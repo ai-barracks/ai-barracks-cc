@@ -101,6 +101,10 @@ final class WorkspaceModel {
     let maintenance = MaintenanceStore()
     let notices = NoticeCenter()
     let quickCommands = QuickCommandStore()
+    let scrollback = ScrollbackArchive.standard
+    @ObservationIgnored var lastScrollbackCollection: Date?
+    /// Bumped when the output archive changes (the archive view reloads).
+    var archiveRevision = 0
     /// Non-nil while the Quick Command sheet is open.
     var quickCommandDraft: QuickCommand?
     @ObservationIgnored private(set) var health: HealthMonitor?
@@ -190,6 +194,7 @@ final class WorkspaceModel {
             backend: backend
         )
         let paneID = pane.id
+        pane.onExit = { [weak self] pane in self?.archive(pane, barrackPath: directory) }
         pane.state.onClose = { [weak self] processAlive in
             self?.handleClose(paneID: paneID, processAlive: processAlive)
         }
@@ -249,7 +254,10 @@ final class WorkspaceModel {
         let kept = Set(newGrid.panes.map(\.id))
         let removed = (grids[gridKey]?.panes ?? []).filter { !kept.contains($0.id) }
         grids = grids.merging([gridKey: newGrid]) { _, new in new }
-        removed.forEach { $0.terminate() }
+        removed.forEach { pane in
+            archive(pane, barrackPath: selectedBarrack?.path)
+            pane.terminate()
+        }
         updateSurfaceVisibility()
         switch persisting {
         case .now: persist()

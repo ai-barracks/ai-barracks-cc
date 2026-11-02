@@ -31,6 +31,8 @@ final class TerminalPane: Identifiable {
     @ObservationIgnored private var exitMonitor: ProcessExitMonitor?
     @ObservationIgnored private var remotePID: pid_t?
     @ObservationIgnored private var isSettlingReplay = false
+    /// Called once the child is gone (the workspace archives the output).
+    @ObservationIgnored var onExit: (@MainActor (TerminalPane) -> Void)?
 
     var probeView: ProbeTerminalView? { ownedView }
     var monitoredPID: pid_t? { exitMonitor?.pid ?? remotePID }
@@ -117,6 +119,7 @@ final class TerminalPane: Identifiable {
             return
         }
         hasExited = true
+        onExit?(self)
     }
 
     private func handle(_ event: DaemonSession.Event) {

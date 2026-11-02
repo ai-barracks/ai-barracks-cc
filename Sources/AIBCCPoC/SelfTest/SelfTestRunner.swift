@@ -40,6 +40,9 @@ struct SelfTestRunner {
 
     func run() async -> SelfTestExit {
         guard let output = makeOutputDirectory() else { return .setupError }
+        // The self-test's own output archive starts empty each run (never the user's).
+        let archive = workspace.scrollback.directory
+        if archive.lastPathComponent == AppConstants.Scrollback.selfTestDirectory { try? FileManager.default.removeItem(at: archive) }
         let harness = SelfTestHarness(workspace: workspace, artifacts: artifacts, outputDirectory: output)
         NSApp.activate()
         guard await harness.waitUntil(AppConstants.SelfTest.readyTimeout, { harness.window != nil }) else {
@@ -90,7 +93,7 @@ struct SelfTestRunner {
 
     private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {
         switch name {
-        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + [OverviewSuite().run()] + (await UnitSuite().runAsync()) + (await GitSuite().run())
+        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + [OverviewSuite().run(), ScrollbackSuite().run()] + (await UnitSuite().runAsync()) + (await GitSuite().run())
         case "agents": return await AgentSuite(harness: harness).run() + [await SkillSuite().syncIntegration(), await BarrackAdminSuite().run()]
         case "packaging": return await PackagingSuite(harness: harness).run()
         case "input": return await InputSuite(harness: harness).run()

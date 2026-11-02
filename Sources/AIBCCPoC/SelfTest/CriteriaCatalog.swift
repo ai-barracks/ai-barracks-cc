@@ -111,6 +111,7 @@ enum CriteriaCatalog {
               requires: ["HM-01a", "HM-01b", "NC-01a", "AR-01a", "RG-02a"]),
         .init(id: "TT-01", title: "터미널 관리·Quick Commands·내보내기·설정(v1 패리티 C2~C6·B4·H3)", blocking: false,
               requires: ["TT-01a", "TT-01b", "SE-01a"]),
+        .init(id: "SB-01", title: "터미널 출력 보관(v1 scrollback archive)", blocking: false, requires: ["SB-01a", "SB-01b"]),
         .init(id: "OV-01", title: "배럭 개요(v1 Overview)", blocking: false, requires: ["OV-01a"]),
         .init(id: "BA-01", title: "배럭 추가·제거·새로 고침 = v1(aib init / barracks remove / refresh)", blocking: false, requires: ["BA-01a"]),
         .init(id: "GT-01", title: "Git 상태·커밋·push = v1 + 모노레포 커밋 격리", blocking: false, requires: ["GT-01a", "GT-01b"]),

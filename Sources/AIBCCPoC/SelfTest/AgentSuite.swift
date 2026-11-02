@@ -11,7 +11,7 @@ struct AgentSuite {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
-         await registryReload(), await terminalManagement(), await settingsApply()]
+         await registryReload(), await terminalManagement(), await archiveOnClose(), await settingsApply()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -246,6 +246,28 @@ struct AgentSuite {
                      evidence: ["typed": Hex.string(typed), "text_has_markers": "\(text.contains("TL") && text.contains("BR"))",
                                 "front": "\(front)", "closed_process_ended": "\(ended)", "panes": "\(workspace.panes.count)"],
                      startedAt: start)
+    }
+
+    /// v1 C7: closing a pane keeps its screen text in the (self-test) archive.
+    private func archiveOnClose() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let recorder = harness.makeRecorderPane(name: "archive") else {
+            return .make("SB-01b", "닫은 pane 출력 보관", status: .fail, cause: .app, evidence: ["reason": "setup"], startedAt: start)
+        }
+        await harness.install([recorder.pane], layout: .single)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
+        let id = recorder.pane.id.uuidString
+        workspace.closePane(id: recorder.pane.id)
+        let text = workspace.scrollback.text(of: id) ?? ""
+        let entry = workspace.scrollback.list().first { $0.id == id }
+        let isolated = workspace.scrollback.directory.lastPathComponent == AppConstants.Scrollback.selfTestDirectory
+        let ok = text.contains("TL") && text.contains("BR") && entry?.barrackPath == workspace.selectedBarrack?.path && isolated
+        workspace.deleteArchived(id)
+        return .make("SB-01b", "pane을 닫으면 화면 내용이 보관됨(배럭 경로 포함, 테스트 전용 보관소)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["markers": "\(text.contains("TL") && text.contains("BR"))", "entry": "\(entry != nil)",
+                                "isolated": "\(isolated)"], startedAt: start)
     }
 
     private func settingsApply() async -> TestResult {
