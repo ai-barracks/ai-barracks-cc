@@ -49,6 +49,10 @@ struct MainView: View {
             SessionHistoryView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
             GitView(workspace: workspace, barrack: barrack)
+        } else if let barrack = workspace.selectedBarrack, workspace.destination == .skills {
+            SkillsView(barrack: barrack, changes: artifacts.fileEvents,
+                       pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),
+                       pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }))
         } else if let barrack = workspace.selectedBarrack {
             DocumentView(barrack: barrack, destination: workspace.destination,
                          startCouncil: { workspace.isCouncilSheetPresented = true },

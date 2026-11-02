@@ -90,8 +90,8 @@ struct SelfTestRunner {
 
     private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {
         switch name {
-        case "unit": return UnitSuite().run() + DocumentSuite().run() + (await UnitSuite().runAsync())
-        case "agents": return await AgentSuite(harness: harness).run()
+        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + (await UnitSuite().runAsync())
+        case "agents": return await AgentSuite(harness: harness).run() + [await SkillSuite().syncIntegration()]
         case "packaging": return await PackagingSuite(harness: harness).run()
         case "input": return await InputSuite(harness: harness).run()
         case "resize": return await ResizeSuite(harness: harness).run()

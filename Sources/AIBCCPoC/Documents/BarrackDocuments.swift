@@ -3,11 +3,9 @@ import Foundation
 /// Where the fixed viewers find their documents in a barrack.
 enum BarrackDocuments {
     /// `skills/<name>/SKILL.md` (aib's skill layout).
+    /// The catalog's SKILL.md files (same symlink rules as the Skills view).
     static func skills(in root: URL) -> [URL] {
-        let directory = root.appendingPathComponent("skills")
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        return names.sorted().map { directory.appendingPathComponent($0).appendingPathComponent("SKILL.md") }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        SkillFiles.list(in: root).map(\.file)
     }
 
     static func firstWikiTopic(in root: URL) -> URL? {

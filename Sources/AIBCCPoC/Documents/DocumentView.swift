@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Fixed barrack documents (spec: rules and Wiki keep dedicated viewers,
-/// separate from the artifact viewer). Read-only in M1; editing of
-/// allowlisted files follows in M2.
+/// separate from the artifact viewer): rules (raw and form editing), Wiki,
+/// Council minutes. Skills have their own view (SkillsView).
 struct DocumentView: View {
     let barrack: Barrack
     let destination: Destination
@@ -47,9 +47,6 @@ struct DocumentView: View {
             } actions: {
                 Button("Council 시작 (⌘⇧C)", action: startCouncil)
             }
-        case .skills:
-            ContentUnavailableView("Skills 없음", systemImage: destination.symbol,
-                                   description: Text("skills/<이름>/SKILL.md를 추가하면 여기서 읽습니다."))
         default:
             ContentUnavailableView("문서 없음", systemImage: destination.symbol)
         }
@@ -197,11 +194,9 @@ struct DocumentView: View {
             let index = root.appendingPathComponent("wiki/Index.md")
             return [index].filter { FileManager.default.fileExists(atPath: $0.path) }
                 + topics.filter { $0.pathExtension == "md" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-        case .skills:
-            return BarrackDocuments.skills(in: root)
         case .council:
             return BarrackDocuments.councilMinutes(in: root)
-        case .sessions, .history, .git:
+        case .sessions, .history, .git, .skills:
             return []
         }
     }
@@ -221,7 +216,7 @@ struct DocumentView: View {
     }
 
     private func title(of file: URL) -> String {
-        destination == .skills ? file.deletingLastPathComponent().lastPathComponent : file.deletingPathExtension().lastPathComponent
+        file.deletingPathExtension().lastPathComponent
     }
 
     private func load() {

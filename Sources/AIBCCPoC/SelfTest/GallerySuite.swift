@@ -48,6 +48,12 @@ struct GallerySuite {
                 workspace.pendingStructuredEdit = false
             }
         }
+        workspace.destination = .skills
+        await harness.pause(.seconds(1))
+        workspace.pendingStructuredEdit = true
+        await harness.pause(.seconds(2))
+        if let image = await harness.requestCapture(label: "gallery-skill-editor") { captures.append(image.lastPathComponent) }
+        workspace.pendingStructuredEdit = false
         workspace.destination = .history
         await harness.pause(.seconds(2))
         if let image = await harness.requestCapture(label: "gallery-history") { captures.append(image.lastPathComponent) }
