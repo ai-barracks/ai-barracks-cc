@@ -79,7 +79,7 @@ struct GitView: View {
             }
             ForEach(info.state.changes.prefix(AppConstants.Git.visibleChanges)) { change in
                 HStack(spacing: Tokens.Spacing.s) {
-                    Text(change.kind == .untracked ? "??" : "\(change.index)\(change.worktree)")
+                    Text(verbatim: change.kind == .untracked ? "??" : String([change.index, change.worktree]))
                         .font(.system(size: 11).monospaced()).foregroundStyle(change.isStaged ? Tokens.teal : Tokens.orange)
                         .frame(width: 22, alignment: .leading)
                     Text(relative(change.path)).font(.system(size: 12).monospaced()).lineLimit(1).truncationMode(.middle)

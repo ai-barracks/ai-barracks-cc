@@ -5,13 +5,27 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG="${CONFIG:-debug}"
+# VARIANT=dev (default): AIBCC-PoC.app, the build self-tests and the bench
+# drive. VARIANT=release: the shipped v2 (own bundle id, so it installs
+# next to v1 and never shares the dev build's daemon or settings).
+VARIANT="${VARIANT:-dev}"
 MIN_FREE_GB="${MIN_FREE_GB:-3}"
 DATA_VOLUME="${DATA_VOLUME:-/System/Volumes/Data}"
-APP_NAME="AIBCC-PoC"
 EXEC_NAME="AIBCCPoC"
 DAEMON_NAME="AIBCCPtyDaemon"
-DIST="$ROOT/dist"
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+if [[ "$VARIANT" == release ]]; then
+  CONFIG="${CONFIG:-release}"
+  APP_NAME="AI Barracks CommandCenter 2"
+  BUNDLE_ID="com.aibarracks.commandcenter2"
+  DISPLAY_NAME="AI Barracks CommandCenter 2"
+  SHORT_NAME="CommandCenter 2"
+  DIST="$ROOT/dist/release"
+else
+  CONFIG="${CONFIG:-debug}"
+  APP_NAME="AIBCC-PoC"
+  DIST="$ROOT/dist"
+fi
 APP="$DIST/$APP_NAME.app"
 
 free_gb() {
@@ -58,6 +72,16 @@ assemble_bundle() {
   # PTY daemon helper (the default backend; --backend=exec opts out); the app finds it next to itself.
   cp "$bin_dir/$DAEMON_NAME" "$APP/Contents/MacOS/$DAEMON_NAME"
   cp "$ROOT/Packaging/Info.plist" "$APP/Contents/Info.plist"
+  cp "$ROOT/Packaging/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+  local plist="$APP/Contents/Info.plist" buddy=/usr/libexec/PlistBuddy
+  "$buddy" -c "Add :CFBundleIconFile string AppIcon" "$plist"
+  "$buddy" -c "Set :CFBundleVersion $(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)" "$plist"
+  if [[ "$VARIANT" == release ]]; then
+    "$buddy" -c "Set :CFBundleIdentifier $BUNDLE_ID" "$plist"
+    "$buddy" -c "Set :CFBundleName $SHORT_NAME" "$plist"
+    "$buddy" -c "Set :CFBundleDisplayName $DISPLAY_NAME" "$plist"
+    "$buddy" -c "Set :CFBundleShortVersionString $VERSION" "$plist"
+  fi
   # SwiftPM resource bundles (libghostty-spm Ghostty resources, terminfo).
   local bundle
   for bundle in "$bin_dir"/*.bundle; do
@@ -85,6 +109,8 @@ write_build_info() {
 {
   "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "config": "$CONFIG",
+  "variant": "$VARIANT",
+  "version": "$VERSION",
   "swift": "$(swift --version 2>&1 | head -1 | sed 's/"/\\"/g')",
   "libghostty_spm": "2.2.2026103001",
   "ghostty_upstream_ref": "${ghostty_ref:-unknown}",

@@ -44,7 +44,13 @@ enum AppConstants {
         static let backendArgument = "--backend=daemon"
         static let socketArgumentPrefix = "--ptyd-socket="
         static let executableName = "AIBCCPtyDaemon"
-        static let supportDirectory = "~/Library/Application Support/AIBCCPoC"
+        /// The release app keeps its own folder (socket, saved layout,
+        /// archive); the development build (self-tests, bench) keeps AIBCCPoC,
+        /// so the two never share a daemon.
+        static var supportDirectory: String {
+            Bundle.main.bundleIdentifier == Release.bundleIdentifier
+                ? "~/Library/Application Support/\(Release.supportFolder)" : "~/Library/Application Support/AIBCCPoC"
+        }
         /// Self-tests never touch the user's sessions or saved layout.
         static let selfTestSocketName = "ptyd-selftest.sock"
         static let keepSessionsOnQuitKey = "keepSessionsOnQuit"
@@ -119,6 +125,12 @@ enum AppConstants {
         ]
         static let watchLatency: TimeInterval = 0.3
         static let rendererReadyTimeout: Duration = .seconds(3)
+    }
+
+    /// The shipped v2 identity (scripts/package-app.sh VARIANT=release).
+    enum Release {
+        static let bundleIdentifier = "com.aibarracks.commandcenter2"
+        static let supportFolder = "CommandCenter2"
     }
 
     enum Activation {
