@@ -47,6 +47,11 @@ final class ActivationScheduler: @unchecked Sendable {
         case let .failure(failure):
             fileURL = nil
             error = failure.message
+            // Another app owns the schedule: show its setting, read-only.
+            if let data = try? Data(contentsOf: directory.appendingPathComponent("activation.json")),
+               case let .success(shown) = ActivationSchedule.decode(data) {
+                document = shown
+            }
         }
     }
 

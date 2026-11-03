@@ -116,8 +116,13 @@ struct ActivationSuite {
                                             return cancelled() ? .failure("Cancelled after settings changed") : .success(())
                                         }, clock: { clock.now })
         box.scheduler = first
+        _ = first.save(ActivationConfig(enabled: true, claude: false, codex: true))
         let second = ActivationScheduler(directory: directory, clock: { clock.now })
         if second.view().available || second.view().error?.contains("다른 CommandCenter") != true { failures.append("lock not exclusive") }
+        // The owner's setting is shown read-only.
+        if second.view().config != ActivationConfig(enabled: true, claude: false, codex: true) || second.view().nextSlot != nil {
+            failures.append("owner's setting not shown")
+        }
         if case .success = second.save(ActivationConfig(enabled: true)) { failures.append("second instance saved") }
         _ = first.save(ActivationConfig(enabled: true, claude: true, codex: false))
         clock.now = kst("2026-11-03T16:00:05")

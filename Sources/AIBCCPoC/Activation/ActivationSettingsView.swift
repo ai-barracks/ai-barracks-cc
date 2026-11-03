@@ -11,12 +11,13 @@ struct ActivationSettingsSection: View {
         Section {
             if let scheduler {
                 Toggle("예약 활성화 켜기", isOn: binding(\.enabled, scheduler))
-                    .disabled(!view.available && !view.config.enabled)
+                    .disabled(!view.available)
                 HStack {
                     Toggle("Claude Code", isOn: binding(\.claude, scheduler))
                     Toggle("Codex", isOn: binding(\.codex, scheduler))
                 }
                 .toggleStyle(.checkbox)
+                .disabled(!view.available)
                 if let next = view.nextSlot {
                     LabeledContent("다음 실행", value: next.formatted(date: .abbreviated, time: .shortened))
                 }
