@@ -92,6 +92,11 @@ final class WorkspaceModel {
     var isAddBarrackPresented = false
     /// 기록 destination shows the terminal output archive tab.
     var historyShowsArchive = false
+    /// An open document edit (DocumentView): navigation asks first (r5).
+    var editInProgress = false
+    /// Navigation waiting for "discard the edit?" (alert shown while true).
+    var isConfirmingNavigation = false
+    @ObservationIgnored var pendingNavigation: (@MainActor () -> Void)?
     /// Asked to unregister (confirmation dialog shown while set).
     var barrackToRemove: Barrack?
     var isPalettePresented = false

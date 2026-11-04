@@ -13,6 +13,8 @@ struct DocumentView: View {
     @Binding var pending: URL?
     /// Asks for the form editor of the selected document; taken once.
     @Binding var pendingEdit: Bool
+    /// Tells the workspace an edit is open, so navigation elsewhere asks.
+    var editInProgress: Binding<Bool> = .constant(false)
     @State private var selection: URL?
     @State private var source: String?
     @State private var failure: String?
@@ -80,6 +82,8 @@ struct DocumentView: View {
         .onChange(of: selection, initial: true) { load() }
         .onChange(of: changes) { if !isEditing && !isListEditing { load() } }
         .onChange(of: pendingEdit) { takePendingEdit() }
+        .onChange(of: isDirty, initial: true) { editInProgress.wrappedValue = isDirty }
+        .onDisappear { editInProgress.wrappedValue = false }
         .alert("편집 중입니다", isPresented: Binding(get: { leaveTarget != nil }, set: { if !$0 { leaveTarget = nil } })) {
             Button("편집 버리고 이동", role: .destructive) {
                 isEditing = false
@@ -93,12 +97,15 @@ struct DocumentView: View {
         }
     }
 
+    /// A raw edit with changes, or a form editor (whose changes it holds).
+    private var isDirty: Bool { isEditing && draft != original || isListEditing }
+
     /// Picking another file while editing asks first instead of dropping
     /// the edit (v1 FilesTab confirm).
     private var guardedSelection: Binding<URL?> {
         Binding(get: { selection }, set: { next in
             guard next != selection else { return }
-            if isEditing && draft != original || isListEditing {
+            if isDirty {
                 leaveTarget = next
             } else {
                 selection = next

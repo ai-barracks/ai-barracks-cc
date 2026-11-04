@@ -26,6 +26,13 @@ struct MainView: View {
         .toolbar { toolbarContent }
         .sheet(isPresented: $workspace.isNewAgentSheetPresented) { NewAgentSheet(workspace: workspace) }
         .sheet(isPresented: $workspace.isCouncilSheetPresented) { CouncilSheet(workspace: workspace) }
+        .alert("편집 중입니다", isPresented: Binding(get: { workspace.isConfirmingNavigation },
+                                                set: { if !$0 { workspace.cancelNavigation() } })) {
+            Button("편집 버리고 이동", role: .destructive) { workspace.confirmNavigation() }
+            Button("계속 편집", role: .cancel) { workspace.cancelNavigation() }
+        } message: {
+            Text("저장하지 않은 편집이 있습니다.")
+        }
         .sheet(isPresented: $workspace.isPalettePresented) { CommandPalette(workspace: workspace) }
         .overlay(alignment: .topTrailing) { ToastStack(workspace: workspace) }
         .sheet(item: $workspace.quickCommandDraft) { draft in QuickCommandSheet(workspace: workspace, draft: draft) }
@@ -58,7 +65,8 @@ struct MainView: View {
                          startCouncil: { workspace.isCouncilSheetPresented = true },
                          changes: artifacts.fileEvents,
                          pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),
-                         pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }))
+                         pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }),
+                         editInProgress: Binding(get: { workspace.editInProgress }, set: { workspace.editInProgress = $0 }))
         }
     }
 

@@ -14,7 +14,7 @@ struct ToastStack: View {
                         Text(notice.title).font(Tokens.Font.bodyMedium)
                         Text(notice.body).font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary).lineLimit(2)
                         if let label = notice.actionLabel {
-                            Button(label) { workspace.perform(notice) }.controlSize(.small).padding(.top, 2)
+                            Button(label) { workspace.navigate { workspace.perform(notice) } }.controlSize(.small).padding(.top, 2)
                         }
                     }
                     Spacer(minLength: 0)

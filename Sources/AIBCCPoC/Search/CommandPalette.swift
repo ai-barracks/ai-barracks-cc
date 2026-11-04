@@ -91,7 +91,8 @@ struct CommandPalette: View {
         let list = items
         guard list.indices.contains(selected) else { return }
         dismiss()
-        list[selected].run()
+        let item = list[selected]
+        workspace.navigate { item.run() }
     }
 }
 

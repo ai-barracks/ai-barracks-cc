@@ -11,7 +11,7 @@ struct AgentSuite {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
-         await registryReload(), await terminalManagement(), await archiveOnClose(), await settingsApply()]
+         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await settingsApply()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -246,6 +246,28 @@ struct AgentSuite {
                      evidence: ["typed": Hex.string(typed), "text_has_markers": "\(text.contains("TL") && text.contains("BR"))",
                                 "front": "\(front)", "closed_process_ended": "\(ended)", "panes": "\(workspace.panes.count)"],
                      startedAt: start)
+    }
+
+    /// Codex r5: ⌘K, the barrack list and the destinations left an open
+    /// edit without asking (only the document list asked).
+    private func navigationGuard() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        var failures: [String] = []
+        workspace.destination = .sessions
+        workspace.editInProgress = true
+        workspace.navigate { workspace.destination = .wiki }
+        if workspace.destination != .sessions || !workspace.isConfirmingNavigation { failures.append("navigated without asking") }
+        workspace.cancelNavigation()
+        if workspace.destination != .sessions || !workspace.editInProgress { failures.append("cancel") }
+        workspace.navigate { workspace.destination = .wiki }
+        workspace.confirmNavigation()
+        if workspace.destination != .wiki || workspace.editInProgress { failures.append("confirm") }
+        workspace.navigate { workspace.destination = .sessions }
+        if workspace.destination != .sessions || workspace.isConfirmingNavigation { failures.append("asked with no edit") }
+        return .make("NV-01a", "편집 중 이동(사이드바·배럭·⌘K·알림)은 먼저 확인, 취소하면 그대로·확인하면 이동",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// v1 C7: closing a pane keeps its screen text in the (self-test) archive.

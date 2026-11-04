@@ -7,7 +7,8 @@ struct BarrackSidebar: View {
     @Bindable var workspace: WorkspaceModel
 
     var body: some View {
-        List(selection: $workspace.selectedBarrackID) {
+        List(selection: Binding(get: { workspace.selectedBarrackID },
+                                set: { next in workspace.navigate { workspace.selectedBarrackID = next } })) {
             AttentionSummary(attention: workspace.liveness.attentionCount, running: workspace.liveness.runningCount)
                 .listRowSeparator(.hidden)
                 .selectionDisabled()
@@ -40,7 +41,7 @@ struct BarrackSidebar: View {
                     ForEach(Destination.allCases) { destination in
                         DestinationRow(destination: destination, isOn: workspace.destination == destination,
                                        count: count(for: destination, barrack)) {
-                            workspace.destination = destination
+                            workspace.navigate { workspace.destination = destination }
                         }
                         .selectionDisabled()
                     }
