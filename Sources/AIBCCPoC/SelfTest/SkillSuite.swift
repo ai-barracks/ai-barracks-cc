@@ -51,6 +51,15 @@ struct SkillSuite {
         if case .success = SkillDocument.patch("---\nname: x\ndescription: a\ndescription: b\n---\n", fields: SkillFields(description: "c"), body: "") {
             failures.append("duplicate must fail")
         }
+        // r5: raw edits (here upstream) survive switching back to the form.
+        let rawEdited = raw.replacingOccurrences(of: "upstream: \"ai-barracks/scripts/council.sh\"", with: "upstream: \"elsewhere\"")
+        if let loaded = SkillEditBuffer.toForm(raw: rawEdited) {
+            var form = loaded.fields
+            form.description = "Use when a design needs two independent reviews."
+            if (try? SkillEditBuffer.toRaw(base: rawEdited, fields: form, body: loaded.body).get())?.contains("upstream: \"elsewhere\"") != true {
+                failures.append("raw edit lost")
+            }
+        } else { failures.append("raw to form") }
         if (try? SkillDocument.renamed(raw, to: "debate").get())?.hasPrefix("---\nname: debate\n# discovery line below\n") != true { failures.append("renamed") }
         let fresh = SkillDocument.render(slug: "open-pr", fields: SkillFields(description: "Use when: opening a PR", allowedTools: "Bash(gh *)"), body: "# Open PR")
         if SkillDocument.name(fresh) != "open-pr" || SkillDocument.fields(fresh).description != "Use when: opening a PR"

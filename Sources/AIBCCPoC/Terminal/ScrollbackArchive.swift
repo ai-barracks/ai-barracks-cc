@@ -9,12 +9,17 @@ struct ArchivedOutput: Codable, Equatable, Identifiable {
     let closedAt: Date
     let byteLength: Int
     let truncated: Bool
+    /// The immutable payload file this record commits to (`<id>.<rev>.txt`).
+    var payload: String?
 }
 
 /// Terminal output kept on disk after a pane closes or its program ends
-/// (v1 scrollback.rs): `<id>.txt` + `<id>.json` in a private directory,
-/// written atomically, the tail kept within a per-output cap, and garbage
-/// collected by age and by a total cap. v2 stores the screen text (what
+/// (v1 scrollback.rs): an immutable payload `<id>.<rev>.txt` and the record
+/// `<id>.json` that names it, in a private directory. The record's atomic
+/// rename is the commit — a crash between the two writes leaves the
+/// previous record and payload intact (r5); unreferenced payloads are
+/// garbage. The tail is kept within a per-output cap; old and excess
+/// outputs are collected. v2 stores the screen text (what
 /// the export writes), not raw PTY bytes, so there is no escape sequence to
 /// sanitize on replay.
 struct ScrollbackArchive {
@@ -36,39 +41,61 @@ struct ScrollbackArchive {
     func save(id: String, title: String, barrackPath: String?, text: String, now: Date = Date()) -> ArchivedOutput? {
         guard Self.isValid(id), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, prepareDirectory() else { return nil }
         let (kept, truncated) = Self.tail(text, maxBytes: maxBytesPerOutput)
+        let payload = "\(id).\(UUID().uuidString.prefix(8)).txt"
         let entry = ArchivedOutput(id: id, title: title, barrackPath: barrackPath, closedAt: now,
-                                   byteLength: kept.utf8.count, truncated: truncated)
+                                   byteLength: kept.utf8.count, truncated: truncated, payload: payload)
+        let previous = record(id)?.payload
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .millisecondsSince1970
-        guard let meta = try? encoder.encode(entry),
-              writePrivate(Data(kept.utf8), to: textURL(id)), writePrivate(meta, to: metaURL(id)) else { return nil }
+        guard let meta = try? encoder.encode(entry), writePrivate(Data(kept.utf8), to: directory.appendingPathComponent(payload)) else { return nil }
+        guard writePrivate(meta, to: metaURL(id)) else {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(payload))
+            return nil
+        }
+        if let previous, previous != payload { try? FileManager.default.removeItem(at: directory.appendingPathComponent(previous)) }
         return entry
+    }
+
+    /// The committed record of `id`, if its payload exists.
+    func record(_ id: String) -> ArchivedOutput? {
+        guard Self.isValid(id), let data = try? Data(contentsOf: metaURL(id)) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+        guard let entry = try? decoder.decode(ArchivedOutput.self, from: data), entry.id == id,
+              let payload = Self.payloadName(of: entry), FileManager.default.fileExists(atPath: directory.appendingPathComponent(payload).path)
+        else { return nil }
+        return entry
+    }
+
+    /// A record's payload file name, only if it is one of this id's names.
+    static func payloadName(of entry: ArchivedOutput) -> String? {
+        let name = entry.payload ?? entry.id + ".txt"
+        return Regex.matches("^\(entry.id)(\\.[0-9A-F]{8})?\\.txt$", name) ? name : nil
     }
 
     /// Newest first; unreadable or foreign files are skipped.
     func list() -> [ArchivedOutput] {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .millisecondsSince1970
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        return names.filter { $0.hasSuffix(".json") }.compactMap { name in
-            guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
-                  let entry = try? decoder.decode(ArchivedOutput.self, from: data), Self.isValid(entry.id),
-                  name == entry.id + ".json", FileManager.default.fileExists(atPath: textURL(entry.id).path) else { return nil }
-            return entry
-        }
+        return names.filter { $0.hasSuffix(".json") }.compactMap { record(String($0.dropLast(5))) }
         // Ties (same millisecond) break by id: GC must be deterministic.
         .sorted { $0.closedAt == $1.closedAt ? $0.id > $1.id : $0.closedAt > $1.closedAt }
     }
 
     func text(of id: String) -> String? {
-        guard Self.isValid(id), let data = try? Data(contentsOf: textURL(id)) else { return nil }
+        guard let entry = record(id), let payload = Self.payloadName(of: entry),
+              let data = try? Data(contentsOf: directory.appendingPathComponent(payload)) else { return nil }
         return String(decoding: data, as: UTF8.self)
     }
 
+    /// The record first (it is the commit), then every payload of the id.
     func delete(_ id: String) {
         guard Self.isValid(id) else { return }
-        try? FileManager.default.removeItem(at: textURL(id))
         try? FileManager.default.removeItem(at: metaURL(id))
+        payloads(of: id).forEach { try? FileManager.default.removeItem(at: directory.appendingPathComponent($0)) }
+    }
+
+    private func payloads(of id: String) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []).filter { $0.hasPrefix(id + ".") && $0.hasSuffix(".txt") }
     }
 
     func deleteAll() {
@@ -90,10 +117,17 @@ struct ScrollbackArchive {
             }
         }
         var total = kept.reduce(0) { $0 + $1.byteLength }
+        var survivors = Set(kept.compactMap(Self.payloadName))
         for entry in kept.reversed() where total > maxTotalBytes {
             delete(entry.id)
             total -= entry.byteLength
             removed += 1
+            if let name = Self.payloadName(of: entry) { survivors.remove(name) }
+        }
+        // Payloads no record commits to (an interrupted save).
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        where name.hasSuffix(".txt") && !name.hasPrefix(".") && !survivors.contains(name) {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
         }
         return removed
     }
@@ -114,7 +148,6 @@ struct ScrollbackArchive {
         UUID(uuidString: id) != nil
     }
 
-    private func textURL(_ id: String) -> URL { directory.appendingPathComponent(id + ".txt") }
     private func metaURL(_ id: String) -> URL { directory.appendingPathComponent(id + ".json") }
 
     /// Owner-only directory: terminal output can hold secrets.

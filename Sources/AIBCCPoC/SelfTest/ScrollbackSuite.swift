@@ -19,9 +19,17 @@ struct ScrollbackSuite {
         if archive.save(id: b, title: "t", barrackPath: nil, text: "  \n ") != nil { failures.append("empty kept") }
         if archive.save(id: "../evil", title: "t", barrackPath: nil, text: "x") != nil { failures.append("invalid id") }
         let attributes = { (path: String) in (try? FileManager.default.attributesOfItem(atPath: path))?[.posixPermissions] as? Int }
-        if attributes(directory.path) != 0o700 || attributes(directory.appendingPathComponent(a + ".txt").path) != 0o600 {
+        let payload = archive.record(a).flatMap(ScrollbackArchive.payloadName).map { directory.appendingPathComponent($0).path } ?? ""
+        if attributes(directory.path) != 0o700 || attributes(payload) != 0o600 {
             failures.append("permissions \(String(attributes(directory.path) ?? 0, radix: 8))")
         }
+        // r5: a save interrupted after the payload (no record yet) leaves the
+        // previous output committed; the stray payload is garbage.
+        let stray = directory.appendingPathComponent("\(a).DEADBEEF.txt")
+        try? Data("half written".utf8).write(to: stray)
+        if archive.text(of: a) != "hello\nworld\nmore\n" || archive.list().count != 1 { failures.append("interrupted save visible") }
+        archive.collectGarbage(now: now)
+        if FileManager.default.fileExists(atPath: stray.path) || archive.text(of: a) == nil { failures.append("orphan payload gc") }
         try? Data("{}".utf8).write(to: directory.appendingPathComponent("foreign.json"))
         if archive.list().count != 1 { failures.append("foreign file listed") }
         // Tail: whole lines, character boundaries (Korean is 3 bytes each).

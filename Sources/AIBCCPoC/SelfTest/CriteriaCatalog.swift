@@ -120,7 +120,7 @@ enum CriteriaCatalog {
         .init(id: "GT-01", title: "Git 상태·커밋·push = v1 + 모노레포 커밋 격리", blocking: false, requires: ["GT-01a", "GT-01b"]),
         .init(id: "SK-02", title: "Skills CRUD = v1(폼·이름 변경·삭제·경로 안전)", blocking: false, requires: ["SK-02a", "SK-02b", "SK-02c", "SK-02d"]),
         .init(id: "DC-01", title: "구조화 편집기 문서 모델 = v1 테스트 케이스", blocking: false,
-              requires: ["DP-01a", "DP-01b", "RU-01a", "RU-01b", "SD-01a", "SD-01b", "GR-01a", "GR-01b", "YM-01a", "YM-01b", "SM-01a", "UX-01a"]),
+              requires: ["DP-01a", "DP-01b", "RU-01a", "RU-01b", "SD-01a", "SD-01b", "GR-01a", "GR-01b", "YM-01a", "YM-01b", "SM-01a", "UX-01a", "CR-05a"]),
         .init(id: "PO-01", title: "자식 프로세스 출력 읽기(파이프 교착 없음)", blocking: false, requires: ["PO-01a", "PO-01b"]),
         .init(id: "ED-01", title: "규칙 문서 편집(허용 범위·충돌 감지)", blocking: false, requires: ["ED-01a", "ED-01b"]),
         .init(id: "DS-01", title: "목적지 왕복 후 터미널 보존", blocking: false, requires: ["DS-01a"]),

@@ -25,7 +25,7 @@ enum GrowthDocument {
 
     enum Reason: Error, Equatable {
         case headerNotFound, multipleHeaders, separatorNotFound, malformedRow
-        case anchorNotFound, multipleAnchors, multipleBulletRuns
+        case anchorNotFound, multipleAnchors, multipleBulletRuns, nestedBullets
     }
 
     struct Failure: Error, Equatable {
@@ -116,15 +116,37 @@ enum GrowthDocument {
         trimmed.hasPrefix("**NOT growth-worthy**") || trimmed.contains("기록하지 않을 것")
     }
 
-    /// v1 `split("|").filter(Boolean)`: empty cells vanish, so a row needs
-    /// three non-empty pieces.
-    private static func cells(_ trimmed: String) -> [String] {
-        trimmed.split(separator: "|", omittingEmptySubsequences: true).map(String.init)
+    /// The cells of a table line, split at unescaped pipes (`\|` stays in
+    /// its cell) without the outer border. v1 split on every pipe and kept
+    /// "at least 3" cells, so an escaped pipe or a fourth column was lost on
+    /// save (r5); a row must now have exactly three.
+    static func cells(_ trimmed: String) -> [String] {
+        var cells: [String] = []
+        var current = ""
+        var escaped = false
+        for char in trimmed {
+            if escaped {
+                current.append(char)
+                escaped = false
+            } else if char == "\\" {
+                current.append(char)
+                escaped = true
+            } else if char == "|" {
+                cells.append(current)
+                current = ""
+            } else {
+                current.append(char)
+            }
+        }
+        cells.append(current)
+        if cells.first?.trimmingCharacters(in: .whitespaces).isEmpty == true { cells.removeFirst() }
+        if cells.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { cells.removeLast() }
+        return cells
     }
 
     private static func row(_ trimmed: String) -> DecisionRow? {
         let columns = cells(trimmed)
-        guard columns.count >= 3 else { return nil }
+        guard columns.count == 3 else { return nil }
         let clean = { (index: Int) in columns[index].trimmingCharacters(in: .whitespaces) }
         return DecisionRow(event: clean(0), location: clean(1), example: clean(2))
     }
@@ -150,7 +172,9 @@ enum GrowthDocument {
         let dataStart = separator + 1
         var dataEnd = dataStart
         while dataEnd < lines.count, trimmed(dataEnd).hasPrefix("|") { dataEnd += 1 }
-        guard (dataStart..<dataEnd).allSatisfy({ cells(trimmed($0)).count >= 3 }) else { return .failure(.malformedRow) }
+        guard cells(trimmed(header)).count == 3, (dataStart..<dataEnd).allSatisfy({ cells(trimmed($0)).count == 3 }) else {
+            return .failure(.malformedRow)
+        }
 
         let eol = (dataStart..<dataEnd).map { MarkdownPatch.lineEol(lines[$0]) }.first { !$0.isEmpty }
             ?? nonEmpty(MarkdownPatch.lineEol(lines[separator])) ?? MarkdownPatch.detectEol(raw)
@@ -172,6 +196,8 @@ enum GrowthDocument {
         let runs = notGrowthRuns(lines, after: anchor)
         guard runs.count <= 1 else { return .failure(.multipleBulletRuns) }
         if let run = runs.first {
+            let indents = Set(lines[run].map { MarkdownPatch.stripEol($0).prefix { $0 == " " || $0 == "\t" } })
+            guard indents.count == 1 else { return .failure(.nestedBullets) }
             let eol = lines[run].map(MarkdownPatch.lineEol).first { !$0.isEmpty } ?? MarkdownPatch.detectEol(raw)
             let lastHadEol = !MarkdownPatch.lineEol(lines[run.upperBound - 1]).isEmpty
             let bullets = new.enumerated().map { offset, item in "- \(item)" + (offset == new.count - 1 && !lastHadEol ? "" : eol) }

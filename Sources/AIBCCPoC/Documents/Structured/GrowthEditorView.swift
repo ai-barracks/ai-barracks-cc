@@ -71,9 +71,10 @@ struct GrowthEditorView: View {
         let rows = data.decisionTable
             .map { DecisionRow(event: clean($0.event), location: clean($0.location), example: clean($0.example)) }
             .filter { !($0.event.isEmpty && $0.location.isEmpty && $0.example.isEmpty) }
-        // A "|" would split the cell when the row is read back.
-        if rows.contains(where: { [$0.event, $0.location, $0.example].contains { $0.contains("|") } }) {
-            error = "표의 칸에는 | 를 쓸 수 없습니다."
+        // An unescaped "|" would split the cell when the row is read back
+        // ("\|" is a literal pipe in a Markdown table and stays).
+        if rows.contains(where: { [$0.event, $0.location, $0.example].contains { Regex.matches(#"(^|[^\\])\|"#, $0) } }) {
+            error = "표의 칸에 | 를 쓰려면 \\| 로 적으세요."
             return
         }
         let next = GrowthData(decisionTable: rows, notGrowthWorthy: StructuredEditing.cleaned(data.notGrowthWorthy))

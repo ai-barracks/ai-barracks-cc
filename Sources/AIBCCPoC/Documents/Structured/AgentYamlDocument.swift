@@ -27,6 +27,9 @@ enum AgentYamlDocument {
 
     enum Reason: Error, Equatable {
         case keyNotFound, multipleKeys, modelsNotFound, primaryNotFound, fallbackNotBlockList, fallbackNotContiguous
+        /// A block scalar (`|`, `>`) or a value continued on indented lines:
+        /// a one-line edit would leave the rest as broken YAML (r5).
+        case multilineValue
     }
 
     struct Failure: Error, Equatable {
@@ -153,6 +156,7 @@ enum AgentYamlDocument {
         let matches = lines.indices.filter { Regex.matches("^\(key)\\s*:", MarkdownPatch.stripEol(lines[$0])) }
         guard let index = matches.first else { return .failure(.keyNotFound) }
         guard matches.count == 1 else { return .failure(.multipleKeys) }
+        guard !YamlScalar.isMultiline(lines, at: index) else { return .failure(.multilineValue) }
         lines[index] = YamlScalar.renderLine(MarkdownPatch.stripEol(lines[index]), value) + MarkdownPatch.lineEol(lines[index])
         return .success(lines.joined())
     }
@@ -171,6 +175,7 @@ enum AgentYamlDocument {
         guard let index = (block.start + 1..<block.end).first(where: { Regex.matches(#"^\s+primary\s*:"#, MarkdownPatch.stripEol(lines[$0])) }) else {
             return .failure(.primaryNotFound)
         }
+        guard !YamlScalar.isMultiline(lines, at: index) else { return .failure(.multilineValue) }
         lines[index] = YamlScalar.renderLine(MarkdownPatch.stripEol(lines[index]), value) + MarkdownPatch.lineEol(lines[index])
         return .success(lines.joined())
     }
@@ -282,10 +287,37 @@ enum YamlScalar {
         return needsQuotes(value) ? doubleQuoted(value) : value
     }
 
+    /// Plain-scalar safety: quote whatever YAML would parse differently or
+    /// reject — a key-like colon (also at the end), comments, indicators, and
+    /// values that resolve to null, booleans or numbers (YAML 1.1 and 1.2).
     static func needsQuotes(_ value: String) -> Bool {
         value.isEmpty || value.trimmingCharacters(in: .whitespaces) != value || value.contains("#")
-            || Regex.matches(#":\s"#, value) || value.contains("\n") || value.contains("\r")
+            || Regex.matches(#":(\s|$)"#, value) || value.contains("\n") || value.contains("\r") || value.contains("\t")
             || value.first.map { "-?:,[]{}&*!|>'\"%@`".contains($0) } == true
+            || resolvesToNonString(value)
+    }
+
+    static func resolvesToNonString(_ value: String) -> Bool {
+        let special: Set = ["null", "~", "true", "false", "yes", "no", "on", "off", "y", "n", ".inf", "-.inf", "+.inf", ".nan"]
+        return special.contains(value.lowercased())
+            || Regex.matches(#"^[-+]?(\.[0-9]+|[0-9][0-9_]*(\.[0-9_]*)?)([eE][-+]?[0-9]+)?$"#, value)
+            || Regex.matches(#"^0x[0-9a-fA-F_]+$|^0o?[0-7_]+$|^0b[01_]+$"#, value)
+            || Regex.matches(#"^[0-9]{4}-[0-9]{2}-[0-9]{2}"#, value)
+    }
+
+    /// The value on line `index` is a block scalar or continues on deeper
+    /// indented lines (blank lines and comments in between allowed).
+    static func isMultiline(_ lines: [String], at index: Int) -> Bool {
+        let line = MarkdownPatch.stripEol(lines[index])
+        if Regex.matches(#"^[|>][-+0-9]*$"#, valuePart(line)) { return true }
+        let indent = line.prefix { $0 == " " || $0 == "\t" }.count
+        for next in lines[(index + 1)...] {
+            let content = MarkdownPatch.stripEol(next)
+            let trimmed = content.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+            return content.prefix { $0 == " " || $0 == "\t" }.count > indent
+        }
+        return false
     }
 
     static func doubleQuoted(_ value: String) -> String {

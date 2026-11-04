@@ -17,6 +17,9 @@ struct SkillEditorSheet: View {
     @State private var bodyText = ""
     @State private var isRaw = false
     @State private var rawText = ""
+    /// The text form edits apply to: the original, or the raw text the user
+    /// edited before switching back to the form (r5: raw edits were lost).
+    @State private var formBase = ""
     @State private var error: String?
     /// Why the form cannot represent this file (it opens as raw text).
     private let formUnavailable: String?
@@ -36,6 +39,7 @@ struct SkillEditorSheet: View {
         _fields = State(initialValue: SkillDocument.fields(original))
         _bodyText = State(initialValue: SkillDocument.split(original)?.body ?? original)
         _rawText = State(initialValue: original)
+        _formBase = State(initialValue: original)
         _isRaw = State(initialValue: formUnavailable != nil)
     }
 
@@ -137,16 +141,15 @@ struct SkillEditorSheet: View {
 
     /// Carries the edits across: form → raw renders them, raw → form re-reads.
     private func switchMode(_ raw: Bool) {
-        guard case let .edit(_, original) = mode else { return }
+        guard case .edit = mode else { return }
         if raw {
-            if case let .success(text) = SkillDocument.patch(original, fields: cleanedFields, body: bodyText) { rawText = text }
+            if case let .success(text) = SkillEditBuffer.toRaw(base: formBase, fields: cleanedFields, body: bodyText) { rawText = text }
         } else {
-            guard SkillDocument.split(rawText) != nil, SkillDocument.multilineKeys(rawText).isEmpty else {
+            guard let loaded = SkillEditBuffer.toForm(raw: rawText) else {
                 error = "원문을 폼으로 읽을 수 없습니다(frontmatter 또는 여러 줄 값)."
                 return
             }
-            fields = SkillDocument.fields(rawText)
-            bodyText = SkillDocument.split(rawText)?.body ?? ""
+            (formBase, fields, bodyText) = (rawText, loaded.fields, loaded.body)
         }
         error = nil
         isRaw = raw
@@ -184,7 +187,7 @@ struct SkillEditorSheet: View {
             guard cleanedFields.description.count >= SkillDocument.minimumDescription else {
                 return error = "description을 \(SkillDocument.minimumDescription)자 이상 적으세요."
             }
-            switch SkillDocument.patch(original, fields: cleanedFields, body: bodyText) {
+            switch SkillEditBuffer.toRaw(base: formBase, fields: cleanedFields, body: bodyText) {
             case let .success(text): edited = text
             case let .failure(failure): return error = "폼으로 저장할 수 없습니다(\(failure)). 원문으로 편집하세요."
             }
@@ -278,5 +281,18 @@ struct SkillDeleteSheet: View {
         case let .failure(failure):
             error = failure.message
         }
+    }
+}
+
+/// The editor's form ⇄ raw round trip, kept pure so it can be tested: the
+/// form always applies to the text it was last loaded from.
+enum SkillEditBuffer {
+    static func toRaw(base: String, fields: SkillFields, body: String) -> Result<String, SkillDocument.Failure> {
+        SkillDocument.patch(base, fields: fields, body: body)
+    }
+
+    static func toForm(raw: String) -> (fields: SkillFields, body: String)? {
+        guard let parts = SkillDocument.split(raw), SkillDocument.multilineKeys(raw).isEmpty else { return nil }
+        return (SkillDocument.fields(raw), parts.body)
     }
 }

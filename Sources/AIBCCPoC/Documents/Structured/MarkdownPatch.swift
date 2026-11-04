@@ -11,7 +11,12 @@ enum MarkdownPatch {
         let raw: String
     }
 
-    enum Failure: Error, Equatable { case sectionNotFound, multipleSections, noBulletRun, multipleBulletRuns }
+    enum Failure: Error, Equatable {
+        case sectionNotFound, multipleSections, noBulletRun, multipleBulletRuns
+        /// Bullets at different indents (a nested list): rewriting the run
+        /// with one style would flatten it (r5).
+        case nestedBullets
+    }
 
     static func detectEol(_ raw: String) -> String {
         var crlf = 0
@@ -116,6 +121,8 @@ enum MarkdownPatch {
         guard let style = Regex.capture(#"^([ \t]*)([-*+][ \t]+)"#, stripEol(lines[run.lowerBound])) else {
             return .failure(.noBulletRun)
         }
+        let indents = Set(lines[run].map { stripEol($0).prefix { $0 == " " || $0 == "\t" } })
+        guard indents.count == 1 else { return .failure(.nestedBullets) }
         let eol = lines[run].map(lineEol).first { !$0.isEmpty } ?? detectEol(raw)
         let lastHadEol = !lineEol(lines[run.upperBound - 1]).isEmpty
         let replacement = bullets.enumerated().map { offset, bullet in

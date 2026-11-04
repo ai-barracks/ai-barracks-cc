@@ -6,7 +6,7 @@ import Foundation
 struct DocumentSuite {
     func run() -> [TestResult] {
         [patchPrimitives(), patchBulletRuns(), rulesParsing(), rulesPatching(), soulParsing(), soulPatching(),
-         growthParsing(), growthPatching(), yamlParsing(), yamlPatching(), mergeOnConflict(), uniqueRowIDs()]
+         growthParsing(), growthPatching(), yamlParsing(), yamlPatching(), mergeOnConflict(), uniqueRowIDs(), reviewR5Shapes()]
     }
 
     static let richRules = [
@@ -220,6 +220,8 @@ struct DocumentSuite {
         if GrowthDocument.parse(split).decisionTable.map(\.event) != ["A", "x --- y"] { failures.append("table extent") }
         let emptyCell = "| 세션 중 이벤트 | 위치 | 예시 |\n|---|---|---|\n| A |  | C |\n"
         if GrowthDocument.parse(emptyCell).decisionTable != [DecisionRow(event: "A", location: "", example: "C")] { failures.append("empty cell") }
+        if GrowthDocument.parse(emptyCell.replacingOccurrences(of: "| A |  | C |", with: "| A || C |")).decisionTable
+            != [DecisionRow(event: "A", location: "", example: "C")] { failures.append("gfm empty cell") }
         return check("GR-01a", "GROWTH 해석 = v1(Decision Table·NOT growth-worthy, 코드 블록 무시) · 변경 없으면 원문 그대로", failures, start)
     }
 
@@ -261,7 +263,8 @@ struct DocumentSuite {
              { $0.decisionTable = [DecisionRow(event: "X")] }, .init(field: .decisionTable, reason: .multipleHeaders)),
             (header + "| A | B | C |\n\n" + anchor + "- x", { $0.decisionTable = [DecisionRow(event: "X")] },
              .init(field: .decisionTable, reason: .separatorNotFound)),
-            (header + "|---|---|---|\n| A || C |\n", { $0.decisionTable = [DecisionRow(event: "X")] }, .init(field: .decisionTable, reason: .malformedRow)),
+            // Two cells (GFM `||` is an empty cell, which v1 miscounted; r5).
+            (header + "|---|---|---|\n| A | C |\n", { $0.decisionTable = [DecisionRow(event: "X")] }, .init(field: .decisionTable, reason: .malformedRow)),
             (anchor + "- x\n\n" + anchor + "- y", { $0.notGrowthWorthy = ["z"] }, .init(field: .notGrowthWorthy, reason: .multipleAnchors)),
             (anchor + "- x\n\nprose interruption\n\n- y\n\n## End", { $0.notGrowthWorthy = ["z"] },
              .init(field: .notGrowthWorthy, reason: .multipleBulletRuns)),
@@ -402,5 +405,61 @@ struct DocumentSuite {
         let form = ScopedIndex.all("Must Always", count: 2) + ScopedIndex.all("Must Never", count: 2) + ScopedIndex.all("Learned", count: 1)
         if Set(form.map(\.id)).count != form.count || form.map(\.index) != [0, 1, 0, 1, 0] { failures.append("form ids") }
         return check("UX-01a", "한 List·Form 안 여러 섹션의 행 id가 서로 겹치지 않음(세션 상세가 Log 줄을 다른 섹션에 보이던 결함)", failures, start)
+    }
+
+    /// Codex r5 (2026-11-04): shapes the form editors used to corrupt.
+    private func reviewR5Shapes() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let yamlPatch = { (raw: String, change: (inout AgentConfig) -> Void) -> Result<String, AgentYamlDocument.Failure> in
+            var next = AgentYamlDocument.parse(raw)
+            change(&next)
+            return AgentYamlDocument.patch(raw, to: next)
+        }
+        // Block scalar / continued value: a one-line edit left broken YAML.
+        for raw in ["name: a\ndescription: |\n  key: old\nmodels:\n  primary: p\n",
+                    "name: a\ndescription: first line\n  second line\nmodels:\n  primary: p\n"] {
+            if yamlPatch(raw, { $0.description = "new" }) != .failure(.init(field: .description, reason: .multilineValue)) {
+                failures.append("multiline \(raw.prefix(30))")
+            }
+            if !AgentYamlDocument.blocked(raw).contains(where: { $0.field == .description }) { failures.append("multiline not blocked") }
+        }
+        // Values YAML would parse as something else.
+        let plain = "name: a\nversion: 1.4.0\ndescription: old\nmodels:\n  primary: p\n"
+        let quoted: [(String, (inout AgentConfig) -> Void, String)] = [
+            ("trailing colon", { $0.description = "Summary:" }, "description: \"Summary:\""),
+            ("null", { $0.name = "null" }, "name: \"null\""), ("bool", { $0.name = "yes" }, "name: \"yes\""),
+            ("number", { $0.version = "2" }, "version: \"2\""), ("float", { $0.version = "1.10" }, "version: \"1.10\""),
+        ]
+        for (label, change, expected) in quoted where (try? yamlPatch(plain, change).get())?.contains(expected + "\n") != true {
+            failures.append("quote \(label)")
+        }
+        if (try? yamlPatch(plain) { $0.version = "1.5.0" }.get())?.contains("version: 1.5.0\n") != true { failures.append("dotted version") }
+        // Nested bullets were flattened into one level.
+        let nested = "## Must Always\n- parent\n  - child\n- other\n\n## Must Never\n\n## Learned\n"
+        var rules = RulesDocument.parse(nested)
+        rules.mustAlways[rules.mustAlways.count - 1] = "changed"
+        if case let .failure(failure) = RulesDocument.patch(nested, to: rules), failure.reason == .nestedBullets {} else { failures.append("nested rules") }
+        if !RulesDocument.blocked(nested).contains(where: { $0.field == .mustAlways }) { failures.append("nested not blocked") }
+        // Escaped pipe and extra columns were cut on save.
+        let header = "| 세션 중 이벤트 | 기록 위치 | 예시 |\n|---|---|---|\n"
+        let escaped = header + "| E | L | A \\| B |\n"
+        if GrowthDocument.parse(escaped).decisionTable.first?.example != "A \\| B" { failures.append("escaped pipe parse") }
+        var growth = GrowthDocument.parse(escaped)
+        growth.decisionTable[0].event = "E2"
+        if (try? GrowthDocument.patch(escaped, to: growth).get())?.contains("| E2 | L | A \\| B |") != true { failures.append("escaped pipe kept") }
+        let wide = "| 세션 중 이벤트 | 기록 위치 | 예시 | 비고 |\n|---|---|---|---|\n| E | L | X | note |\n"
+        var wideData = GrowthDocument.parse(wide)
+        wideData.decisionTable = [DecisionRow(event: "N", location: "L", example: "X")]
+        if case .failure(.init(field: .decisionTable, reason: .malformedRow)) = GrowthDocument.patch(wide, to: wideData) {} else {
+            failures.append("4 columns accepted")
+        }
+        let nestedGrowth = header + "| E | L | X |\n\n**NOT growth-worthy** — 기록하지 않을 것:\n- a\n  - b\n"
+        var nestedData = GrowthDocument.parse(nestedGrowth)
+        nestedData.notGrowthWorthy = ["z"]
+        if case .failure(.init(field: .notGrowthWorthy, reason: .nestedBullets)) = GrowthDocument.patch(nestedGrowth, to: nestedData) {} else {
+            failures.append("nested growth")
+        }
+        return check("CR-05a", "Codex r5 회귀: YAML 여러 줄 값·따옴표 필요 값, 중첩 목록, 표의 \\|·추가 열 — 저장이 원문을 깨지 않거나 거부", failures, start)
     }
 }
