@@ -50,6 +50,11 @@ struct GitSuite {
         write(root.appendingPathComponent("outside.txt"), "o\n")
         write(barrack.appendingPathComponent("a.md"), "a\n")
         _ = await repo.run(["init", "-q", "-b", "main"])
+        // r5: never commit unless git really targets the fixture.
+        let top = await repo.run(["rev-parse", "--show-toplevel"]).output
+        guard URL(fileURLWithPath: top).resolvingSymlinksInPath().path == root.resolvingSymlinksInPath().path else {
+            return check("GT-01b", "모노레포 배럭", ["fixture repo is not \(root.path): \(top)"], start)
+        }
         _ = await repo.run(["add", "-A"])
         _ = await repo.run(["commit", "-q", "-m", "root: initial"])
         write(root.appendingPathComponent("outside.txt"), "o2\n")

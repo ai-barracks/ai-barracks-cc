@@ -525,8 +525,8 @@ extension WorkspaceModel {
 
     /// ~/.aib/barracks.json changed (aib init / barracks remove): new list,
     /// same grids for barracks that remain.
-    func reloadRegistry(_ loaded: [Barrack] = BarrackRegistry.load()) {
-        guard loaded != barracks, !loaded.isEmpty else { return }
+    func reloadRegistry(_ read: [Barrack]? = BarrackRegistry.read()) {
+        guard let loaded = read, loaded != barracks else { return }
         barracks = loaded
         liveness.update(barracks: loaded)
         if let selected = selectedBarrackID, !loaded.contains(where: { $0.id == selected }) {

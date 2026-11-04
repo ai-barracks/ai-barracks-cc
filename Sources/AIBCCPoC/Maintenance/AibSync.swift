@@ -21,7 +21,8 @@ enum AibSync {
     static func runner(dryRun: Bool = false, registry: String? = nil) -> Runner {
         let prefix = registry.map { "AIB_REGISTRY=\(AgentLauncher.shellQuote($0)) " } ?? ""
         let command = "\(prefix)aib sync \(dryRun ? "--dry-run " : "")."
-        return { barrack in await run(command, in: barrack) }
+        // A real sync re-registers the barrack: one at a time.
+        return { barrack in dryRun ? await run(command, in: barrack) : await AibWriteQueue.run { await run(command, in: barrack) } }
     }
 
     private static func run(_ command: String, in barrack: URL) async -> Outcome {

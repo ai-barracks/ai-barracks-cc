@@ -38,6 +38,10 @@ enum BarrackAdmin {
     static let scaffold = "SESSIONS.md, sessions/, wiki/, SOUL.md, RULES.md, GROWTH.md, agent.yaml, CLAUDE.md·AGENTS.md·GEMINI.md, docs/, skills/council, .gitignore"
 
     private static func aib(_ arguments: String, environment: [String: String]) async -> Outcome {
+        await AibWriteQueue.run { await unqueued(arguments, environment: environment) }
+    }
+
+    private static func unqueued(_ arguments: String, environment: [String: String]) async -> Outcome {
         let result = await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/zsh"), ["-lc", "aib \(arguments)"],
                                                        in: NSHomeDirectory(), environment: environment)
         let output = MaintenanceScanner.lines(result.output).joined(separator: "\n")

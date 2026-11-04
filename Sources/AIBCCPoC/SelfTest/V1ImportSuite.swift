@@ -32,8 +32,7 @@ struct V1ImportSuite {
         if store.commands.map(\.command) != ["git status", "npm run build"] { failures.append("dedupe \(store.commands.map(\.command))") }
         if defaults.double(forKey: AppSettings.fontSizeKey) != AppSettings.fontSizeRange.upperBound
             || defaults.string(forKey: AppSettings.cursorKey) != "underline" { failures.append("applied terminal") }
-        if ProviderProfiles.load(.codex, defaults: defaults) != ProviderProfile() && !AppSettings.isSelfTest { failures.append("profile") }
-        if defaults.data(forKey: ProviderProfiles.key(.codex)) == nil { failures.append("profile saved") }
+        if ProviderProfiles.load(.codex, defaults: defaults) != found.profiles[.codex] { failures.append("profile") }
         if applied.count != 4 { failures.append("applied \(applied)") }
         if !V1SettingsImport.parse(["cc-quick-commands": "not json", "aib-profile-codex": #"{"model":"m","effort":"bogus"}"#]).isEmpty {
             failures.append("malformed accepted")

@@ -105,9 +105,9 @@ enum ProcessOutput {
     /// waitUntilExit once hung a GCD worker forever, 2026-11-02; a
     /// background descendant holding the pipe hung the read, r5.)
     static func runWithStatus(_ executable: URL, _ arguments: [String], in directory: String,
-                              environment: [String: String] = [:],
+                              environment: [String: String] = [:], completeEnvironment: [String: String]? = nil,
                               timeout: TimeInterval = AppConstants.ChildProcess.timeout) async -> (output: String, status: Int32) {
-        let env = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+        let env = completeEnvironment ?? ProcessInfo.processInfo.environment.merging(environment) { $1 }
         let options = BoundedProcess.Options(timeout: timeout, outputLimit: AppConstants.ChildProcess.outputLimit, mergeStderr: true)
         let result = await Task.detached {
             BoundedProcess.run(executable, arguments, cwd: URL(fileURLWithPath: directory), environment: env, options: options)

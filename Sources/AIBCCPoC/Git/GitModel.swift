@@ -109,11 +109,23 @@ struct GitRepository {
         var id: String { hash }
     }
 
+    /// The environment git runs with: inherited variables that would point
+    /// git at another repository, index or config are dropped (r5: an
+    /// inherited GIT_DIR beat `-C` and could aim a commit at a real repo);
+    /// the caller's own `extra` variables win; prompts are off.
+    static func environment(inherited: [String: String] = ProcessInfo.processInfo.environment,
+                            extra: [String: String]) -> [String: String] {
+        let redirecting: Set = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                                "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_PREFIX", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"]
+        let kept = inherited.filter { key, _ in
+            !redirecting.contains(key) && !key.hasPrefix("GIT_CONFIG_KEY_") && !key.hasPrefix("GIT_CONFIG_VALUE_")
+        }
+        return kept.merging(["GIT_TERMINAL_PROMPT": "0"]) { $1 }.merging(extra) { $1 }
+    }
+
     func run(_ arguments: [String]) async -> Outcome {
-        // No terminal: a credential prompt must fail, not wait forever.
-        let env = environment.merging(["GIT_TERMINAL_PROMPT": "0"]) { current, _ in current }
         let result = await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/usr/bin/git"), ["-C", directory] + arguments,
-                                                       in: directory, environment: env)
+                                                       in: directory, completeEnvironment: Self.environment(extra: environment))
         return Outcome(ok: result.status == 0, output: result.output.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
@@ -154,8 +166,7 @@ struct GitRepository {
 
     /// Porcelain output keeps leading spaces and NULs: no trimming.
     private func raw(_ arguments: [String]) async -> String {
-        let env = environment.merging(["GIT_TERMINAL_PROMPT": "0"]) { current, _ in current }
-        return await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/usr/bin/git"), ["-C", directory] + arguments,
-                                                 in: directory, environment: env).output
+        await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/usr/bin/git"), ["-C", directory] + arguments,
+                                          in: directory, completeEnvironment: Self.environment(extra: environment)).output
     }
 }

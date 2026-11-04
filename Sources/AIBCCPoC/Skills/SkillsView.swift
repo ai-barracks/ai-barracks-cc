@@ -18,6 +18,8 @@ struct SkillsView: View {
     @State private var renderFailure: String?
     @State private var sheet: SkillSheet?
     @State private var syncState = SyncState.idle
+    /// aib's seeded skills: sync re-creates them, so no delete or rename.
+    @State private var defaultSkills: Set<String> = []
 
     enum SyncState: Equatable { case idle, running, done, failed(String) }
 
@@ -29,6 +31,7 @@ struct SkillsView: View {
         }
         .background(Tokens.work)
         .onAppear(perform: reload)
+        .task { defaultSkills = await AibTemplates.defaultSkills() }
         .onChange(of: barrack.id) { selection = nil; reload() }
         .onChange(of: changes) { reload() }
         .onChange(of: pending) { takePending() }
@@ -86,9 +89,14 @@ struct SkillsView: View {
                 HStack {
                     OwnershipSeal(ownership: .user)
                     Spacer()
+                    let seeded = defaultSkills.contains(skill.slug)
+                    if seeded {
+                        Text("aib 기본 skill — 지우거나 이름을 바꾸면 aib sync가 다시 만듭니다")
+                            .font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(2)
+                    }
                     Button("편집") { openEditor(skill) }
-                    Button("이름 변경") { sheet = .rename(skill) }
-                    Button("삭제", role: .destructive) { sheet = .delete(skill) }
+                    Button("이름 변경") { sheet = .rename(skill) }.disabled(seeded)
+                    Button("삭제", role: .destructive) { sheet = .delete(skill) }.disabled(seeded)
                 }
                 .padding(Tokens.Spacing.m)
                 if let source, let renderFailure {

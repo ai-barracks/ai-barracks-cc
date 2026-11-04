@@ -34,7 +34,8 @@ enum ProviderProfiles {
 
     /// A stored profile that fails validation is ignored (v1 readProviderProfile).
     static func load(_ client: AgentClient, defaults: UserDefaults = .standard) -> ProviderProfile {
-        guard !AppSettings.isSelfTest, let data = defaults.data(forKey: key(client)),
+        // Self-tests run on defaults — except a store a test passes in (r5).
+        guard defaults !== UserDefaults.standard || !AppSettings.isSelfTest, let data = defaults.data(forKey: key(client)),
               let profile = try? JSONDecoder().decode(ProviderProfile.self, from: data),
               isValid(profile, for: client) else { return ProviderProfile() }
         return profile
