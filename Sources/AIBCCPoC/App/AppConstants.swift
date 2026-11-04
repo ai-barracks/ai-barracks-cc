@@ -4,7 +4,11 @@ import Foundation
 /// magic numbers or paths.
 enum AppConstants {
     enum Paths {
-        static let barracksRegistry = "~/.aib/barracks.json"
+        /// aib's registry; `AIB_REGISTRY` points elsewhere, as it does for
+        /// aib itself (demo data, isolated runs).
+        static var barracksRegistry: String {
+            ProcessInfo.processInfo.environment["AIB_REGISTRY"].flatMap { $0.isEmpty ? nil : $0 } ?? "~/.aib/barracks.json"
+        }
         static let rendererDirectory = "MarkdownRenderer"
         static let rendererEntry = "index.html"
         static let fixturesDirectory = "Fixtures"

@@ -142,8 +142,8 @@ struct SelfTestHarness {
     /// Asks scripts/capture-watcher.sh (run outside the app, which already has
     /// screen-capture rights) for a composited window capture. Returns the
     /// PNG path if it appeared in time.
-    func requestCapture(label: String) async -> URL? {
-        guard let window else { return nil }
+    func requestCapture(label: String, of other: NSWindow? = nil) async -> URL? {
+        guard let window = other ?? window else { return nil }
         // Convergence is judged on grid/PTY sizes; give the renderer time to
         // present that state before the window server captures it.
         await pause(AppConstants.SelfTest.captureRenderGrace)

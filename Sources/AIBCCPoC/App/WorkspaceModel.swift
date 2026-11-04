@@ -90,6 +90,8 @@ final class WorkspaceModel {
     var isNewAgentSheetPresented = false
     var isCouncilSheetPresented = false
     var isAddBarrackPresented = false
+    /// 기록 destination shows the terminal output archive tab.
+    var historyShowsArchive = false
     /// Asked to unregister (confirmation dialog shown while set).
     var barrackToRemove: Barrack?
     var isPalettePresented = false

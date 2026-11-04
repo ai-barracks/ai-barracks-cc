@@ -108,11 +108,11 @@ struct HistoryDestinationView: View {
     let workspace: WorkspaceModel
     let barrack: Barrack
     var changes = 0
-    @State private var showArchive = false
+    private var showArchive: Bool { workspace.historyShowsArchive }
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $showArchive) {
+            Picker("", selection: Binding(get: { workspace.historyShowsArchive }, set: { workspace.historyShowsArchive = $0 })) {
                 Text("세션 기록").tag(false)
                 Text("터미널 출력").tag(true)
             }
@@ -127,6 +127,6 @@ struct HistoryDestinationView: View {
                 SessionHistoryView(workspace: workspace, barrack: barrack, changes: changes)
             }
         }
-        .onChange(of: workspace.pendingSessionID) { if workspace.pendingSessionID != nil { showArchive = false } }
+        .onChange(of: workspace.pendingSessionID) { if workspace.pendingSessionID != nil { workspace.historyShowsArchive = false } }
     }
 }
