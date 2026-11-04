@@ -1,0 +1,5 @@
+[
+  {"id": "MD-05-review", "status": "pass",
+   "reviewer": "Codex (r4, read-only review of 87a558c..55c718c)",
+   "note": "Renderer/src/render.js allows no raw HTML: script/onerror/iframe/object/SVG are escaped, javascript: and data: URLs become empty; Renderer/src/index.html CSP blocks remote img/css/font/frame/object (dist HTML/CSS byte-identical to source); MarkdownWebView.swift cancels every in-app navigation and hands only http(s) to the browser. No CSP bypass or in-app navigation path from document content. See docs/reviews/codex-r4.md"}
+]
