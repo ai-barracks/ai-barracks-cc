@@ -195,10 +195,23 @@ private struct SessionDetailView: View {
     private func group(_ title: String, _ items: [String]) -> some View {
         if !items.isEmpty {
             Section("\(title) (\(items.count))") {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    Text(item).font(Tokens.Font.body).textSelection(.enabled)
+                ForEach(SectionRow.rows(title, items)) { row in
+                    Text(row.text).font(Tokens.Font.body).textSelection(.enabled)
                 }
             }
         }
+    }
+}
+
+/// A row of one section of a List. Ids must be unique across the whole List:
+/// with per-section offsets (0, 1, 2 in every section) SwiftUI reused the
+/// first section's rows, and Decisions / Wiki Extractions showed Log lines
+/// (found in the README screenshots, 2026-11-04).
+struct SectionRow: Identifiable, Equatable {
+    let id: String
+    let text: String
+
+    static func rows(_ section: String, _ items: [String]) -> [SectionRow] {
+        items.enumerated().map { SectionRow(id: "\(section)#\($0.offset)", text: $0.element) }
     }
 }

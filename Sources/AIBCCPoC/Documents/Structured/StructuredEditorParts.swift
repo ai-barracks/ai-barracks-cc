@@ -33,6 +33,18 @@ struct StructuredEditorFrame<Content: View>: View {
     }
 }
 
+/// A row index whose id is unique across every section of a Form or List.
+struct ScopedIndex: Identifiable, Equatable {
+    let scope: String
+    let index: Int
+
+    var id: String { "\(scope)#\(index)" }
+
+    static func all(_ scope: String, count: Int) -> [ScopedIndex] {
+        (0..<count).map { ScopedIndex(scope: scope, index: $0) }
+    }
+}
+
 /// One managed bullet list: edit in place, reorder, delete, add.
 struct BulletListSection: View {
     let title: String
@@ -41,7 +53,9 @@ struct BulletListSection: View {
 
     var body: some View {
         Section {
-            ForEach(items.indices, id: \.self) { index in
+            // Ids scoped by section: several lists share one Form (see SectionRow).
+            ForEach(ScopedIndex.all(title, count: items.count)) { row in
+                let index = row.index
                 HStack(spacing: Tokens.Spacing.s) {
                     TextField(placeholder, text: Binding(get: { items.indices.contains(index) ? items[index] : "" },
                                                          set: { if items.indices.contains(index) { items[index] = $0 } }),

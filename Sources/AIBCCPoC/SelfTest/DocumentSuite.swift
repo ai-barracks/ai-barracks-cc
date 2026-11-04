@@ -6,7 +6,7 @@ import Foundation
 struct DocumentSuite {
     func run() -> [TestResult] {
         [patchPrimitives(), patchBulletRuns(), rulesParsing(), rulesPatching(), soulParsing(), soulPatching(),
-         growthParsing(), growthPatching(), yamlParsing(), yamlPatching(), mergeOnConflict()]
+         growthParsing(), growthPatching(), yamlParsing(), yamlPatching(), mergeOnConflict(), uniqueRowIDs()]
     }
 
     static let richRules = [
@@ -387,5 +387,20 @@ struct DocumentSuite {
         let soulMerged = (try? soulPatch(soulAgent).get()) ?? ""
         if !soulMerged.contains("\nNyx\n") || !soulMerged.contains("- no PII\n") { failures.append("soul merge") }
         return check("SM-01a", "충돌 시 내 변경만 새 내용에 적용(섹션 단위 3-way): 다른 섹션 변경 보존, 같은 섹션이면 거부", failures, start)
+    }
+
+    /// Incident 2026-11-04 (README screenshots): the session detail List
+    /// gave every section offset ids 0, 1, 2…, so SwiftUI showed Log lines
+    /// under Decisions and Wiki Extractions. Rows of all sections of one List
+    /// (and the bullet lists of one Form) must have distinct ids.
+    private func uniqueRowIDs() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let rows = SectionRow.rows("Log", ["a", "b", "c"]) + SectionRow.rows("Decisions", ["d"]) + SectionRow.rows("Wiki Extractions", ["e", "f"])
+        if Set(rows.map(\.id)).count != rows.count { failures.append("session detail ids collide") }
+        if rows.first(where: { $0.id == "Decisions#0" })?.text != "d" { failures.append("row text") }
+        let form = ScopedIndex.all("Must Always", count: 2) + ScopedIndex.all("Must Never", count: 2) + ScopedIndex.all("Learned", count: 1)
+        if Set(form.map(\.id)).count != form.count || form.map(\.index) != [0, 1, 0, 1, 0] { failures.append("form ids") }
+        return check("UX-01a", "한 List·Form 안 여러 섹션의 행 id가 서로 겹치지 않음(세션 상세가 Log 줄을 다른 섹션에 보이던 결함)", failures, start)
     }
 }
