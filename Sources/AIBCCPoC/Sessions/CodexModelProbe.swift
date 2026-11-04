@@ -82,20 +82,21 @@ enum CodexModelProbe {
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-codex-\(UUID().uuidString)")
         guard (try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)) != nil else { return .failure(.couldNotStart) }
         defer { try? FileManager.default.removeItem(at: scratch) }
-        let process = Process()
+        // Own process group: success, failure and timeout all end with the
+        // whole group killed (v1 Server::drop; r5 found workers left behind).
         let input = Pipe()
         let output = Pipe()
-        process.executableURL = binary
-        process.arguments = arguments
-        process.currentDirectoryURL = scratch
-        process.environment = sanitizedEnvironment()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return .failure(.couldNotStart) }
+        guard let pid = BoundedProcess.startInteractive(binary, arguments, cwd: scratch, environment: sanitizedEnvironment(),
+                                                        stdin: input.fileHandleForReading.fileDescriptor,
+                                                        stdout: output.fileHandleForWriting.fileDescriptor, tag: "probe") else {
+            return .failure(.couldNotStart)
+        }
+        // The child has its own copies of these ends.
+        try? input.fileHandleForReading.close()
+        try? output.fileHandleForWriting.close()
         defer {
             output.fileHandleForReading.readabilityHandler = nil
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            BoundedProcess.finish(pid)
         }
         let session = Session(reader: LineReader(output.fileHandleForReading), writer: input.fileHandleForWriting,
                               deadline: Date().addingTimeInterval(timeout))
@@ -147,7 +148,9 @@ enum CodexModelProbe {
         private func request(_ id: Int, _ method: String, _ params: [String: Any]) -> Result<[String: Any], Failure> {
             guard send(["id": id, "method": method, "params": params]) else { return .failure(.couldNotStart) }
             while true {
-                guard let line = reader.next(until: deadline) else { return .failure(.timeout) }
+                guard let line = reader.next(until: deadline) else {
+                    return reader.overLimit ? .failure(.invalid("응답이 한도를 넘음")) : .failure(.timeout)
+                }
                 guard let value = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] else {
                     return .failure(.invalid("JSON 아님"))
                 }
@@ -167,6 +170,10 @@ enum CodexModelProbe {
         private var lines: [Data] = []
         private var total = 0
         private var closed = false
+        private var exceeded = false
+
+        /// A line or the whole response went past the bounds (nothing returned).
+        var overLimit: Bool { lock.withLock { exceeded } }
 
         init(_ handle: FileHandle) {
             handle.readabilityHandler = { [weak self] handle in
@@ -182,11 +189,19 @@ enum CodexModelProbe {
             } else {
                 total += data.count
                 buffer.append(data)
+                // Bounds are checked before anything is queued (r5: a long or
+                // late line was still returned).
                 while let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-                    lines.append(buffer[buffer.startIndex..<newline])
+                    let line = buffer[buffer.startIndex..<newline]
+                    guard line.count <= CodexModelProbe.maxLine else { break }
+                    lines.append(Data(line))
                     buffer = Data(buffer[(newline + 1)...])
                 }
-                if buffer.count > CodexModelProbe.maxLine || total > CodexModelProbe.maxTotal { closed = true }
+                if buffer.count > CodexModelProbe.maxLine || total > CodexModelProbe.maxTotal {
+                    closed = true
+                    exceeded = true
+                    lines.removeAll()
+                }
             }
             lock.unlock()
             available.signal()

@@ -98,33 +98,24 @@ enum ProcessOutput {
         await runWithStatus(executable, arguments, in: directory).output
     }
 
-    /// Output and exit status; a process that cannot start reports -1, an
-    /// exit not seen within the grace after its output ended reports
-    /// `unknownStatus`. `waitUntilExit()` is not used: on a GCD worker it
-    /// spins that thread's run loop and was seen waiting forever after the
-    /// child had exited (self-test hang 2026-11-02).
+    /// Output (stdout and stderr together) and exit status. The child runs
+    /// in its own process group under BoundedProcess: a deadline from the
+    /// start, capped output, the group killed on timeout and after the root
+    /// exits. Cannot start → -1; timed out → `unknownStatus`. (Foundation's
+    /// waitUntilExit once hung a GCD worker forever, 2026-11-02; a
+    /// background descendant holding the pipe hung the read, r5.)
     static func runWithStatus(_ executable: URL, _ arguments: [String], in directory: String,
-                              environment: [String: String] = [:]) async -> (output: String, status: Int32) {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            let pipe = Pipe()
-            let exited = DispatchSemaphore(value: 0)
-            process.executableURL = executable
-            process.arguments = arguments
-            process.currentDirectoryURL = URL(fileURLWithPath: directory)
-            if !environment.isEmpty {
-                process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
-            }
-            process.standardOutput = pipe
-            process.standardError = pipe
-            process.terminationHandler = { _ in exited.signal() }
-            guard (try? process.run()) != nil else { return continuation.resume(returning: ("", -1)) }
-            DispatchQueue.global().async {
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let seen = exited.wait(timeout: .now() + AppConstants.ChildProcess.exitGrace) == .success
-                let status = seen ? process.terminationStatus : AppConstants.ChildProcess.unknownStatus
-                continuation.resume(returning: (String(decoding: data, as: UTF8.self), status))
-            }
+                              environment: [String: String] = [:],
+                              timeout: TimeInterval = AppConstants.ChildProcess.timeout) async -> (output: String, status: Int32) {
+        let env = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+        let options = BoundedProcess.Options(timeout: timeout, outputLimit: AppConstants.ChildProcess.outputLimit, mergeStderr: true)
+        let result = await Task.detached {
+            BoundedProcess.run(executable, arguments, cwd: URL(fileURLWithPath: directory), environment: env, options: options)
+        }.value
+        switch result {
+        case let .success(output): return (String(decoding: output.stdout, as: UTF8.self), output.status)
+        case .failure(.couldNotStart), .failure(.notStarted): return ("", -1)
+        case .failure: return ("", AppConstants.ChildProcess.unknownStatus)
         }
     }
 }

@@ -137,7 +137,29 @@ struct UnitSuite {
         return [.make("PO-01a", "자식 출력 300KB(파이프 버퍼 초과)를 멈춤 없이 읽음",
                       status: output.count == 300_000 && elapsed < 5000 ? .pass : .fail, cause: .app,
                       evidence: ["bytes": "\(output.count)", "ms": String(format: "%.0f", elapsed)], startedAt: start),
-                await exitStatusBurst()]
+                await exitStatusBurst(), await descendantHoldsPipe()]
+    }
+
+    /// Codex r5: the exit grace began only after EOF, so a background
+    /// descendant holding the pipe (`sleep 600 &`) held the caller for its
+    /// whole life. Now: the root's exit ends the call and kills the group,
+    /// and a deadline from the start bounds everything.
+    private func descendantHoldsPipe() async -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let shell = URL(fileURLWithPath: "/bin/sh")
+        let (output, status) = await ProcessOutput.runWithStatus(shell, ["-c", "sleep 600 & echo $!; exit 0"], in: NSTemporaryDirectory())
+        let first = (ContinuousClock.now - start).milliseconds
+        let pid = Int32(output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        usleep(100_000)
+        if status != 0 || first > 5000 { failures.append("held \(Int(first))ms status \(status)") }
+        if pid <= 0 || kill(pid, 0) == 0 { failures.append("descendant survived") }
+        let timed = ContinuousClock.now
+        let (_, timedStatus) = await ProcessOutput.runWithStatus(shell, ["-c", "sleep 30"], in: NSTemporaryDirectory(), timeout: 1)
+        if timedStatus != AppConstants.ChildProcess.unknownStatus || (ContinuousClock.now - timed).milliseconds > 4000 { failures.append("timeout") }
+        return .make("PO-01c", "자식이 남긴 후손이 파이프를 잡아도 호출이 끝남(그룹 종료) · 시작 시점 기준 시간 제한",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// Incident 2026-11-02: a self-test hung for good in waitUntilExit after

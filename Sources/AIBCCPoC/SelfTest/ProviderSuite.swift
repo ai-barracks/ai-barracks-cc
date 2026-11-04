@@ -57,21 +57,35 @@ struct ProviderSuite {
             FileManager.default.createFile(atPath: url.path, contents: Data(("#!/bin/sh\n" + body).utf8), attributes: [.posixPermissions: 0o700])
             return url
         }
+        // Every request is recorded (r5: an extra request after the last page
+        // went unnoticed); a worker is left running (r5: it survived).
+        let requests = directory.appendingPathComponent("requests")
+        let worker = directory.appendingPathComponent("worker")
         let good = fake("codex", """
         case "$PWD" in *aibcc-codex-*) ;; *) exit 8 ;; esac
-        read init; echo "$init" | grep -q '"method":"initialize"' || exit 1
+        sleep 300 & echo $! > '\(worker.path)'
+        exec 3>> '\(requests.path)'
+        record() { echo "$1" | sed -n 's/.*"method":"\\([^"]*\\)".*/\\1/p' >&3; }
+        read init; record "$init"; echo "$init" | grep -q '"method":"initialize"' || exit 1
         echo '{"id":1,"result":{}}'
-        read initialized; echo "$initialized" | grep -q '"method":"initialized"' || exit 2
-        read models; echo "$models" | grep -q '"method":"model/list"' || exit 3
+        read initialized; record "$initialized"; echo "$initialized" | grep -q '"method":"initialized"' || exit 2
+        read models; record "$models"; echo "$models" | grep -q '"method":"model/list"' || exit 3
         echo '{"method":"note","params":{}}'
         echo '{"id":2,"result":{"data":[{"model":"future","displayName":"Future","isDefault":true,"supportedReasoningEfforts":[{"reasoningEffort":"high"}]},{"model":"hidden","hidden":true}],"nextCursor":"next"}}'
-        read models; echo "$models" | grep -q '"cursor":"next"' || exit 4
+        read models; record "$models"; echo "$models" | grep -q '"cursor":"next"' || exit 4
         echo '{"id":3,"result":{"data":[{"model":"other"},{"model":"future"}],"nextCursor":null}}'
-        read anything && exit 5
-        sleep 30
+        while read anything; do record "$anything"; done
         """)
         let listed = await CodexModelProbe.list(binary: good, timeout: 5)
         if (try? listed.get())?.map(\.model) != ["future", "other"] { failures.append("handshake/pagination \(listed)") }
+        usleep(200_000)
+        let sent = ((try? String(contentsOf: requests, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        if sent != ["initialize", "initialized", "model/list", "model/list"] { failures.append("requests \(sent)") }
+        let workerPID = Int32(((try? String(contentsOf: worker, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        if workerPID <= 0 || kill(workerPID, 0) == 0 { failures.append("worker survived") }
+        let huge = String(repeating: "x", count: 70 * 1024)
+        let oversized = await CodexModelProbe.list(binary: fake("huge", "read init\necho '{\"id\":1,\"result\":{\"pad\":\"\(huge)\"}}'\nsleep 30\n"), timeout: 5)
+        if case .failure(.invalid) = oversized {} else { failures.append("oversized line \(oversized)") }
         let refused = await CodexModelProbe.list(binary: fake("refuse", "read init\necho '{\"id\":1,\"error\":{\"code\":-1}}'\nsleep 30\n"), timeout: 5)
         if refused != .failure(.refused) { failures.append("refused \(refused)") }
         let began = ContinuousClock.now

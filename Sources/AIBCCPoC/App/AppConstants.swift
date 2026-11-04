@@ -160,9 +160,11 @@ enum AppConstants {
     }
 
     enum ChildProcess {
-        /// How long to wait for the exit after a child's output ended. The
-        /// exit normally follows at once; past this the status is unknown.
-        static let exitGrace: DispatchTimeInterval = .seconds(5)
+        /// From the start, not from the end of the output: a descendant that
+        /// keeps the pipe open must not hold a caller forever (r5).
+        static let timeout: TimeInterval = 300
+        static let outputLimit = 16 * 1024 * 1024
+        /// Timed out or cancelled: the exit status is unknown.
         static let unknownStatus: Int32 = -2
     }
 
