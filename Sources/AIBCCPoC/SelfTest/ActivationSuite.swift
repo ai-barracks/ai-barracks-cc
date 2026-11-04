@@ -51,6 +51,9 @@ struct ActivationSuite {
         let crashed = #"{"version":1,"config":{"enabled":true,"claude":true,"codex":false},"last_claimed":{"claude":1},"history":[{"provider":"claude","slot":"s","status":"running","detail":"d"}]}"#
         if (try? ActivationSchedule.decode(Data(crashed.utf8)).get())?.history.first?.status != "interrupted" { failures.append("interrupted") }
         for bad in [#"{"version":2}"#, #"{"version":1,"config":{"enabled":true,"claude":false,"codex":false}}"#,
+                    // v1 deny_unknown_fields (r5): it would refuse these, so must we.
+                    #"{"version":1,"config":{"enabled":true,"claude":true,"codex":false,"extra":1}}"#,
+                    #"{"version":1,"config":{"enabled":false,"claude":true,"codex":true},"extra":true}"#,
                     #"{"version":1,"last_claimed":{"gemini":1}}"#, "not json"] {
             if case .success = ActivationSchedule.decode(Data(bad.utf8)) { failures.append("accepted \(bad.prefix(30))") }
         }
@@ -128,6 +131,18 @@ struct ActivationSuite {
         clock.now = kst("2026-11-03T16:00:05")
         first.tick()
         if first.view().history.first?.status != "failed" || first.view().config.enabled { failures.append("off did not cancel") }
+        // r5: the waiting instance takes over once the owner lets go, without
+        // running the slot it takes over in.
+        _ = first.save(ActivationConfig(enabled: true, claude: true, codex: false))
+        first.release()
+        clock.now = kst("2026-11-03T16:00:30")
+        second.tick()
+        if !second.view().available || second.view().config != ActivationConfig(enabled: true, claude: true, codex: false) {
+            failures.append("no takeover \(second.view().error ?? "")")
+        }
+        if second.view().history.contains(where: { $0.slot.hasPrefix("2026-11-03T16:00") && $0.status != "failed" }) {
+            failures.append("took over and ran the current slot")
+        }
         return failures
     }
 
@@ -169,8 +184,27 @@ struct ActivationSuite {
         let ok = ActivationRunner.activate(.claude, binary: claude, cancelled: { false })
         let lines = ((try? String(contentsOf: log, encoding: .utf8)) ?? "").components(separatedBy: "\n")
         if case .failure = ok { failures.append("claude fake failed \(ok)") }
-        if lines.first?.contains("aibcc-activation-") != true || Array(lines.dropFirst().prefix(ActivationRunner.requestArguments(.claude).count))
-            != ActivationRunner.requestArguments(.claude) { failures.append("claude argv/cwd") }
+        // v1 request_args as literals (r5: not taken from the code under test).
+        let v1Claude = ["-p", "Reply exactly OK. Do not use any tools.", "--output-format", "json", "--no-session-persistence",
+                        "--max-turns", "1", "--permission-mode", "dontAsk", "--tools", "", "--disallowedTools", "mcp__*",
+                        "--strict-mcp-config", "--mcp-config", #"{"mcpServers":{}}"#, "--settings", #"{"disableAllHooks":true}"#,
+                        "--setting-sources", "", "--system-prompt", "Reply exactly OK. Do not use tools."]
+        let v1Codex = ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--sandbox",
+                       "read-only", "-c", #"approval_policy="never""#, "-c", #"web_search="disabled""#, "--disable", "hooks",
+                       "--disable", "plugins", "--disable", "apps", "--disable", "shell_tool", "--disable", "unified_exec",
+                       "--disable", "multi_agent", "--disable", "browser_use", "--disable", "computer_use", "--disable",
+                       "image_generation", "--disable", "skill_mcp_dependency_install", "--disable", "memories",
+                       "Reply exactly OK. Do not use any tools."]
+        if lines.first?.contains("aibcc-activation-") != true || Array(lines.dropFirst().prefix(v1Claude.count)) != v1Claude {
+            failures.append("claude argv/cwd")
+        }
+        if ActivationRunner.requestArguments(.codex) != v1Codex { failures.append("codex argv") }
+        // r5 blocker: once cancelled, no child is spawned at all (the old code
+        // spawned and killed it at the next poll) — checked at the spawn.
+        let options = BoundedProcess.Options(timeout: 5, outputLimit: 1024, tag: BoundedProcess.activationTag)
+        let refused = BoundedProcess.run(claude, ["auth"], cwd: directory, environment: [:], options: options, cancelled: { true })
+        if case .failure(.notStarted) = refused {} else { failures.append("spawned while cancelled \(refused)") }
+        if case .success = ActivationRunner.activate(.claude, binary: claude, cancelled: { true }) { failures.append("cancelled run succeeded") }
         try? FileManager.default.removeItem(at: log)
         let apiKey = fake("claude-api", """
         if [ "$1" = auth ]; then echo '{"loggedIn":true,"authMethod":"api_key","apiProvider":"firstParty"}'; exit 0; fi

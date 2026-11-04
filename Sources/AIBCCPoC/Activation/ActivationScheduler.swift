@@ -18,7 +18,10 @@ final class ActivationScheduler: @unchecked Sendable {
 
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "aibcc.activation")
-    private let fileURL: URL?
+    private let directory: URL
+    private var fileURL: URL?
+    /// Another app holds the lock: show its setting and take over once it quits.
+    private var waitingForLock = false
     private let findBinary: BinaryFinder
     private let activate: Activate
     private let clock: @Sendable () -> Date
@@ -34,34 +37,60 @@ final class ActivationScheduler: @unchecked Sendable {
          findBinary: @escaping BinaryFinder = { ActivationRunner.findBinary($0.binaryName) },
          activate: @escaping Activate = { ActivationRunner.activate($0, binary: $1, cancelled: $2) },
          clock: @escaping @Sendable () -> Date = { Date() }) {
+        self.directory = directory
         self.findBinary = findBinary
         self.activate = activate
         self.clock = clock
         armedAfter = Int64(clock().timeIntervalSince1970)
-        switch Self.open(directory) {
-        case let .success((fd, document)):
-            lockFD = fd
-            self.document = document
-            fileURL = directory.appendingPathComponent("activation.json")
-            if !write(document) { self.error = self.error ?? "예약 파일을 저장하지 못했습니다" }
-        case let .failure(failure):
-            fileURL = nil
-            error = failure.message
-            // Another app owns the schedule: show its setting, read-only.
-            if let data = try? Data(contentsOf: directory.appendingPathComponent("activation.json")),
-               case let .success(shown) = ActivationSchedule.decode(data) {
-                document = shown
-            }
-        }
+        acquire()
     }
 
     deinit {
         if lockFD >= 0 { close(lockFD) }
     }
 
+    static let lockedMessage = "다른 CommandCenter(v1 포함)가 예약을 맡고 있습니다 — 그 앱이 끝나면 이 앱이 이어받습니다"
+
+    /// Takes the lock and the document, or shows the owner's setting read-only.
+    private func acquire() {
+        let opened = Self.open(directory)
+        lock.withLock {
+            switch opened {
+            case let .success((fd, loaded)):
+                lockFD = fd
+                document = loaded
+                fileURL = directory.appendingPathComponent("activation.json")
+                error = nil
+                waitingForLock = false
+                // Taking over inside a slot waits for the next one.
+                armedAfter = Int64(clock().timeIntervalSince1970)
+                if !persist(loaded) { error = error ?? "예약 파일을 저장하지 못했습니다" }
+            case let .failure(failure):
+                fileURL = nil
+                error = failure.message
+                waitingForLock = failure.message == Self.lockedMessage
+                if let data = try? Data(contentsOf: directory.appendingPathComponent("activation.json")),
+                   case let .success(shown) = ActivationSchedule.decode(data) {
+                    document = shown
+                }
+            }
+        }
+    }
+
+    /// Gives the lock up (owner side of a takeover; self-tests).
+    func release() {
+        stop()
+        lock.withLock {
+            if lockFD >= 0 { close(lockFD) }
+            lockFD = -1
+            fileURL = nil
+        }
+    }
+
     /// Polls every 5 s like v1; a slot is claimed at most once.
     func start() {
-        guard fileURL != nil, timer == nil else { return }
+        let runnable = lock.withLock { (fileURL != nil || waitingForLock) && timer == nil }
+        guard runnable else { return }
         let source = DispatchSource.makeTimerSource(queue: queue)
         source.schedule(deadline: .now(), repeating: .seconds(5))
         source.setEventHandler { [weak self] in self?.tick() }
@@ -76,11 +105,12 @@ final class ActivationScheduler: @unchecked Sendable {
         }
         timer?.cancel()
         timer = nil
-        BoundedProcess.killAll()
+        BoundedProcess.kill(tag: BoundedProcess.activationTag)
     }
 
     /// One poll (the timer's handler; self-tests call it with a fake clock).
     func tick() {
+        if lock.withLock({ waitingForLock && !shutdown }) { acquire() }
         guard let slot = ActivationSchedule.slot(at: clock()) else { return }
         let started = lock.withLock { generation }
         for provider in claim(slot) {
@@ -128,6 +158,8 @@ final class ActivationScheduler: @unchecked Sendable {
             generation += 1
             return .success(())
         }
+        // OFF stops a request in flight now, not at the next poll (v1 cancel_work).
+        if !config.enabled { BoundedProcess.kill(tag: BoundedProcess.activationTag) }
         return outcome.map { _ in view() }
     }
 
@@ -170,14 +202,10 @@ final class ActivationScheduler: @unchecked Sendable {
     }
 
     private func isCancelled(_ started: UInt64) -> Bool {
-        lock.withLock { shutdown || generation != started || error != nil }
+        BoundedProcess.isShuttingDown || lock.withLock { shutdown || generation != started || error != nil }
     }
 
     // MARK: - Storage
-
-    private func write(_ document: ActivationDocument) -> Bool {
-        lock.withLock { persist(document) }
-    }
 
     /// Owner-only temp file, fsync, rename, fsync the directory. Caller holds the lock.
     private func persist(_ document: ActivationDocument) -> Bool {
@@ -214,7 +242,7 @@ final class ActivationScheduler: @unchecked Sendable {
         guard fd >= 0 else { return .failure("예약 잠금 파일을 열 수 없습니다") }
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
             close(fd)
-            return .failure("다른 CommandCenter(v1 포함)가 예약을 맡고 있습니다 — 그 앱을 끄면 이 앱이 맡습니다")
+            return .failure(ActivationFailure(lockedMessage))
         }
         let file = directory.appendingPathComponent("activation.json")
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path) else {

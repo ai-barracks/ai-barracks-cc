@@ -121,7 +121,7 @@ enum ActivationSchedule {
     /// enabled; runs left pending/running by a crash become interrupted
     /// (never retried); history capped.
     static func decode(_ data: Data) -> Result<ActivationDocument, ActivationFailure> {
-        guard data.count <= maxFileSize, var document = try? JSONDecoder().decode(ActivationDocument.self, from: data) else {
+        guard data.count <= maxFileSize, hasOnlyV1Keys(data), var document = try? JSONDecoder().decode(ActivationDocument.self, from: data) else {
             return .failure("예약 파일이 잘못되어 예약을 껐습니다")
         }
         guard document.version == 1 else { return .failure("지원하지 않는 예약 파일 버전") }
@@ -132,6 +132,15 @@ enum ActivationSchedule {
         }
         document.history = Array(document.history.prefix(historyLimit))
         return .success(document)
+    }
+
+    /// v1 decodes Document and Config with `deny_unknown_fields`: a file it
+    /// would refuse must not run here either (nor be rewritten without them).
+    static func hasOnlyV1Keys(_ data: Data) -> Bool {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              Set(object.keys).isSubset(of: ["version", "config", "last_claimed", "history"]) else { return false }
+        guard let config = object["config"] else { return true }
+        return (config as? [String: Any]).map { Set($0.keys).isSubset(of: ["enabled", "claude", "codex"]) } ?? false
     }
 
     static func encode(_ document: ActivationDocument) -> Data? {
