@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 struct ActivationSuite {
     func run() -> [TestResult] {
-        [schedule(), runner()]
+        [schedule(), runner(), endToEnd()]
     }
 
     private func check(_ id: String, _ title: String, _ failures: [String], _ start: ContinuousClock.Instant) -> TestResult {
@@ -144,6 +144,73 @@ struct ActivationSuite {
             failures.append("took over and ran the current slot")
         }
         return failures
+    }
+
+    // MARK: - Scheduler, runner and process gate together
+
+    /// AC-01c (Codex r6 blocker): the real scheduler → runner →
+    /// BoundedProcess chain with a fake CLI. The scheduler's cancel check
+    /// runs inside the process gate; when it re-entered the gate's lock, the
+    /// first slot hung for good — AC-01a/b used stand-ins for one side.
+    private func endToEnd() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let directory = temp("activation-e2e")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let marker = directory.appendingPathComponent("requested")
+        let script = { (name: String, request: String) -> URL in
+            let url = directory.appendingPathComponent(name)
+            let body = """
+            #!/bin/sh
+            if [ "$1" = auth ]; then echo '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}'; exit 0; fi
+            \(request)
+            """
+            FileManager.default.createFile(atPath: url.path, contents: Data(body.utf8), attributes: [.posixPermissions: 0o700])
+            return url
+        }
+        let quick = script("claude", "touch '\(marker.path)'; echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"OK\"}'")
+        let slow = script("claude-slow", "touch '\(marker.path)'; sleep 30")
+
+        // A slot runs to the end.
+        let clock = Clock(kst("2026-11-05T05:59:50"))
+        let quickRun = ActivationScheduler(directory: directory.appendingPathComponent("a"), findBinary: { _ in quick },
+                                           clock: { clock.now })
+        _ = quickRun.save(ActivationConfig(enabled: true, claude: true, codex: false))
+        clock.now = kst("2026-11-05T06:00:05")
+        if !Self.finishes(within: 10, { quickRun.tick() }) { failures.append("slot hung") }
+        if quickRun.view().history.first?.status != "success" { failures.append("slot \(quickRun.view().history.first?.status ?? "none")") }
+
+        // Turning it off mid-request ends the run at once.
+        try? FileManager.default.removeItem(at: marker)
+        let slowClock = Clock(kst("2026-11-05T10:59:50"))
+        let slowRun = ActivationScheduler(directory: directory.appendingPathComponent("b"), findBinary: { _ in slow },
+                                          clock: { slowClock.now })
+        _ = slowRun.save(ActivationConfig(enabled: true, claude: true, codex: false))
+        slowClock.now = kst("2026-11-05T11:00:05")
+        let began = Date()
+        let ended = Self.finishes(within: 10) {
+            let ticking = Thread { slowRun.tick() }
+            ticking.start()
+            while !FileManager.default.fileExists(atPath: marker.path) && Date().timeIntervalSince(began) < 5 { usleep(20_000) }
+            _ = slowRun.save(ActivationConfig(enabled: false))
+            while !ticking.isFinished { usleep(20_000) }
+        }
+        if !ended || Date().timeIntervalSince(began) > 8 { failures.append("off did not end the request") }
+        if slowRun.view().history.first?.status != "failed" { failures.append("off \(slowRun.view().history.first?.status ?? "none")") }
+        slowRun.release()
+        quickRun.release()
+        return check("AC-01c", "실제 스케줄러·실행기·프로세스 게이트 연결: 슬롯 완료, 실행 중 OFF 즉시 종료(교착 없음)", failures, start)
+    }
+
+    /// Runs `work` on its own thread; false if it is still running after
+    /// `seconds` (a hung run then stays parked, which is the failure).
+    private static func finishes(within seconds: TimeInterval, _ work: @escaping @Sendable () -> Void) -> Bool {
+        let done = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
+            work()
+            done.signal()
+        }
+        return done.wait(timeout: .now() + seconds) == .success
     }
 
     // MARK: - Runner against fake CLIs

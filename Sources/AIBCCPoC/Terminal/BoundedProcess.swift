@@ -140,14 +140,20 @@ enum BoundedProcess {
     private final class LiveGroups: @unchecked Sendable {
         private let lock = NSLock()
         private var groups: [pid_t: String] = [:]
+        /// Its own lock: `cancelled` runs under `lock` and may ask for it
+        /// (the activation scheduler does). Read under `lock` it would be a
+        /// re-entry into a non-recursive lock — a deadlock (Codex r6).
+        private let stopLock = NSLock()
         private var stopping = false
 
-        var isShuttingDown: Bool { lock.withLock { stopping } }
+        var isShuttingDown: Bool { stopLock.withLock { stopping } }
 
-        /// Cancel check, spawn and registration as one step.
+        /// Cancel check, spawn and registration as one step. `cancelled`
+        /// runs with `lock` held: it may read `isShuttingDown` but must not
+        /// start, kill or shut down a process.
         func start(tag: String, cancelled: () -> Bool, _ spawn: () -> pid_t?) -> Result<pid_t, Failure> {
             lock.withLock {
-                guard !stopping, !cancelled() else { return .failure(.notStarted) }
+                guard !isShuttingDown, !cancelled() else { return .failure(.notStarted) }
                 guard let pid = spawn() else { return .failure(.couldNotStart) }
                 groups[pid] = tag
                 return .success(pid)
@@ -160,11 +166,11 @@ enum BoundedProcess {
             lock.withLock { groups.filter { $0.value == tag }.keys.forEach { Darwin.kill(-$0, SIGKILL) } }
         }
 
+        /// Closes the gate first: a `start` that already holds `lock` either
+        /// saw it closed or registers its group before the kill below.
         func shutdown() {
-            lock.withLock {
-                stopping = true
-                groups.keys.forEach { Darwin.kill(-$0, SIGKILL) }
-            }
+            stopLock.withLock { stopping = true }
+            lock.withLock { groups.keys.forEach { Darwin.kill(-$0, SIGKILL) } }
         }
     }
 
