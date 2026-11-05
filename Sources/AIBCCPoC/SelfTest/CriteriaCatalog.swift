@@ -111,6 +111,7 @@ enum CriteriaCatalog {
               requires: ["HM-01a", "HM-01b", "NC-01a", "AR-01a", "RG-02a"]),
         .init(id: "TT-01", title: "터미널 관리·Quick Commands·내보내기·설정(v1 패리티 C2~C6·B4·H3)", blocking: false,
               requires: ["TT-01a", "TT-01b", "SE-01a"]),
+        .init(id: "PS-03", title: "복원 실패 시 세션 보존", blocking: false, requires: ["PS-03a"]),
         .init(id: "NV-01", title: "편집 중 이동 확인", blocking: false, requires: ["NV-01a"]),
         .init(id: "R5-01", title: "Codex r5 전역 상태 회귀", blocking: false, requires: ["R5-01a"]),
         .init(id: "V1-01", title: "v1 설정 가져오기", blocking: false, requires: ["V1-01a"]),

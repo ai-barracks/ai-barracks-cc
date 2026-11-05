@@ -19,6 +19,24 @@ struct SavedWorkspace: Codable, Sendable {
     let grids: [String: Grid]
 }
 
+extension SavedWorkspace {
+    /// `current` plus every pane of `kept` it does not already name (a grid
+    /// gets them after its own panes; a barrack it lacks gets kept's grid).
+    static func keeping(_ kept: SavedWorkspace, in current: SavedWorkspace) -> SavedWorkspace {
+        var grids = current.grids
+        for (barrack, old) in kept.grids {
+            guard let now = grids[barrack] else {
+                grids[barrack] = old
+                continue
+            }
+            let named = Set(now.panes.map(\.session))
+            grids[barrack] = Grid(layout: now.layout, splitX: now.splitX, splitY: now.splitY,
+                                  panes: now.panes + old.panes.filter { !named.contains($0.session) })
+        }
+        return SavedWorkspace(selectedBarrackID: current.selectedBarrackID, grids: grids)
+    }
+}
+
 enum SessionStore {
     static func load(from url: URL) -> SavedWorkspace? {
         guard let data = try? Data(contentsOf: url) else { return nil }

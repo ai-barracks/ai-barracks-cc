@@ -11,7 +11,8 @@ struct AgentSuite {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
-         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await settingsApply()]
+         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), restoreFailureKeepsSessions(),
+         await settingsApply()]
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -245,6 +246,30 @@ struct AgentSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["typed": Hex.string(typed), "text_has_markers": "\(text.contains("TL") && text.contains("BR"))",
                                 "front": "\(front)", "closed_process_ended": "\(ended)", "panes": "\(workspace.panes.count)"],
+                     startedAt: start)
+    }
+
+    /// Codex r4: one failed session list at launch let the fresh grid be
+    /// saved over the layout, and the next launch killed the still-running
+    /// sessions as orphans. A model on an unreachable daemon must keep them.
+    private func restoreFailureKeepsSessions() -> TestResult {
+        let start = ContinuousClock.now
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-restore-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try? FileManager.default.createDirectory(at: directory.appendingPathComponent("b"), withIntermediateDirectories: true)
+        let barrack = Barrack(name: "b", path: directory.appendingPathComponent("b").path, description: nil)
+        let executable = harness.workspace.daemon?.executable ?? Bundle.main.bundleURL
+        let backend = DaemonBackend(socketPath: directory.appendingPathComponent("absent.sock").path, executable: executable)
+        let live = UUID()
+        let saved = SavedWorkspace(selectedBarrackID: barrack.id, grids: [barrack.id: .init(
+            layout: PaneLayout.single.rawValue, splitX: 0.5, splitY: 0.5, panes: [.init(session: live, title: "agent")])])
+        SessionStore.save(saved, to: backend.sessionStoreURL)
+        let model = WorkspaceModel(barracks: [barrack], daemon: backend)
+        let after = SessionStore.load(from: backend.sessionStoreURL)?.grids[barrack.id]?.panes.map(\.session) ?? []
+        let ok = after.contains(live) && model.restoreSummary.contains("kept")
+        return .make("PS-03a", "복원 시 세션 목록 실패: 저장된 세션 참조 유지(다음 실행에 고아로 종료되지 않음)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["sessions_after": after.map(\.uuidString).joined(separator: ","), "restore": model.restoreSummary],
                      startedAt: start)
     }
 

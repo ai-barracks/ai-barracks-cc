@@ -83,6 +83,10 @@ final class WorkspaceModel {
     @ObservationIgnored private var terminalHadFocus = false
     /// What the launch-time reattach did (self-test environment evidence).
     @ObservationIgnored private(set) var restoreSummary = "not attempted"
+    /// The saved layout whose sessions could not be confirmed (the daemon's
+    /// list failed): every save keeps referring to them, so the next launch
+    /// reattaches instead of killing them as orphans (Codex r4).
+    @ObservationIgnored private var unconfirmed: SavedWorkspace?
     @ObservationIgnored private var pendingPersist: Task<Void, Never>?
     var isArtifactPanelVisible = true
     var destination: Destination = .sessions
@@ -294,8 +298,9 @@ final class WorkspaceModel {
             restoreSummary = "no saved layout"
             return nil
         }
-        guard let known = daemon.listSessions().map({ Set($0.map(\.id)) }) else {
-            restoreSummary = "daemon session list unavailable"
+        guard let known = Self.listWithRetry(daemon) else {
+            unconfirmed = saved
+            restoreSummary = "daemon session list unavailable; saved sessions kept"
             return nil
         }
         // Sessions no saved pane refers to were orphaned (e.g. a kill lost
@@ -324,11 +329,19 @@ final class WorkspaceModel {
         return saved.selectedBarrackID.flatMap { selected in barracks.first { $0.id == selected }?.id }
     }
 
+    private static func listWithRetry(_ daemon: DaemonBackend, attempts: Int = 3) -> Set<UUID>? {
+        for attempt in 0..<attempts {
+            if let sessions = daemon.listSessions() { return Set(sessions.map(\.id)) }
+            if attempt < attempts - 1 { usleep(200_000) }
+        }
+        return nil
+    }
+
     private func persist() {
         pendingPersist?.cancel()
         pendingPersist = nil
         guard let daemon else { return }
-        let saved = SavedWorkspace(selectedBarrackID: selectedBarrackID, grids: grids.mapValues { grid in
+        let current = SavedWorkspace(selectedBarrackID: selectedBarrackID, grids: grids.mapValues { grid in
             SavedWorkspace.Grid(
                 layout: grid.layout.rawValue, splitX: Double(grid.splitX), splitY: Double(grid.splitY),
                 panes: grid.panes.compactMap { pane in
@@ -336,7 +349,7 @@ final class WorkspaceModel {
                 }
             )
         })
-        SessionStore.save(saved, to: daemon.sessionStoreURL)
+        SessionStore.save(unconfirmed.map { SavedWorkspace.keeping($0, in: current) } ?? current, to: daemon.sessionStoreURL)
     }
 
     /// Ghostty asked to close the surface after its process ended. Close
