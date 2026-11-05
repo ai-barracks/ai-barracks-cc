@@ -33,7 +33,7 @@ Herdr 데스크톱(herdr-core 데몬이 터미널을 소유, 앱 종료 후에�
 - `AIBCCPtyDaemon`(앱 번들 `Contents/MacOS`, 앱이 `posix_spawn`+`setsid`로 기동, 소켓당 1개 — flock): `forkpty`로 자식 생성, 세션마다 최근 출력 960KiB 보관, 종료한 세션도 최종 출력과 함께 보관(최대 32개).
 - 프로토콜 `PtyProtocol`: `[type][16B session UUID][UInt32 BE length][payload]`, 제어는 JSON·입출력은 원시 바이트. CREATE는 첫 viewport 보고 때 실제 격자 크기로 보낸다(exec와 같은 시작 크기).
 - 앱: pane = `TerminalSurfaceOptions(backend: .inMemory(session))`. 배럭별 그리드에 어떤 세션이 있는지 `<socket>.sessions.json`에 저장하고, 재실행 시 데몬 `LIST`와 대조해 자동 ATTACH. 어느 pane도 가리키지 않는 세션은 복원 때 정리.
-- **재생된 질의의 응답 차단**: 재부착 시 과거 출력 속 DA1·DSR·OSC 색 질의를 Ghostty가 다시 응답해 살아 있는 프로세스에 입력으로 들어가는 문제가 있다 → 재생분이 모두 파싱될 때까지(`waitForPendingOutput()`) 입력을 막는다(PS-01d가 실제 DA1 질의로 검증).
+- **재생된 질의의 응답 차단**: 재부착 시 과거 출력 속 DA1·DSR·OSC 색 질의를 Ghostty가 다시 응답해 살아 있는 프로세스에 입력으로 들어가는 문제가 있다 → 재생분은 `ghostty_surface_write_buffer_replay`(libghostty-spm patch 0011, 응답을 생성 지점에서 버림)로 live 출력과 같은 순서로 파싱한다(PS-01d가 실제 DA1 질의로, PS-04a가 replay 바로 뒤 live 질의 응답으로 검증). 처음 구현한 "파싱이 끝날 때까지 입력 차단"은 Codex r4에서 경계가 어긋난다는 지적을 받았다. 응답 일부가 app mailbox를 거쳐 늦게 전달되기 때문에 2026-11-05에 교체했다.
 
 처리량·흐름 제어(첫 전체 실행에서 발견해 재설계):
 - 첫 구현(dispatch read source + DispatchIO)은 PTY가 내주는 1KiB마다 깨어나 **14MB/s**에 그쳤고, **back-pressure가 없어** `yes` 같은 폭주가 메모리에 쌓이다 64MB에서 연결이 끊길 구조였다(exec에서는 Ghostty 파싱 속도가 자식을 자연히 늦춘다).
