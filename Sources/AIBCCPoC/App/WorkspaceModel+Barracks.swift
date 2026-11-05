@@ -8,7 +8,7 @@ extension WorkspaceModel {
         guard let path else { return }
         let wanted = URL(fileURLWithPath: path).standardizedFileURL.path
         if let barrack = barracks.first(where: { URL(fileURLWithPath: $0.path).standardizedFileURL.path == wanted }) {
-            selectedBarrackID = barrack.id
+            navigate { [weak self] in self?.selectedBarrackID = barrack.id }
         }
     }
 

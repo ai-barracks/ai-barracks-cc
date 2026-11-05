@@ -15,6 +15,31 @@ struct ReviewR6Suite {
         [backlogReentry(), documents()]
     }
 
+    /// R6-01c: an aib write typed into a pane (Sync All, ⌘K aib sync) ran
+    /// beside the app's own queued writes; both now hold one file lock.
+    func writeLock() async -> TestResult {
+        let start = ContinuousClock.now
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-r6-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let started = directory.appendingPathComponent("started").path
+        let ended = directory.appendingPathComponent("ended").path
+        let paneApply = AibWriteLock.wrap("touch '\(started)'; sleep 1; touch '\(ended)'")
+        let pane = Task { await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/sh"), ["-c", paneApply], in: directory.path) }
+        var holding = false
+        for _ in 0 ..< 50 where !holding {
+            try? await Task.sleep(for: .milliseconds(50))
+            holding = FileManager.default.fileExists(atPath: started)
+        }
+        let waited = await AibWriteQueue.run { FileManager.default.fileExists(atPath: ended) }
+        let status = await pane.value.status
+        let ok = holding && waited && status == 0
+        return .make("R6-01c", "pane에서 적용하는 aib 쓰기와 앱 큐의 aib 쓰기가 같은 잠금으로 직렬화",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["pane_holding": "\(holding)", "queue_waited_for_pane": "\(waited)", "pane_status": "\(status)"],
+                     startedAt: start)
+    }
+
     /// R6-01b: shapes the r5 form-editor guards still let through.
     private func documents() -> TestResult {
         let start = ContinuousClock.now

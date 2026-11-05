@@ -80,6 +80,11 @@ enum AppConstants {
         static let persistDebounce: Duration = .milliseconds(400)
     }
 
+    enum Maintenance {
+        static let aibWriteLockName = "aib-write.lock"
+        static let aibWriteLockPoll: Duration = .milliseconds(100)
+    }
+
     enum Health {
         static let firstCheckDelay: Duration = .seconds(10)
         static let interval: TimeInterval = 30

@@ -11,7 +11,7 @@ struct AgentSuite {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
-         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), restoreFailureKeepsSessions(),
+         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), restoreFailureKeepsSessions(),
          await settingsApply()]
     }
 
@@ -291,6 +291,37 @@ struct AgentSuite {
         workspace.navigate { workspace.destination = .sessions }
         if workspace.destination != .sessions || workspace.isConfirmingNavigation { failures.append("asked with no edit") }
         return .make("NV-01a", "편집 중 이동(사이드바·배럭·⌘K·알림)은 먼저 확인, 취소하면 그대로·확인하면 이동",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
+    }
+
+    /// Codex r6: ⌘⇧A's target, the pane menu, notices and new panes moved
+    /// the user straight past an open edit; a discard left the editor dirty.
+    private func modelEntryPointsAsk() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        var failures: [String] = []
+        workspace.destination = .rules
+        workspace.editInProgress = true
+        let asks = { (label: String, action: () -> Void) in
+            action()
+            if workspace.destination != .rules || !workspace.isConfirmingNavigation { failures.append(label) }
+            workspace.cancelNavigation()
+        }
+        let pane = workspace.panes.first
+        if let pane { asks("pane menu") { workspace.bringToFront(id: pane.id) } } else { failures.append("no pane") }
+        asks("notice") {
+            workspace.perform(AppNotice(kind: .stale, title: "t", body: "", actionLabel: nil,
+                                        barrackID: workspace.selectedBarrackID, sessionID: nil))
+        }
+        asks("new pane") { _ = workspace.runInPane(title: "nv", command: "true") }
+        let revision = workspace.discardRevision
+        if let pane { workspace.bringToFront(id: pane.id) }
+        workspace.confirmNavigation()
+        if workspace.discardRevision != revision + 1 || workspace.editInProgress || workspace.destination != .sessions {
+            failures.append("discard \(workspace.discardRevision - revision) \(workspace.destination)")
+        }
+        return .make("NV-01b", "모델 진입점(⌘⇧A·pane 메뉴·알림·새 pane)도 편집 중 이동 확인, 버리면 편집 버퍼도 초기화",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }

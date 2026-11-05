@@ -5,7 +5,13 @@ import UserNotifications
 /// In-app toasts and macOS notifications (v1: NotificationToast +
 /// tauri notification plugin).
 struct AppNotice: Identifiable, Sendable {
-    enum Kind: String, Sendable { case stale, sync, attention, export, registry }
+    enum Kind: String, Sendable {
+        case stale, sync, attention, export, registry
+
+        /// Its action takes the user to another place (asks before
+        /// dropping an open edit).
+        var navigates: Bool { self == .stale || self == .attention }
+    }
 
     let id = UUID()
     let kind: Kind

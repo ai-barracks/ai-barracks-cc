@@ -72,8 +72,10 @@ enum MaintenanceScanner {
     }
 
     /// Shows the dry run, waits for Enter, then applies (CC v1.6.1 Sync).
+    /// The apply step holds the app's aib write lock (only while it runs,
+    /// not while waiting for Enter).
     static func confirmThenApply(_ dryRun: String, _ apply: String) -> String {
-        "\(dryRun) && printf '\\n--- Enter를 누르면 적용, Ctrl+C로 취소 ---\\n' && read && \(apply)"
+        "\(dryRun) && printf '\\n--- Enter를 누르면 적용, Ctrl+C로 취소 ---\\n' && read && \(AibWriteLock.wrap(apply))"
     }
 
     // MARK: - Helpers

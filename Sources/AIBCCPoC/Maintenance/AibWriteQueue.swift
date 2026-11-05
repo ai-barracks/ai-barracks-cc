@@ -11,7 +11,7 @@ enum AibWriteQueue {
         let previous = tail
         let task = Task { () -> T in
             _ = await previous?.value
-            return await operation()
+            return await AibWriteLock.hold(operation)
         }
         tail = Task { _ = await task.value }
         return await task.value

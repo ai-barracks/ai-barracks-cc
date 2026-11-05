@@ -98,6 +98,9 @@ final class WorkspaceModel {
     var historyShowsArchive = false
     /// An open document edit (DocumentView): navigation asks first (r5).
     var editInProgress = false
+    /// Bumped when the user discards an edit to navigate: the editor drops
+    /// its buffer even if the navigation leaves it on screen (r6).
+    var discardRevision = 0
     /// Navigation waiting for "discard the edit?" (alert shown while true).
     var isConfirmingNavigation = false
     @ObservationIgnored var pendingNavigation: (@MainActor () -> Void)?
@@ -434,8 +437,7 @@ extension WorkspaceModel {
         let needed = max(panes.count, current.layout.paneCount)
         let layout = PaneLayout.allCases.first { $0.paneCount >= needed } ?? .quad
         store(BarrackGrid(panes: panes, layout: layout, splitX: current.splitX, splitY: current.splitY))
-        destination = .sessions
-        focusWhenAttached(pane)
+        showSessions(focusing: pane)
         return pane
     }
 
@@ -448,6 +450,10 @@ extension WorkspaceModel {
             liveness.sessions(of: barrack.id).filter(\.needsAttention).map { (barrack, $0) }
         }
         guard let (barrack, session) = candidates.first(where: { $0.1.state == .blocked }) ?? candidates.first else {
+            return nil
+        }
+        guard !editInProgress else {
+            navigate { [weak self] in self?.goToNextAttention() }
             return nil
         }
         selectedBarrackID = barrack.id
@@ -509,6 +515,7 @@ extension WorkspaceModel {
     /// Opens a search hit where it lives: its barrack, then the session
     /// record, the Wiki topic or the rules document.
     func open(_ hit: SearchHit) {
+        guard !editInProgress else { return navigate { [weak self] in self?.open(hit) } }
         selectedBarrackID = hit.barrackID
         switch hit.source {
         case .session:
@@ -568,6 +575,7 @@ extension WorkspaceModel {
 
     /// A toast's action.
     func perform(_ notice: AppNotice) {
+        guard !editInProgress || !notice.kind.navigates else { return navigate { [weak self] in self?.perform(notice) } }
         notices.dismiss(notice.id)
         switch notice.kind {
         case .stale:
@@ -631,6 +639,7 @@ extension WorkspaceModel {
 
     /// Moves a (possibly hidden) pane into the first slot and focuses it.
     func bringToFront(id paneID: UUID) {
+        guard !editInProgress else { return navigate { [weak self] in self?.bringToFront(id: paneID) } }
         let current = grid
         guard let pane = current.panes.first(where: { $0.id == paneID }) else { return }
         store(BarrackGrid(panes: [pane] + current.panes.filter { $0.id != paneID }, layout: current.layout,
@@ -643,8 +652,7 @@ extension WorkspaceModel {
     @discardableResult
     func run(_ quick: QuickCommand, in pane: TerminalPane? = nil) -> Bool {
         guard let target = pane ?? focusedPane else { return false }
-        destination = .sessions
-        focusWhenAttached(target)
+        showSessions(focusing: target)
         return target.state.performBindingAction(GhosttyText.action(typing: quick.command, pressEnter: true))
     }
 

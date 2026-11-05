@@ -15,6 +15,8 @@ struct DocumentView: View {
     @Binding var pendingEdit: Bool
     /// Tells the workspace an edit is open, so navigation elsewhere asks.
     var editInProgress: Binding<Bool> = .constant(false)
+    /// Bumped when the user discarded edits to navigate (WorkspaceModel).
+    var discardRevision = 0
     @State private var selection: URL?
     @State private var source: String?
     @State private var failure: String?
@@ -83,6 +85,10 @@ struct DocumentView: View {
         .onChange(of: changes) { if !isEditing && !isListEditing { load() } }
         .onChange(of: pendingEdit) { takePendingEdit() }
         .onChange(of: isDirty, initial: true) { editInProgress.wrappedValue = isDirty }
+        .onChange(of: discardRevision) {
+            isEditing = false
+            isListEditing = false
+        }
         .onDisappear { editInProgress.wrappedValue = false }
         .alert("편집 중입니다", isPresented: Binding(get: { leaveTarget != nil }, set: { if !$0 { leaveTarget = nil } })) {
             Button("편집 버리고 이동", role: .destructive) {

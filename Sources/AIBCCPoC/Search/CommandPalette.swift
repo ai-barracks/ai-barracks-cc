@@ -91,8 +91,9 @@ struct CommandPalette: View {
         let list = items
         guard list.indices.contains(selected) else { return }
         dismiss()
-        let item = list[selected]
-        workspace.navigate { item.run() }
+        // Items that move the user ask through the model (r6: wrapping every
+        // item made opening a sheet discard an edit).
+        list[selected].run()
     }
 }
 
@@ -145,11 +146,15 @@ enum PaletteCommands {
                                  section: "Quick") { workspace.quickCommandDraft = QuickCommand(label: "", command: "") })
         items += Destination.allCases.map { destination in
             PaletteItem(id: "go-\(destination.rawValue)", title: "이동: \(destination.label)", detail: "", symbol: destination.symbol,
-                        section: "이동") { workspace.destination = destination }
+                        section: "이동") {
+                if workspace.destination != destination { workspace.navigate { workspace.destination = destination } }
+            }
         }
         items += workspace.barracks.map { barrack in
             PaletteItem(id: "barrack-\(barrack.id)", title: "배럭: \(barrack.name)", detail: barrack.description ?? "",
-                        symbol: "building.2", section: "이동") { workspace.selectedBarrackID = barrack.id }
+                        symbol: "building.2", section: "이동") {
+                if workspace.selectedBarrackID != barrack.id { workspace.navigate { workspace.selectedBarrackID = barrack.id } }
+            }
         }
         return items
     }

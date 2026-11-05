@@ -8,7 +8,11 @@ struct BarrackSidebar: View {
 
     var body: some View {
         List(selection: Binding(get: { workspace.selectedBarrackID },
-                                set: { next in workspace.navigate { workspace.selectedBarrackID = next } })) {
+                                set: { next in
+                                    // Re-selecting where the user is asks nothing.
+                                    guard next != workspace.selectedBarrackID else { return }
+                                    workspace.navigate { workspace.selectedBarrackID = next }
+                                })) {
             AttentionSummary(attention: workspace.liveness.attentionCount, running: workspace.liveness.runningCount)
                 .listRowSeparator(.hidden)
                 .selectionDisabled()
@@ -41,7 +45,9 @@ struct BarrackSidebar: View {
                     ForEach(Destination.allCases) { destination in
                         DestinationRow(destination: destination, isOn: workspace.destination == destination,
                                        count: count(for: destination, barrack)) {
-                            workspace.navigate { workspace.destination = destination }
+                            if workspace.destination != destination {
+                                workspace.navigate { workspace.destination = destination }
+                            }
                         }
                         .selectionDisabled()
                     }

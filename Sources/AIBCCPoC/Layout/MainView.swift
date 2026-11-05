@@ -66,7 +66,8 @@ struct MainView: View {
                          changes: artifacts.fileEvents,
                          pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),
                          pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }),
-                         editInProgress: Binding(get: { workspace.editInProgress }, set: { workspace.editInProgress = $0 }))
+                         editInProgress: Binding(get: { workspace.editInProgress }, set: { workspace.editInProgress = $0 }),
+                         discardRevision: workspace.discardRevision)
         }
     }
 
