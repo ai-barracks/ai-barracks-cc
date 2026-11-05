@@ -94,7 +94,7 @@ enum CriteriaCatalog {
     private static let persistence: [Criterion] = [
         .init(id: "PS-01", title: "앱 종료 후 세션 생존·재부착", blocking: false,
               requires: ["PS-01a", "PS-01b", "PS-01c", "PS-01d", "PS-01e"]),
-        .init(id: "PS-02", title: "재부착 실패·데몬 종료 복구", blocking: false, requires: ["PS-02a", "PS-02b"]),
+        .init(id: "PS-02", title: "재부착 실패·데몬 종료 복구", blocking: false, requires: ["PS-02a", "PS-02b", "PS-02c"]),
     ]
 
     /// v2 product logic (not Go/No-go gates).
@@ -112,6 +112,7 @@ enum CriteriaCatalog {
         .init(id: "TT-01", title: "터미널 관리·Quick Commands·내보내기·설정(v1 패리티 C2~C6·B4·H3)", blocking: false,
               requires: ["TT-01a", "TT-01b", "SE-01a"]),
         .init(id: "PS-03", title: "복원 실패 시 세션 보존", blocking: false, requires: ["PS-03a"]),
+        .init(id: "PS-04", title: "replay 입력 경계·종료 출력 보관", blocking: false, requires: ["PS-04a", "PS-04b"]),
         .init(id: "NV-01", title: "편집 중 이동 확인", blocking: false, requires: ["NV-01a"]),
         .init(id: "R5-01", title: "Codex r5 전역 상태 회귀", blocking: false, requires: ["R5-01a"]),
         .init(id: "V1-01", title: "v1 설정 가져오기", blocking: false, requires: ["V1-01a"]),

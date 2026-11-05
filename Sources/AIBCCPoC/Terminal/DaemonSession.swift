@@ -8,9 +8,10 @@ import PtyProtocol
 final class DaemonSession: @unchecked Sendable {
     enum Event: Sendable {
         case started(pid: pid_t, alive: Bool)
-        /// The attach replay has been handed to the terminal.
-        case replayDelivered
+        /// The child is gone (EXITED or the daemon connection closed).
         case exited(status: Int32)
+        /// Everything up to the exit has been parsed: the screen is final.
+        case outputComplete
         case failed(String)
     }
 
@@ -31,10 +32,6 @@ final class DaemonSession: @unchecked Sendable {
     private var awaitingReplay = false
     private var finished = false
     private var killed = false
-    /// While the attach replay is parsed, Ghostty re-answers the queries in
-    /// that history (DA, DSR, OSC colors); those answers must not reach the
-    /// live process as input. Guarded by `lock`.
-    private var mutesInput = false
     private let onEvent: @Sendable (Event) -> Void
 
     init?(id: UUID, socketPath: String, start: Start, onEvent: @escaping @Sendable (Event) -> Void) {
@@ -50,7 +47,6 @@ final class DaemonSession: @unchecked Sendable {
         case let .create(request):
             pendingCreate = request
         case .attach:
-            mutesInput = true
             awaitingReplay = true
         }
         let connection = FramedConnection(
@@ -69,12 +65,6 @@ final class DaemonSession: @unchecked Sendable {
         if case .attach = start { connection.send(Frame(.attach, session: id)) }
     }
 
-    var isMutingInput: Bool { lock.withLock { mutesInput } }
-
-    func unmuteInput() {
-        lock.withLock { mutesInput = false }
-    }
-
     /// Ends the session for good (pane replaced or closed by the user).
     /// Idempotent: the workspace calls it on removal, deinit again.
     func kill() {
@@ -89,7 +79,6 @@ final class DaemonSession: @unchecked Sendable {
     // MARK: - Terminal callbacks (any thread)
 
     private func sendInput(_ data: Data) {
-        guard !lock.withLock({ mutesInput }) else { return }
         connection?.send(Frame(.input, session: id, payload: data))
     }
 
@@ -138,10 +127,16 @@ final class DaemonSession: @unchecked Sendable {
             guard let info = PtyProtocol.decode(SessionInfo.self, from: frame.payload) else { return }
             onEvent(.started(pid: info.pid, alive: info.alive))
         case .output:
-            terminal.receive(frame.payload)
+            // The first OUTPUT after ATTACH is the replay. The program
+            // answered its queries (DA, DSR, OSC colors) once already, so the
+            // terminal parses it with replies suppressed; live output behind
+            // it is answered (Codex r4: a muted-input window leaked replay
+            // answers and swallowed live ones).
             if awaitingReplay {
                 awaitingReplay = false
-                onEvent(.replayDelivered)
+                terminal.receiveReplay(frame.payload)
+            } else {
+                terminal.receive(frame.payload)
             }
         case .exited:
             let exit = PtyProtocol.decode(ExitInfo.self, from: frame.payload)
@@ -162,6 +157,10 @@ final class DaemonSession: @unchecked Sendable {
         finished = true
         terminal.finish(exitCode: UInt32(bitPattern: status), runtimeMilliseconds: runtime)
         onEvent(.exited(status: status))
+        // The archive reads the screen: only once the last output is parsed
+        // (Codex r4: archived at PID exit, before the final output arrived).
+        let onEvent = onEvent
+        terminal.enqueueMarker { onEvent(.outputComplete) }
     }
 
     private static func clamp<T: BinaryInteger>(_ value: T) -> UInt16 {

@@ -15,6 +15,8 @@ check: input delivery is logged, its drawing is compared in captures).
 AIBCC_BANNER=TEXT is redrawn on row 3 with the markers (persistence replay
 check); AIBCC_DA_QUERY=1 sends one DA1 query at start, whose answer arrives
 as input (proves a replayed query is not answered twice).
+AIBCC_DA_ON_CTRL_A=1 sends a DA1 query each time input holds Ctrl+A (a live
+query the test triggers right behind an attach replay).
 """
 
 import fcntl
@@ -27,6 +29,7 @@ import termios
 import time
 import tty
 
+CTRL_A = 0x01
 CTRL_D = 0x04
 READ_CHUNK = 4096
 MOUSE_ON = "\x1b[?1000h\x1b[?1002h\x1b[?1006h"
@@ -99,6 +102,9 @@ def main():
                 if not data:
                     break
                 log(out, "bytes", hex=data.hex(" "))
+                if enabled("AIBCC_DA_ON_CTRL_A") and CTRL_A in data:
+                    sys.stdout.write(DA1_QUERY)
+                    sys.stdout.flush()
                 if enabled("AIBCC_ECHO"):
                     sys.stdout.write(data.decode("utf-8", "replace"))
                     sys.stdout.flush()

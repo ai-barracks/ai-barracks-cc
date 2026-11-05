@@ -5,8 +5,10 @@
 #   phase 1  app creates a recorder session, types, saves its identity, quits
 #   between  this script checks the process is still alive with no app running
 #   phase 2  app restores the grid by itself; PS-01a..d are checked in-app
-#   then     PS-02 recovery checks (failed attach, daemon stopped under the app)
-# Exit 0 only if PS-01 and PS-02 passed.
+#   then     PS-04 (replay input fence, archive after the last output) and
+#            PS-02 recovery checks (failed attach, daemon stopped or killed)
+# Exit 0 only if phase 1's setup passed and PS-01, PS-02 and PS-04 passed in
+# phase 2 (Codex r4: a failed phase 1 used to be ignored).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -59,8 +61,14 @@ main() {
   rm -f "$SOCKET.sessions.json" "$STATE"
 
   echo "phase 1"
-  run_phase persist1
+  local first
+  first="$(run_phase persist1 | tee /dev/stderr | tail -1)"
   [[ -f "$STATE" ]] || { echo "phase 1 wrote no state" >&2; exit 2; }
+  python3 - "$first/report.json" <<'PY' || { echo "phase 1 setup failed: phase 2 would prove nothing" >&2; exit 1; }
+import json, sys
+results = {r["id"]: r["status"] for r in json.load(open(sys.argv[1]))["results"]}
+sys.exit(0 if results.get("PS-01-setup") == "pass" else 1)
+PY
   local pid
   pid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pid"])' "$STATE")"
   if pgrep -f "$APP/Contents/MacOS/AIBCCPoC" >/dev/null; then
@@ -80,8 +88,9 @@ main() {
   python3 - "$run/report.json" <<'PY'
 import json, sys
 results = {r["id"]: r["status"] for r in json.load(open(sys.argv[1]))["results"]}
-print(f'PS-01: {results.get("PS-01")}  PS-02: {results.get("PS-02")}')
-sys.exit(0 if results.get("PS-01") == "pass" and results.get("PS-02") == "pass" else 1)
+wanted = ["PS-01", "PS-02", "PS-04"]
+print("  ".join(f"{name}: {results.get(name)}" for name in wanted))
+sys.exit(0 if all(results.get(name) == "pass" for name in wanted) else 1)
 PY
 }
 

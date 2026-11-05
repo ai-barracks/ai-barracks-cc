@@ -24,6 +24,14 @@ struct SelfTestHarness {
         let log: RecorderLog
     }
 
+    /// The recorder's command line, for sessions a test creates itself.
+    func recorderCommand(name: String) -> (command: String, log: RecorderLog)? {
+        guard let fixtures = fixturesDirectory else { return nil }
+        let log = RecorderLog.makeTemporary(name: name)
+        let script = fixtures.appendingPathComponent(AppConstants.Paths.recorderScript).path
+        return ([AppConstants.Paths.python, script, log.url.path].map(shellQuote).joined(separator: " "), log)
+    }
+
     func makeRecorderPane(
         name: String,
         environment: [String: String] = [:],

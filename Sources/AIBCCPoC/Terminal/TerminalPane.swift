@@ -30,8 +30,9 @@ final class TerminalPane: Identifiable {
     @ObservationIgnored private var ownedView: ProbeTerminalView?
     @ObservationIgnored private var exitMonitor: ProcessExitMonitor?
     @ObservationIgnored private var remotePID: pid_t?
-    @ObservationIgnored private var isSettlingReplay = false
-    /// Called once the child is gone (the workspace archives the output).
+    @ObservationIgnored private var reportedExit = false
+    /// Called once the child is gone and its output is on screen (the
+    /// workspace archives it).
     @ObservationIgnored var onExit: (@MainActor (TerminalPane) -> Void)?
 
     var probeView: ProbeTerminalView? { ownedView }
@@ -101,13 +102,9 @@ final class TerminalPane: Identifiable {
     }
 
     /// Starts watching the surface's child once Ghostty has spawned it
-    /// (exec), and settles a pending attach replay once a surface exists.
+    /// (exec only: a daemon pane learns its child from `.started`).
     func startExitMonitorIfNeeded() {
-        if remote != nil {
-            settleReplayIfNeeded()
-            return
-        }
-        guard exitMonitor == nil, !hasExited, let pid = probeView?.foregroundPid, pid > 0 else { return }
+        guard remote == nil, exitMonitor == nil, !hasExited, let pid = probeView?.foregroundPid, pid > 0 else { return }
         exitMonitor = ProcessExitMonitor(pid: pid) { [weak self] in self?.childDidExit() }
     }
 
@@ -119,6 +116,14 @@ final class TerminalPane: Identifiable {
             return
         }
         hasExited = true
+        // A daemon pane's last output may still be on the socket: it is
+        // archived on `.outputComplete` instead.
+        if remote == nil { reportExit() }
+    }
+
+    private func reportExit() {
+        guard !reportedExit else { return }
+        reportedExit = true
         onExit?(self)
     }
 
@@ -129,38 +134,19 @@ final class TerminalPane: Identifiable {
             if alive {
                 exitMonitor = ProcessExitMonitor(pid: pid) { [weak self] in self?.childDidExit() }
             } else {
+                // Ended before this attach: archived back then, if at all.
                 hasExited = true
+                reportedExit = true
             }
-        case .replayDelivered:
-            settleReplayIfNeeded()
         case .exited:
             hasExited = true
+        case .outputComplete:
+            reportExit()
         case let .failed(message):
             // e.g. the session vanished between restore and attach: show it
-            // as ended (banner + "새 셸") instead of a blank, muted surface.
+            // as ended (banner + "새 셸") instead of a blank surface.
             failure = message
             hasExited = true
-        }
-    }
-
-    /// Input stays muted until the replayed history is fully parsed, so the
-    /// terminal's answers to old queries never reach the live process.
-    /// Parsing only happens once a surface is attached; until then poll with
-    /// backoff (a pane in a hidden barrack may wait a long time).
-    private func settleReplayIfNeeded() {
-        guard let remote, remote.isMutingInput, !isSettlingReplay else { return }
-        isSettlingReplay = true
-        Task { @MainActor [weak self] in
-            var delay = AppConstants.Daemon.replaySettleInitialDelay
-            while let self, let remote = self.remote, remote.isMutingInput {
-                if self.probeView?.window != nil, remote.terminal.waitForPendingOutput() {
-                    remote.unmuteInput()
-                    break
-                }
-                try? await Task.sleep(for: delay)
-                delay = min(delay * 2, AppConstants.Daemon.replaySettleMaxDelay)
-            }
-            self?.isSettlingReplay = false
         }
     }
 

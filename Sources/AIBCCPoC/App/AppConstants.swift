@@ -62,8 +62,6 @@ enum AppConstants {
         static let logSuffix = ".log"
         static let startTimeout: TimeInterval = 3
         static let startPollMicroseconds: useconds_t = 50_000
-        static let replaySettleInitialDelay: Duration = .milliseconds(20)
-        static let replaySettleMaxDelay: Duration = .seconds(1)
         /// The in-memory backend ships no xterm-ghostty terminfo to children.
         static let term = "xterm-256color"
         static let colorTerm = "truecolor"

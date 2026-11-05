@@ -21,4 +21,26 @@ still fetched by the unchanged `binaryTarget` URL + checksum.
    app's "export output" (CC v1 parity). Read-only; no input, no selection
    change.
 
-Upstream candidate: patch 1 (a resolver that also checks `resourceURL`).
+4. **Ordered backlog notifications** (`InMemory/InMemoryTerminalSurfaceAccess.swift`,
+   `unlockNotifyingBacklog`): a backlog change was computed under the lock
+   but its handler ran after unlock, so two threads could deliver `true` and
+   `false` in reverse order and leave the host's transport paused for good
+   (Codex r4). A notification lock is taken before the state lock is
+   released and held until the handler returns.
+
+5. **Replay writes and output-stream markers**
+   (`InMemory/InMemoryTerminalSession.swift` `receiveReplay`, `enqueueMarker`;
+   `InMemoryTerminalSurfaceAccess`; pending operations `.replay`, `.marker`):
+   - `receiveReplay` queues reattach history in order with live output and
+     parses it with `ghostty_surface_write_buffer_replay` (the C entry point
+     upstream patch 0011 added, which the Swift wrapper did not expose), so the
+     replies its queries would cause are suppressed at their origin. The host
+     used to mute its input until a poll saw the queue drained: a poll could
+     run before the replay arrived, and replies the surface delivers through
+     the app mailbox reached the host after the unmute (Codex r4; PS-04a
+     measured the replayed DA answered again).
+   - `enqueueMarker` runs a block on the output queue once everything queued
+     before it is parsed — the host archives an ended program's screen only
+     after its last output (Codex r4).
+
+Upstream candidates: patch 1 (a resolver that also checks `resourceURL`), patch 4, patch 5.

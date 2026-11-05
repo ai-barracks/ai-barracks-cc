@@ -13,6 +13,7 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
         qos: .userInitiated,
     )
     private let write: Write
+    private let replay: Write
     private let processExit: ProcessExit
     private let tick: Tick
 
@@ -53,6 +54,11 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
     private static let drainBatchLimit = 64
     private var backlogObserver: BacklogObserver?
     private var isBacklogged = false
+    /// AIBCC patch 4: held from the moment a backlog change is computed
+    /// (still under `condition`) until its handler returned, so handlers run
+    /// in the order the changes happened. Unordered, a late `true` could land
+    /// after a newer `false` and leave the host's transport paused for good.
+    private let backlogNotifyLock = NSLock()
 
     struct BacklogObserver {
         let highWater: Int
@@ -62,10 +68,12 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
 
     init(
         write: @escaping Write,
+        replay: Write? = nil,
         processExit: @escaping ProcessExit,
         tick: @escaping Tick,
     ) {
         self.write = write
+        self.replay = replay ?? write
         self.processExit = processExit
         self.tick = tick
     }
@@ -85,9 +93,7 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
             }
             scheduleDrain()
         }
-        let backlogChange = takeBacklogChange()
-        condition.unlock()
-        backlogChange?()
+        unlockNotifyingBacklog()
     }
 
     @discardableResult
@@ -124,9 +130,7 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
             operations.append(.write(data))
             scheduleDrain()
         }
-        let backlogChange = takeBacklogChange()
-        condition.unlock()
-        backlogChange?()
+        unlockNotifyingBacklog()
     }
 
     /// Bytes received and not yet handed to a surface.
@@ -140,9 +144,7 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
         condition.lock()
         backlogObserver = observer
         isBacklogged = false
-        let backlogChange = takeBacklogChange()
-        condition.unlock()
-        backlogChange?()
+        unlockNotifyingBacklog()
     }
 
     func enqueueProcessExit(
@@ -155,6 +157,39 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
             exitCode: exitCode,
             runtimeMilliseconds: runtimeMilliseconds,
         ))
+        if surface != nil {
+            scheduleDrain()
+        }
+    }
+
+    /// AIBCC patch 5: reattach history, parsed in order with the output
+    /// around it but with the replies its queries would cause suppressed
+    /// (`ghostty_surface_write_buffer_replay`). Output after it is answered.
+    func enqueueReplay(_ data: Data) {
+        guard !data.isEmpty else { return }
+        condition.lock()
+        operations.append(.replay(data))
+        if surface == nil {
+            if operations.writeByteCount > Self.pendingWriteByteLimit {
+                pendingTrimOwed = true
+                if operations.writeByteCount > 2 * Self.pendingWriteByteLimit {
+                    operations.trimWrites(toLimit: Self.pendingWriteByteLimit)
+                }
+            }
+        } else {
+            scheduleDrain()
+        }
+        unlockNotifyingBacklog()
+    }
+
+    /// AIBCC patch 5: `block` runs on the output queue once every write
+    /// enqueued before it has been parsed — query answers included, since a
+    /// surface writes them back while it parses. A host replaying history
+    /// gets an exact fence between the history and what follows it.
+    func enqueueMarker(_ block: @escaping @Sendable () -> Void) {
+        condition.lock()
+        defer { condition.unlock() }
+        operations.append(.marker(block))
         if surface != nil {
             scheduleDrain()
         }
@@ -265,8 +300,12 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
         switch operation {
         case let .write(data):
             write(surface, data)
+        case let .replay(data):
+            replay(surface, data)
         case let .processExit(exitCode, runtimeMilliseconds):
             processExit(surface, exitCode, runtimeMilliseconds)
+        case let .marker(block):
+            block()
         }
         return true
     }
@@ -287,15 +326,26 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
         return { handler(backlogged) }
     }
 
+    /// Called with `condition` held; releases it and delivers any backlog
+    /// change in order (AIBCC patch 4).
+    private func unlockNotifyingBacklog() {
+        guard let change = takeBacklogChange() else {
+            condition.unlock()
+            return
+        }
+        backlogNotifyLock.lock()
+        condition.unlock()
+        change()
+        backlogNotifyLock.unlock()
+    }
+
     private func finishOperation() {
         condition.lock()
         activeOperations -= 1
         if activeOperations == 0 {
             condition.broadcast()
         }
-        let backlogChange = takeBacklogChange()
-        condition.unlock()
-        backlogChange?()
+        unlockNotifyingBacklog()
     }
 
     /// Called with the lock held. `previous` is the surface the in-flight

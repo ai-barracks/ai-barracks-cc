@@ -10,6 +10,19 @@ struct InMemoryTerminalPendingOperations {
     enum Operation {
         case write(Data)
         case processExit(exitCode: UInt32, runtimeMilliseconds: UInt64)
+        /// Reattach history, parsed with protocol replies suppressed
+        /// (AIBCC patch 5).
+        case replay(Data)
+        /// Runs once everything before it was parsed (AIBCC patch 5).
+        case marker(@Sendable () -> Void)
+
+        /// Host bytes this entry holds (writes and replays).
+        var byteCount: Int {
+            switch self {
+            case let .write(data), let .replay(data): data.count
+            default: 0
+            }
+        }
     }
 
     private struct Entry {
@@ -34,9 +47,7 @@ struct InMemoryTerminalPendingOperations {
     }
 
     mutating func append(_ operation: Operation) {
-        if case let .write(data) = operation {
-            writeByteCount += data.count
-        }
+        writeByteCount += operation.byteCount
         appendedSequence += 1
         storage.append(Entry(operation: operation, sequence: appendedSequence))
         count += 1
@@ -64,9 +75,7 @@ struct InMemoryTerminalPendingOperations {
             head += 1
             guard let entry else { continue }
             count -= 1
-            if case let .write(data) = entry.operation {
-                writeByteCount -= data.count
-            }
+            writeByteCount -= entry.operation.byteCount
             retiredSequence = entry.sequence
             compact()
             return entry.operation
@@ -75,14 +84,21 @@ struct InMemoryTerminalPendingOperations {
         return nil
     }
 
-    /// Drops the oldest queued bytes past `limit`; process exits are kept.
+    /// Drops the oldest queued bytes past `limit` (a replay's history goes
+    /// first, as a scrollback would forget it); process exits and markers
+    /// are kept.
     mutating func trimWrites(toLimit limit: Int) {
         var excess = writeByteCount - limit
         var index = head
         while excess > 0, index < storage.count {
-            guard let entry = storage[index], case var .write(data) = entry.operation else {
+            guard let entry = storage[index], entry.operation.byteCount > 0 else {
                 index += 1
                 continue
+            }
+            let isReplay = if case .replay = entry.operation { true } else { false }
+            var data: Data = switch entry.operation {
+            case let .write(bytes), let .replay(bytes): bytes
+            default: Data()
             }
             storage[index] = nil
             let dropped = min(excess, data.count)
@@ -93,7 +109,7 @@ struct InMemoryTerminalPendingOperations {
                 retiredSequence = max(retiredSequence, entry.sequence)
             } else {
                 data.removeFirst(dropped)
-                storage[index] = Entry(operation: .write(Data(data)), sequence: entry.sequence)
+                storage[index] = Entry(operation: isReplay ? .replay(Data(data)) : .write(Data(data)), sequence: entry.sequence)
             }
             index += 1
         }

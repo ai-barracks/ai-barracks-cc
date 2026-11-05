@@ -85,7 +85,6 @@ struct PersistSuite {
         let replayed = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
             session.terminal.readViewportText()?.contains(state.banner) == true
         }
-        let unmuted = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { !session.isMutingInput }
         await harness.pause(AppConstants.SelfTest.changeGrace)
         let stray = log.bytes(since: state.logMark)
 
@@ -108,8 +107,8 @@ struct PersistSuite {
                   status: typed == Hex.bytes("p2") ? .pass : .fail, cause: .app,
                   evidence: ["typed": Hex.string(typed)], startedAt: start),
             .make("PS-01d", "재생된 질의(DA1)에 대한 응답이 입력으로 새지 않음",
-                  status: unmuted && stray.isEmpty ? .pass : .fail, cause: .app,
-                  evidence: ["unmuted": "\(unmuted)", "stray_bytes": Hex.string(stray)], startedAt: start),
+                  status: stray.isEmpty ? .pass : .fail, cause: .app,
+                  evidence: ["stray_bytes": Hex.string(stray)], startedAt: start),
             .make("PS-01e", "어떤 pane도 가리키지 않는 살아 있는 데몬 세션 0 (교체된 pane 정리)",
                   status: orphans.map(\.isEmpty) == true ? .pass : .fail, cause: .app,
                   evidence: ["orphans": orphans.map { $0.map(\.uuidString).joined(separator: ",") } ?? "list failed",
@@ -128,9 +127,9 @@ struct PersistSuite {
     }
 
     /// PS-02 (self-review fixes): a failed attach ends visibly instead of
-    /// leaving a blank muted pane; after the daemon dies, existing panes show
-    /// as ended and a new pane starts a new daemon. Runs last in persist2:
-    /// it stops the daemon.
+    /// leaving a blank muted pane; after the daemon stops (SHUTDOWN) or is
+    /// killed, existing panes show as ended and a new pane starts a new
+    /// daemon. Runs last in persist2: it stops the daemon.
     func recovery() async -> [TestResult] {
         let start = ContinuousClock.now
         guard let daemon = harness.workspace.daemon else { return [] }
@@ -147,17 +146,21 @@ struct PersistSuite {
 
         guard let before = harness.makeRecorderPane(name: "pre-crash") else { return [attachFailure] }
         await harness.install([before.pane], layout: .single)
-        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { before.log.isReady }
+        let beforeReady = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { before.log.isReady }
         _ = FrameRequest.send(Frame(.shutdown), to: daemon.socketPath)
         let endedWithDaemon = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { before.pane.hasExited }
-        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { daemon.listSessions() == nil }
+        let daemonGone = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { daemon.listSessions() == nil }
         let after = harness.makeRecorderPane(name: "post-crash")
         if let after { await harness.install([after.pane], layout: .single) }
         let recovered = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { after?.log.isReady == true }
-        return [attachFailure, .make(
-            "PS-02b", "데몬 종료 시 기존 pane은 종료 표시, 새 pane은 데몬 재기동으로 정상 시작",
-            status: endedWithDaemon && recovered ? .pass : .fail, cause: .app,
-            evidence: ["existing_ended": "\(endedWithDaemon)", "new_pane_ready": "\(recovered)"], startedAt: start)]
+        // SHUTDOWN ends the children too, so this one cannot tell a broken
+        // connection-loss path from a PID monitor: PS-02c can (Codex r4).
+        let shutdown = TestResult.make(
+            "PS-02b", "데몬 SHUTDOWN 시 기존 pane은 종료 표시, 새 pane은 데몬 재기동으로 정상 시작",
+            status: beforeReady && endedWithDaemon && daemonGone && recovered ? .pass : .fail, cause: .app,
+            evidence: ["before_ready": "\(beforeReady)", "existing_ended": "\(endedWithDaemon)",
+                       "daemon_gone": "\(daemonGone)", "new_pane_ready": "\(recovered)"], startedAt: start)
+        return [attachFailure, shutdown, await daemonKilled()]
     }
 
     private func restoredPane(_ state: State) -> TerminalPane? {

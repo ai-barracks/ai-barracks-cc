@@ -41,6 +41,7 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
         self.suppressesPixelOnlyResizes = suppressesPixelOnlyResizes
         surfaceAccess = InMemoryTerminalSurfaceAccess(
             write: Self.writeToSurface,
+            replay: Self.replayToSurface,
             processExit: Self.reportProcessExit,
             tick: Self.tickApp,
         )
@@ -329,6 +330,29 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
         )
     }
 
+    /// Feeds history a reattaching host missed (AIBCC patch 5). It is parsed
+    /// like ``receive(_:)``, in order with it, but the replies its queries
+    /// would cause (DA, DSR, OSC colors, title reports) are suppressed at their
+    /// origin — the program answered them once already. Output received after
+    /// it is answered as usual, so the boundary is exact.
+    public func receiveReplay(_ data: Data) {
+        surfaceAccess.enqueueReplay(data)
+        TerminalDebugLog.log(
+            .output,
+            "terminal <- host replay \(TerminalDebugLog.describe(data))",
+        )
+    }
+
+    /// Runs `block` on the session's output queue once every `receive(_:)` and
+    /// `finish` made before this call has been parsed, writeback included
+    /// (AIBCC patch 5). Like output, it waits for a surface to attach. Unlike
+    /// ``waitForPendingOutput()`` it never blocks and output received after it
+    /// stays after it, so it marks an exact point in the stream — e.g. the end
+    /// of a replayed history whose query answers must not reach the process.
+    public func enqueueMarker(_ block: @escaping @Sendable () -> Void) {
+        surfaceAccess.enqueueMarker(block)
+    }
+
     /// Blocks until every `receive(_:)` call made so far has been fully parsed by the
     /// terminal engine's internal serial queue, including any resulting writeback (e.g.
     /// DECRPM/DA/OSC query responses the engine generates while parsing).
@@ -368,6 +392,15 @@ public final class InMemoryTerminalSession: @unchecked Sendable {
                 return
             }
             ghostty_surface_write_buffer(surface, ptr, UInt(buffer.count))
+        }
+    }
+
+    private static func replayToSurface(_ surface: ghostty_surface_t, _ data: Data) {
+        data.withUnsafeBytes { buffer in
+            guard let ptr = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return
+            }
+            ghostty_surface_write_buffer_replay(surface, ptr, UInt(buffer.count))
         }
     }
 

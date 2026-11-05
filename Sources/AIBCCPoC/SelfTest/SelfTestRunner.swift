@@ -110,7 +110,7 @@ struct SelfTestRunner {
         case "showcase": return await ShowcaseSuite(harness: harness).run()
         case "persist2":
             let suite = PersistSuite(harness: harness)
-            return await suite.phaseTwo() + suite.recovery()
+            return await suite.phaseTwo() + [await suite.replayFence(), await suite.archiveAfterOutput()] + suite.recovery()
         default: return []
         }
     }
