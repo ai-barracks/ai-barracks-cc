@@ -26,6 +26,11 @@ final class PtySession: @unchecked Sendable {
     private var masterClosed = false
     /// waitpid returned: the pid may be reused from here on.
     private var reaped = false
+    /// Session members still running when the leader was reaped (pid and
+    /// start time), so a later KILL ends exactly them and never a process
+    /// that reused a number (Codex r6: leftovers of an exited leader were
+    /// never ended).
+    private var leftovers: [Member] = []
     /// Write sources not yet fully cancelled; the fd closes after them.
     private var liveWriteSources = 0
     private var closeWanted = false
@@ -111,7 +116,12 @@ final class PtySession: @unchecked Sendable {
     /// and its descendants, background jobs included (Codex r4: a HUP-ignoring
     /// descendant outlived its closed pane).
     func terminate() {
-        guard !reaped, isAlive else { return }
+        guard !reaped else {
+            leftovers.filter(\.isSameProcess).forEach { kill($0.pid, SIGKILL) }
+            leftovers = []
+            return
+        }
+        guard isAlive else { return }
         closeMaster {}
         let session = pid
         queue.asyncAfter(deadline: .now() + killGrace) { [weak self] in
@@ -119,6 +129,32 @@ final class PtySession: @unchecked Sendable {
             guard let self, !self.reaped else { return }
             kill(self.pid, SIGKILL)
         }
+    }
+
+    struct Member {
+        let pid: pid_t
+        let started: UInt64
+
+        /// Still the process recorded (same pid, same start time).
+        var isSameProcess: Bool { PtySession.startTime(of: pid) == started }
+    }
+
+    static func members(of sid: pid_t) -> [Member] {
+        let count = proc_listallpids(nil, 0)
+        guard count > 0 else { return [] }
+        var pids = [pid_t](repeating: 0, count: Int(count) * 2)
+        let filled = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
+        return pids.prefix(Int(max(filled, 0))).compactMap { candidate in
+            guard candidate > 1, candidate != sid, getsid(candidate) == sid, let started = startTime(of: candidate) else { return nil }
+            return Member(pid: candidate, started: started)
+        }
+    }
+
+    static func startTime(of pid: pid_t) -> UInt64? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        return info.pbi_start_tvsec &* 1_000_000 &+ info.pbi_start_tvusec
     }
 
     /// SIGKILL to every process in session `sid` except its leader (the
@@ -169,7 +205,10 @@ final class PtySession: @unchecked Sendable {
         let source = DispatchSource.makeWriteSource(fileDescriptor: masterFD, queue: queue)
         source.setEventHandler { [weak self] in self?.flushInput() }
         liveWriteSources += 1
-        source.setCancelHandler { [weak self] in self?.writeSourceEnded() }
+        // Strong: the fd is closed from here once the session is gone too
+        // (Codex r6: a weak handler left it open). The cycle ends with the
+        // cancellation, which releases the handlers.
+        source.setCancelHandler { self.writeSourceEnded() }
         source.resume()
         writeSource = source
     }
@@ -191,6 +230,7 @@ final class PtySession: @unchecked Sendable {
         var status: Int32 = 0
         guard waitpid(pid, &status, WNOHANG) == pid else { return }
         reaped = true
+        leftovers = Self.members(of: pid)
         let runtime = UInt64(max(Date().timeIntervalSince(startedAt), 0) * 1000)
         let info = ExitInfo(status: Self.exitCode(fromWaitStatus: status), runtimeMilliseconds: runtime)
         exitSource?.cancel()
@@ -216,8 +256,8 @@ final class PtySession: @unchecked Sendable {
             closeFD()
             return completion()
         }
-        reader.stop { [weak self] in
-            self?.closeFD()
+        reader.stop {
+            self.closeFD()
             completion()
         }
     }

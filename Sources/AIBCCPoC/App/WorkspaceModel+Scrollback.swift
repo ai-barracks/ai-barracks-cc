@@ -4,8 +4,11 @@ import Foundation
 /// pane leaves the grid or its program ends.
 extension WorkspaceModel {
     func archive(_ pane: TerminalPane, barrackPath: String?) {
+        // A session that ended while no pane was attached is archived once,
+        // on the first attach that parses its last output.
+        if pane.endedBeforeAttach, scrollback.record(pane.archiveID) != nil { return }
         guard let text = pane.probeView?.readScreenText(),
-              scrollback.save(id: pane.id.uuidString, title: pane.title, barrackPath: barrackPath, text: text) != nil else { return }
+              scrollback.save(id: pane.archiveID, title: pane.title, barrackPath: barrackPath, text: text) != nil else { return }
         let now = Date()
         if lastScrollbackCollection.map({ now.timeIntervalSince($0) > AppConstants.Scrollback.gcInterval }) ?? true {
             lastScrollbackCollection = now

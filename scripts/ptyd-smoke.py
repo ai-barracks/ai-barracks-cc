@@ -24,11 +24,13 @@ Checks, each printed as PASS/FAIL:
   exit-order  a descendant that keeps the PTY busy after the child exited
               neither delays EXITED for ever nor lets an ATTACH see EXITED
               before OUTPUT (r4: EXITED -> OUTPUT -> EXITED)
-  kill-tree   KILL also ends a HUP-ignoring background job of the child (r4)
+  kill-tree   KILL also ends a HUP-ignoring background job of the child (r4),
+              and of a child that already exited (r6)
   input-cap   input to a child that does not read is refused past the cap
-              with a FAILURE frame instead of buffered without bound (r4)
+              with an INPUT_REFUSED frame instead of buffered without bound
+              (r4); the session lives on and I/O resumes once it reads (r6)
   leak        killed sessions are freed: daemon RSS stays flat over many
-              create/output/kill cycles (r4: callbacks retained the session)
+              create/output/kill cycles, each of which must succeed (r4, r6)
   single      a second daemon on the same socket exits without stealing it
   shutdown    SHUTDOWN stops the daemon and its children
 Exit status 0 only if every check passed.
@@ -45,7 +47,7 @@ import time
 import uuid
 
 CREATE, ATTACH, INPUT, RESIZE, DETACH, LIST, KILL, SHUTDOWN = range(1, 9)
-CREATED, ATTACHED, OUTPUT, EXITED, SESSIONS, FAILURE = range(101, 107)
+CREATED, ATTACHED, OUTPUT, EXITED, SESSIONS, FAILURE, INPUT_REFUSED = range(101, 108)
 HEADER = struct.Struct(">B16sI")
 TIMEOUT = 5.0
 RESULTS = []
@@ -350,25 +352,47 @@ def scenario_kill_tree(path):
     exited = client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
     time.sleep(0.5)
     survived = background > 0 and alive(background)
-    check("kill-tree", exited and background > 0 and not survived, f"background={background} survived={survived}")
     if survived:
         os.kill(background, 9)
+    # The leader exits first and leaves the job running; KILL on the ended
+    # session still ends it (r6).
+    ended = uuid.uuid4()
+    create(client, ended, "trap '' HUP; sleep 600 & echo BG=$!; exit 0")
+    left = client.wait_for(lambda c: c.first(EXITED, ended) is not None, timeout=10)
+    out = client.output(ended)
+    orphan = int(out.split(b"BG=")[1].split()[0]) if b"BG=" in out else 0
+    orphan_alive_before = orphan > 0 and alive(orphan)
+    client.send(KILL, ended)
+    time.sleep(0.5)
+    orphan_survived = orphan > 0 and alive(orphan)
+    if orphan_survived:
+        os.kill(orphan, 9)
+    check("kill-tree", exited and background > 0 and not survived and left and orphan_alive_before and not orphan_survived,
+          f"background={background} survived={survived} after_exit={orphan} survived={orphan_survived}")
     client.close()
 
 
 def scenario_input_cap(path):
     client = Client(path)
     session = uuid.uuid4()
-    create(client, session, "stty raw -echo; sleep 30")
+    # Does not read for 3 s, then takes exactly the 8 MiB the cap admits and
+    # echoes whatever comes next.
+    create(client, session, "stty raw -echo; sleep 3; head -c 8388608 > /dev/null; echo DRAINED; exec cat")
     client.wait_for(lambda c: c.first(CREATED, session) is not None)
+    pid = json.loads(client.first(CREATED, session) or b"{}").get("pid", 0)
     time.sleep(0.3)
     chunk = b"i" * (1024 * 1024)
     for _ in range(12):
         client.send(INPUT, session, chunk)
         client.pump()
-    refused = client.wait_for(lambda c: c.first(FAILURE, session) is not None)
-    message = (client.first(FAILURE, session) or b"").decode(errors="replace")
-    check("input-cap", refused and "input refused" in message, repr(message[:60]))
+    refused = client.wait_for(lambda c: c.first(INPUT_REFUSED, session) is not None)
+    message = (client.first(INPUT_REFUSED, session) or b"").decode(errors="replace")
+    lives = alive(pid) and client.first(FAILURE, session) is None and client.first(EXITED, session) is None
+    drained = client.wait_for(lambda c: b"DRAINED" in c.output(session), timeout=15)
+    client.send(INPUT, session, b"PING-AFTER-REFUSAL")
+    resumed = client.wait_for(lambda c: b"PING-AFTER-REFUSAL" in c.output(session))
+    check("input-cap", refused and "input refused" in message and lives and drained and resumed,
+          f"{message[:40]!r} lives={lives} drained={drained} resumed={resumed}")
     client.send(KILL, session)
     client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
     client.close()
@@ -381,18 +405,19 @@ def scenario_leak(path, daemon_pid):
     def cycle():
         session = uuid.uuid4()
         create(client, session, f"head -c {size} /dev/zero | tr '\\0' z; sleep 30")
-        client.wait_for(lambda c: len(c.output(session)) >= size, timeout=10)
+        produced = client.wait_for(lambda c: len(c.output(session)) >= size, timeout=10)
         client.send(KILL, session)
-        client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
+        ended = client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
         client.frames = []
+        return produced and ended
 
-    for _ in range(5):
-        cycle()
+    warm = all([cycle() for _ in range(5)])
     baseline = rss_kb(daemon_pid)
-    for _ in range(cycles):
-        cycle()
+    measured = all([cycle() for _ in range(cycles)])
     grown = rss_kb(daemon_pid) - baseline
-    check("leak", grown < 16 * 1024, f"rss +{grown}KB over {cycles} sessions of {size // 1024}KB")
+    # A flat RSS proves nothing if the sessions never ran (r6).
+    check("leak", warm and measured and grown < 16 * 1024,
+          f"rss +{grown}KB over {cycles} sessions of {size // 1024}KB, all_cycles_ok={warm and measured}")
     client.close()
 
 

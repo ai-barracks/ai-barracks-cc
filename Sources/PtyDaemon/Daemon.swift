@@ -82,7 +82,9 @@ final class Daemon: @unchecked Sendable {
         case .attach: attach(frame.session, for: client)
         case .input:
             if sessions[frame.session]?.write(frame.payload) == false {
-                fail(frame.session, "input refused: the program is not reading its input", to: client)
+                // Not a FAILURE: clients end a pane on those (Codex r6).
+                client.connection.send(Frame(.inputRefused, session: frame.session,
+                                             payload: Data("input refused: the program is not reading its input".utf8)))
             }
         case .resize:
             if let request = PtyProtocol.decode(ResizeRequest.self, from: frame.payload) {
@@ -138,9 +140,9 @@ final class Daemon: @unchecked Sendable {
 
     private func kill(_ id: UUID) {
         guard let session = sessions[id] else { return }
-        if session.isAlive {
-            session.terminate()
-        } else {
+        // An exited session still ends what its child left running.
+        session.terminate()
+        if !session.isAlive {
             sessions[id] = nil
         }
         // A killed session is never reattached: forget it once it exits.

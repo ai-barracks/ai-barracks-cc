@@ -188,6 +188,11 @@ final class WorkspaceModel {
                  directory: selectedBarrack?.path, attachingTo: nil)
     }
 
+    /// A pane on a daemon session that already exists.
+    func makePane(title: String, attachingTo session: UUID) -> TerminalPane {
+        makePane(title: title, command: nil, environment: [:], directory: selectedBarrack?.path, attachingTo: session)
+    }
+
     private func makePane(
         title: String,
         command: String?,

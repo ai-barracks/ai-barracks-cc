@@ -14,7 +14,11 @@ struct TerminalPaneView: View {
             header
             TerminalSurfaceView(context: state)
                 .overlay(alignment: .bottom) {
-                    if pane.hasExited { exitBanner }
+                    if pane.hasExited {
+                        exitBanner
+                    } else if let notice = pane.notice {
+                        noticeBanner(notice)
+                    }
                 }
         }
         .onChange(of: state.surfaceSize) { pane.startExitMonitorIfNeeded() }
@@ -55,6 +59,20 @@ struct TerminalPaneView: View {
             Spacer(minLength: 8)
             Button("새 셸", action: onRestart)
                 .controlSize(.small)
+        }
+        .font(.system(size: 11, weight: .medium))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial)
+    }
+
+    private func noticeBanner(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+            Text(text)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
         }
         .font(.system(size: 11, weight: .medium))
         .padding(.horizontal, 10)

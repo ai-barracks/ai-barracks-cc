@@ -304,7 +304,7 @@ struct AgentSuite {
         }
         await harness.install([recorder.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
-        let id = recorder.pane.id.uuidString
+        let id = recorder.pane.archiveID
         workspace.closePane(id: recorder.pane.id)
         let text = workspace.scrollback.text(of: id) ?? ""
         let entry = workspace.scrollback.list().first { $0.id == id }

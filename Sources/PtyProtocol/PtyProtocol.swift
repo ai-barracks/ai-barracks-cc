@@ -8,6 +8,9 @@ public enum FrameType: UInt8, Sendable {
     case create = 1, attach, input, resize, detach, list, kill, shutdown
     // daemon → client
     case created = 101, attached, output, exited, sessions, failure
+    /// The child is not reading and its input backlog is full: this INPUT
+    /// was dropped; the session itself is fine (older clients skip it).
+    case inputRefused
 }
 
 public struct Frame: Sendable, Equatable {

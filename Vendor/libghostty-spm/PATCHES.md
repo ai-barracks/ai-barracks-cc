@@ -25,8 +25,11 @@ still fetched by the unchanged `binaryTarget` URL + checksum.
    `unlockNotifyingBacklog`): a backlog change was computed under the lock
    but its handler ran after unlock, so two threads could deliver `true` and
    `false` in reverse order and leave the host's transport paused for good
-   (Codex r4). A notification lock is taken before the state lock is
-   released and held until the handler returns.
+   (Codex r4). Changes are queued under the state lock in the order they
+   were computed and one thread at a time delivers the queue in order, with
+   no lock held, so a handler may still call back into the session (a first
+   version held a notification lock across the handler and deadlocked on
+   re-entry, Codex r6).
 
 5. **Replay writes and output-stream markers**
    (`InMemory/InMemoryTerminalSession.swift` `receiveReplay`, `enqueueMarker`;

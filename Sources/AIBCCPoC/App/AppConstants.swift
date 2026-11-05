@@ -61,6 +61,8 @@ enum AppConstants {
         static let sessionStoreSuffix = ".sessions.json"
         static let logSuffix = ".log"
         static let startTimeout: TimeInterval = 3
+        /// How long an "input refused" warning stays on a pane.
+        static let noticeDuration: Duration = .seconds(6)
         static let startPollMicroseconds: useconds_t = 50_000
         /// The in-memory backend ships no xterm-ghostty terminfo to children.
         static let term = "xterm-256color"

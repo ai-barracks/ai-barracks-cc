@@ -13,6 +13,9 @@ final class DaemonSession: @unchecked Sendable {
         /// Everything up to the exit has been parsed: the screen is final.
         case outputComplete
         case failed(String)
+        /// The program is not reading: some input was dropped. The session
+        /// goes on.
+        case inputRefused(String)
     }
 
     /// `.create` spawns on the first viewport report so the child starts
@@ -143,6 +146,8 @@ final class DaemonSession: @unchecked Sendable {
             finish(status: exit?.status ?? -1, runtime: exit?.runtimeMilliseconds ?? 0)
         case .failure:
             onEvent(.failed(String(decoding: frame.payload, as: UTF8.self)))
+        case .inputRefused:
+            onEvent(.inputRefused(String(decoding: frame.payload, as: UTF8.self)))
         default:
             break
         }

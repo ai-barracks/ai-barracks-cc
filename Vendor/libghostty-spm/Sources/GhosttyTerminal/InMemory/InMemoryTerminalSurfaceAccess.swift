@@ -54,11 +54,14 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
     private static let drainBatchLimit = 64
     private var backlogObserver: BacklogObserver?
     private var isBacklogged = false
-    /// AIBCC patch 4: held from the moment a backlog change is computed
-    /// (still under `condition`) until its handler returned, so handlers run
-    /// in the order the changes happened. Unordered, a late `true` could land
-    /// after a newer `false` and leave the host's transport paused for good.
-    private let backlogNotifyLock = NSLock()
+    /// AIBCC patch 4: backlog changes queued under `condition` in the order
+    /// they were computed, and one thread at a time delivers them, in that
+    /// order, with no lock held. Delivered by whoever computed them, a late
+    /// `true` could land after a newer `false` and leave the host's transport
+    /// paused for good; delivered under a lock, a handler that calls back into
+    /// the session (a documented right) deadlocked (Codex r6).
+    private var pendingBacklogChanges: [() -> Void] = []
+    private var isDeliveringBacklogChanges = false
 
     struct BacklogObserver {
         let highWater: Int
@@ -326,17 +329,28 @@ final class InMemoryTerminalSurfaceAccess: @unchecked Sendable {
         return { handler(backlogged) }
     }
 
-    /// Called with `condition` held; releases it and delivers any backlog
-    /// change in order (AIBCC patch 4).
+    /// Called with `condition` held; releases it. Queues any backlog change
+    /// and, unless another thread is already delivering (it will deliver this
+    /// one too, after the earlier ones), delivers the queue in order with the
+    /// lock released around each batch (AIBCC patch 4).
     private func unlockNotifyingBacklog() {
-        guard let change = takeBacklogChange() else {
+        if let change = takeBacklogChange() {
+            pendingBacklogChanges.append(change)
+        }
+        guard !isDeliveringBacklogChanges, !pendingBacklogChanges.isEmpty else {
             condition.unlock()
             return
         }
-        backlogNotifyLock.lock()
+        isDeliveringBacklogChanges = true
+        while !pendingBacklogChanges.isEmpty {
+            let batch = pendingBacklogChanges
+            pendingBacklogChanges = []
+            condition.unlock()
+            batch.forEach { $0() }
+            condition.lock()
+        }
+        isDeliveringBacklogChanges = false
         condition.unlock()
-        change()
-        backlogNotifyLock.unlock()
     }
 
     private func finishOperation() {

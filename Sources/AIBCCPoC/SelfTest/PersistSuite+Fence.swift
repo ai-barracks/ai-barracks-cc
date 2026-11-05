@@ -65,7 +65,7 @@ extension PersistSuite {
             title: "archive-tail", command: "head -c 4000000 /dev/zero | tr '\\0' x; echo; echo \(marker)"
         )
         await harness.install([pane], layout: .single)
-        let id = pane.id.uuidString
+        let id = pane.archiveID
         let archived = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
             harness.workspace.scrollback.record(id) != nil
         }
@@ -74,6 +74,57 @@ extension PersistSuite {
                      status: archived && text.contains(marker) ? .pass : .fail, cause: .app,
                      evidence: ["archived": "\(archived)", "marker": marker, "has_marker": "\(text.contains(marker))",
                                 "tail": String(text.suffix(80))],
+                     startedAt: start)
+    }
+
+    /// PS-05a (Codex r6): a refused input warns; it no longer ends a pane
+    /// whose program runs on.
+    func inputRefusalKeepsPane() async -> TestResult {
+        let start = ContinuousClock.now
+        let pane = harness.workspace.makePane(title: "not-reading", command: "stty raw -echo; sleep 30")
+        await harness.install([pane], layout: .single)
+        let started = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { pane.processID != nil }
+        let child = pane.processID ?? 0
+        let chunk = Data(repeating: 0x69, count: 5 * 1024 * 1024)
+        pane.remote?.terminal.sendInput(chunk)
+        pane.remote?.terminal.sendInput(chunk)
+        let warned = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { pane.notice != nil }
+        await harness.pause(AppConstants.SelfTest.changeGrace)
+        let childAlive = child > 0 && Darwin.kill(child, 0) == 0
+        let ok = started && warned && !pane.hasExited && pane.failure == nil && childAlive
+        return .make("PS-05a", "읽지 않는 프로그램에 입력 거부 → 경고만, pane은 살아 있음(종료 표시 없음)",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["warned": "\(warned)", "notice": pane.notice ?? "nil", "exited": "\(pane.hasExited)",
+                                "failure": pane.failure ?? "nil", "child_alive": "\(childAlive)"],
+                     startedAt: start)
+    }
+
+    /// PS-05b (Codex r6): a session that ended while no pane was attached
+    /// (the app was quit) is archived when a pane attaches to it.
+    func archiveEndedWhileDetached() async -> TestResult {
+        let start = ContinuousClock.now
+        guard let daemon = harness.workspace.daemon else {
+            return .make("PS-05b", "분리 중 종료 세션 보관", status: .fail, cause: .app,
+                         evidence: ["reason": "no daemon"], startedAt: start)
+        }
+        let id = UUID()
+        let marker = "DETACHED-END-\(UUID().uuidString.prefix(8))"
+        let request = DaemonLaunch.request(command: "printf '%s\\n' \(marker); exit 0", workingDirectory: nil, environment: [:])
+        let created = FrameRequest.send(Frame(.create, session: id, payload: PtyProtocol.json(request)),
+                                        to: daemon.socketPath, expecting: .created) != nil
+        let ended = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
+            daemon.listSessions()?.first { $0.id == id }?.alive == false
+        }
+        let pane = harness.workspace.makePane(title: "ended-while-detached", attachingTo: id)
+        await harness.install([pane], layout: .single)
+        let archived = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
+            harness.workspace.scrollback.record(id.uuidString) != nil
+        }
+        let text = harness.workspace.scrollback.text(of: id.uuidString) ?? ""
+        return .make("PS-05b", "앱이 없을 때 끝난 세션은 다시 붙을 때 마지막 출력까지 보관",
+                     status: created && ended && archived && text.contains(marker) ? .pass : .fail, cause: .app,
+                     evidence: ["created": "\(created)", "ended": "\(ended)", "archived": "\(archived)",
+                                "has_marker": "\(text.contains(marker))"],
                      startedAt: start)
     }
 

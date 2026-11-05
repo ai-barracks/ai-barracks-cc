@@ -27,10 +27,15 @@ final class TerminalPane: Identifiable {
     /// The child exited; the pane keeps its final output on screen.
     private(set) var hasExited = false
     private(set) var failure: String?
+    /// A passing warning that does not end the pane (input refused).
+    private(set) var notice: String?
+    /// The child had already ended when this pane attached to it.
+    private(set) var endedBeforeAttach = false
     @ObservationIgnored private var ownedView: ProbeTerminalView?
     @ObservationIgnored private var exitMonitor: ProcessExitMonitor?
     @ObservationIgnored private var remotePID: pid_t?
     @ObservationIgnored private var reportedExit = false
+    @ObservationIgnored private var noticeGeneration = 0
     /// Called once the child is gone and its output is on screen (the
     /// workspace archives it).
     @ObservationIgnored var onExit: (@MainActor (TerminalPane) -> Void)?
@@ -38,6 +43,9 @@ final class TerminalPane: Identifiable {
     var probeView: ProbeTerminalView? { ownedView }
     var monitoredPID: pid_t? { exitMonitor?.pid ?? remotePID }
     var isChildGone: Bool { exitMonitor?.isGone ?? false }
+    /// The archive key: the daemon session outlives the pane (a relaunch
+    /// attaches a new pane to it), so its output is kept under the session.
+    var archiveID: String { (remote?.id ?? id).uuidString }
     /// Root process of the pane: the daemon's child, or Ghostty's.
     var processID: pid_t? { remote == nil ? probeView?.foregroundPid : remotePID }
 
@@ -134,9 +142,10 @@ final class TerminalPane: Identifiable {
             if alive {
                 exitMonitor = ProcessExitMonitor(pid: pid) { [weak self] in self?.childDidExit() }
             } else {
-                // Ended before this attach: archived back then, if at all.
+                // Ended while no pane was attached: archived on
+                // `.outputComplete` unless an archive of it exists already.
                 hasExited = true
-                reportedExit = true
+                endedBeforeAttach = true
             }
         case .exited:
             hasExited = true
@@ -147,6 +156,19 @@ final class TerminalPane: Identifiable {
             // as ended (banner + "새 셸") instead of a blank surface.
             failure = message
             hasExited = true
+        case .inputRefused:
+            // Codex r6: this used to end the pane while the program ran on.
+            showNotice("입력을 보내지 못함 — 프로그램이 입력을 읽지 않고 있습니다")
+        }
+    }
+
+    private func showNotice(_ text: String) {
+        notice = text
+        noticeGeneration += 1
+        let generation = noticeGeneration
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: AppConstants.Daemon.noticeDuration)
+            if self?.noticeGeneration == generation { self?.notice = nil }
         }
     }
 
