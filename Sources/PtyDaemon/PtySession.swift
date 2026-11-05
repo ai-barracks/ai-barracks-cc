@@ -114,21 +114,56 @@ final class PtySession: @unchecked Sendable {
     /// Hangs up like a closing terminal (the kernel sends SIGHUP to the
     /// session), then SIGKILLs whatever of the session is left — the child
     /// and its descendants, background jobs included (Codex r4: a HUP-ignoring
-    /// descendant outlived its closed pane).
+    /// descendant outlived its closed pane). On a session whose child already
+    /// exited it ends what the child left running (r6, r7).
     func terminate() {
-        guard !reaped else {
-            leftovers.filter(\.isSameProcess).forEach { kill($0.pid, SIGKILL) }
-            leftovers = []
-            return
-        }
+        guard !reaped else { return endLeftovers() }
         guard isAlive else { return }
         closeMaster {}
-        let session = pid
+        // Weak: the record may be gone by then (a killed session is dropped
+        // at exit), and holding it would keep its buffers for the grace
+        // (r7 smoke `leak`). Members still running hold the session id, so
+        // the scan by id stays exact without the record.
+        let sid = pid
         queue.asyncAfter(deadline: .now() + killGrace) { [weak self] in
-            Self.killSessionMembers(session)
+            Self.stopAndKill(Self.members(of: sid), sid: sid)
             guard let self, !self.reaped else { return }
             kill(self.pid, SIGKILL)
         }
+    }
+
+    /// Session members still running after the leader exited.
+    var hasLeftovers: Bool {
+        refreshLeftovers()
+        return !leftovers.isEmpty
+    }
+
+    /// While a member recorded earlier still runs, the session id is held
+    /// and a scan finds exactly its members — those forked since included
+    /// (r7: a snapshot taken at reap missed them). With none left the id may
+    /// be reused, so nothing more is tracked.
+    private func refreshLeftovers() {
+        leftovers = leftovers.contains(where: \.isSameProcess) ? Self.members(of: pid) : []
+    }
+
+    private func endLeftovers() {
+        refreshLeftovers()
+        Self.stopAndKill(leftovers, sid: pid)
+        leftovers = []
+    }
+
+    /// SIGSTOP stops the members forking; rescans (valid while a stopped
+    /// member holds the session) catch what was forked before; then SIGKILL.
+    private static func stopAndKill(_ known: [Member], sid: pid_t) {
+        var members = known.filter(\.isSameProcess)
+        for _ in 0 ..< 5 where !members.isEmpty {
+            members.forEach { kill($0.pid, SIGSTOP) }
+            let rescanned = Self.members(of: sid)
+            let grown = Set(rescanned.map(\.pid)).subtracting(members.map(\.pid))
+            members = rescanned
+            if grown.isEmpty { break }
+        }
+        members.forEach { kill($0.pid, SIGKILL) }
     }
 
     struct Member {
@@ -155,21 +190,6 @@ final class PtySession: @unchecked Sendable {
         let size = Int32(MemoryLayout<proc_bsdinfo>.size)
         guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
         return info.pbi_start_tvsec &* 1_000_000 &+ info.pbi_start_tvusec
-    }
-
-    /// SIGKILL to every process in session `sid` except its leader (the
-    /// child: forkpty runs setsid), which is killed only while unreaped. A
-    /// session with members keeps its id from being reused; once the leader
-    /// is reaped and the session empty, a new process that got the number
-    /// is itself a leader and stays out.
-    static func killSessionMembers(_ sid: pid_t) {
-        let count = proc_listallpids(nil, 0)
-        guard count > 0 else { return }
-        var pids = [pid_t](repeating: 0, count: Int(count) * 2)
-        let filled = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
-        for candidate in pids.prefix(Int(max(filled, 0))) where candidate > 1 && candidate != sid && getsid(candidate) == sid {
-            kill(candidate, SIGKILL)
-        }
     }
 
     // MARK: - Private

@@ -4,7 +4,12 @@ import SwiftUI
 @main
 struct AIBCCPoCApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var workspace = { SingleInstance.enforce(); return WorkspaceModel() }()
+    @State private var workspace = {
+        // A self-test probe child runs its check and exits before anything else.
+        SelfTestProbe.runIfRequested()
+        SingleInstance.enforce()
+        return WorkspaceModel()
+    }()
     @AppStorage(AppConstants.Daemon.keepSessionsOnQuitKey) private var keepSessionsOnQuit = true
     @State private var artifacts = ArtifactStore()
 

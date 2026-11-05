@@ -39,6 +39,7 @@ struct ToastStack: View {
         case .attention: "exclamationmark.circle.fill"
         case .export: "square.and.arrow.up"
         case .registry: "tray.full"
+        case .daemon: "server.rack"
         }
     }
 

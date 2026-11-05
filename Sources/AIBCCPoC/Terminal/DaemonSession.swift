@@ -10,8 +10,9 @@ final class DaemonSession: @unchecked Sendable {
         case started(pid: pid_t, alive: Bool)
         /// The child is gone (EXITED or the daemon connection closed).
         case exited(status: Int32)
-        /// Everything up to the exit has been parsed: the screen is final.
-        case outputComplete
+        /// Everything up to the end has been parsed. `final`: the daemon
+        /// reported the exit (not just a lost connection, r7).
+        case outputComplete(final: Bool)
         case failed(String)
         /// The program is not reading: some input was dropped. The session
         /// goes on.
@@ -143,9 +144,9 @@ final class DaemonSession: @unchecked Sendable {
             }
         case .exited:
             let exit = PtyProtocol.decode(ExitInfo.self, from: frame.payload)
-            finish(status: exit?.status ?? -1, runtime: exit?.runtimeMilliseconds ?? 0)
+            finish(status: exit?.status ?? -1, runtime: exit?.runtimeMilliseconds ?? 0, final: true)
         case .failure:
-            onEvent(.failed(String(decoding: frame.payload, as: UTF8.self)))
+            onEvent(Self.event(forFailure: String(decoding: frame.payload, as: UTF8.self)))
         case .inputRefused:
             onEvent(.inputRefused(String(decoding: frame.payload, as: UTF8.self)))
         default:
@@ -154,10 +155,10 @@ final class DaemonSession: @unchecked Sendable {
     }
 
     private func connectionClosed() {
-        finish(status: -1, runtime: 0)
+        finish(status: -1, runtime: 0, final: false)
     }
 
-    private func finish(status: Int32, runtime: UInt64) {
+    private func finish(status: Int32, runtime: UInt64, final: Bool) {
         guard !finished else { return }
         finished = true
         terminal.finish(exitCode: UInt32(bitPattern: status), runtimeMilliseconds: runtime)
@@ -165,7 +166,13 @@ final class DaemonSession: @unchecked Sendable {
         // The archive reads the screen: only once the last output is parsed
         // (Codex r4: archived at PID exit, before the final output arrived).
         let onEvent = onEvent
-        terminal.enqueueMarker { onEvent(.outputComplete) }
+        terminal.enqueueMarker { onEvent(.outputComplete(final: final)) }
+    }
+
+    /// Revision-1 daemons (2.0.0-beta.1) report refused input as a FAILURE;
+    /// it is not the session's end (r7, until such a daemon is replaced).
+    static func event(forFailure message: String) -> Event {
+        message.hasPrefix(AppConstants.Daemon.legacyInputRefusal) ? .inputRefused(message) : .failed(message)
     }
 
     private static func clamp<T: BinaryInteger>(_ value: T) -> UInt16 {

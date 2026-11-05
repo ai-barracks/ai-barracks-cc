@@ -93,7 +93,7 @@ struct SelfTestRunner {
 
     private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {
         switch name {
-        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + [OverviewSuite().run(), ScrollbackSuite().run(), V1ImportSuite().run()] + ActivationSuite().run() + (await UnitSuite().runAsync()) + (await GitSuite().run()) + (await ProviderSuite().run()) + [await ReviewR5Suite().run()] + ReviewR6Suite().run() + [await ReviewR6Suite().writeLock()]
+        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + [OverviewSuite().run(), ScrollbackSuite().run(), V1ImportSuite().run()] + ActivationSuite().run() + (await UnitSuite().runAsync()) + (await GitSuite().run()) + (await ProviderSuite().run()) + [await ReviewR5Suite().run()] + ReviewR6Suite().run() + [await ReviewR6Suite().writeLock()] + (await ReviewR7Suite().run())
         case "agents": return await AgentSuite(harness: harness).run() + [await SkillSuite().syncIntegration(), await BarrackAdminSuite().run()]
         case "packaging": return await PackagingSuite(harness: harness).run()
         case "input": return await InputSuite(harness: harness).run()
@@ -111,7 +111,8 @@ struct SelfTestRunner {
         case "persist2":
             let suite = PersistSuite(harness: harness)
             return await suite.phaseTwo() + [await suite.replayFence(), await suite.archiveAfterOutput(),
-                                             await suite.inputRefusalKeepsPane(), await suite.archiveEndedWhileDetached()] + suite.recovery()
+                                             await suite.inputRefusalKeepsPane(), await suite.archiveEndedWhileDetached(),
+                                             await suite.archiveReplacesSnapshot()] + suite.recovery()
         default: return []
         }
     }

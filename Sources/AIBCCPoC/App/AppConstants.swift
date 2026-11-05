@@ -61,6 +61,9 @@ enum AppConstants {
         static let sessionStoreSuffix = ".sessions.json"
         static let logSuffix = ".log"
         static let startTimeout: TimeInterval = 3
+        /// A daemon from before HELLO never answers it.
+        static let helloTimeout: Double = 1
+        static let legacyInputRefusal = "input refused:"
         /// How long an "input refused" warning stays on a pane.
         static let noticeDuration: Duration = .seconds(6)
         static let startPollMicroseconds: useconds_t = 50_000
@@ -81,7 +84,10 @@ enum AppConstants {
     }
 
     enum Maintenance {
-        static let aibWriteLockName = "aib-write.lock"
+        static let aibWriteLockPrefix = "aib-write-"
+        /// Shared by the development and release apps (they write the same
+        /// registry); self-tests keep theirs in their own support folder.
+        static let sharedSupportDirectory = "~/Library/Application Support/AIBarracks"
         static let aibWriteLockPoll: Duration = .milliseconds(100)
     }
 
@@ -185,6 +191,8 @@ enum AppConstants {
         static let captureTimeout: Duration = .seconds(4)
         static let captureRenderGrace: Duration = .milliseconds(250)
         static let changeGrace: Duration = .milliseconds(500)
+        /// A probe child (SelfTestProbe) gets this long before it counts as hung.
+        static let probeTimeout: TimeInterval = 40
         /// Longer than Ghostty's multi-click interval so consecutive click
         /// tests are never counted as one double/triple click.
         static let clickReset: Duration = .milliseconds(700)

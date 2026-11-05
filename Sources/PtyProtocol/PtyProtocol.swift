@@ -6,11 +6,14 @@ import Foundation
 public enum FrameType: UInt8, Sendable {
     // client → daemon
     case create = 1, attach, input, resize, detach, list, kill, shutdown
+    /// Asks for the daemon's revision; daemons before revision 2 skip it.
+    case hello
     // daemon → client
     case created = 101, attached, output, exited, sessions, failure
     /// The child is not reading and its input backlog is full: this INPUT
     /// was dropped; the session itself is fine (older clients skip it).
     case inputRefused
+    case welcome
 }
 
 public struct Frame: Sendable, Equatable {
@@ -135,6 +138,15 @@ public struct ExitInfo: Codable, Sendable {
     }
 }
 
+/// The answer to HELLO.
+public struct Welcome: Codable, Sendable {
+    public let revision: Int
+
+    public init(revision: Int) {
+        self.revision = revision
+    }
+}
+
 public enum PtyProtocol {
     public static let noSession = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
     /// Recent raw output kept per session and replayed on attach. Kept
@@ -146,6 +158,12 @@ public enum PtyProtocol {
     /// stay reachable to the older app).
     public static let version = 1
     public static let defaultSocketName = "ptyd-v\(version).sock"
+    /// Daemon behavior level within one `version` (same frames, same
+    /// socket): an app finding an older revision running replaces it once
+    /// it holds no live session (r7: an update kept talking to the old
+    /// daemon). 1 = before HELLO existed (2.0.0-beta.1); 2 = INPUT_REFUSED,
+    /// leftover cleanup.
+    public static let revision = 2
 
     public static func json<T: Encodable>(_ value: T) -> Data {
         (try? JSONEncoder().encode(value)) ?? Data()

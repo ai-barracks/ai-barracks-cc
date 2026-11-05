@@ -31,6 +31,9 @@ final class TerminalPane: Identifiable {
     private(set) var notice: String?
     /// The child had already ended when this pane attached to it.
     private(set) var endedBeforeAttach = false
+    /// The exit was confirmed (daemon EXITED, or the exec child gone), not
+    /// only the connection lost: the archive saved now is final.
+    private(set) var exitConfirmed = false
     @ObservationIgnored private var ownedView: ProbeTerminalView?
     @ObservationIgnored private var exitMonitor: ProcessExitMonitor?
     @ObservationIgnored private var remotePID: pid_t?
@@ -126,7 +129,10 @@ final class TerminalPane: Identifiable {
         hasExited = true
         // A daemon pane's last output may still be on the socket: it is
         // archived on `.outputComplete` instead.
-        if remote == nil { reportExit() }
+        if remote == nil {
+            exitConfirmed = true
+            reportExit()
+        }
     }
 
     private func reportExit() {
@@ -143,13 +149,14 @@ final class TerminalPane: Identifiable {
                 exitMonitor = ProcessExitMonitor(pid: pid) { [weak self] in self?.childDidExit() }
             } else {
                 // Ended while no pane was attached: archived on
-                // `.outputComplete` unless an archive of it exists already.
+                // `.outputComplete` unless a final archive of it exists.
                 hasExited = true
                 endedBeforeAttach = true
             }
         case .exited:
             hasExited = true
-        case .outputComplete:
+        case let .outputComplete(final):
+            exitConfirmed = final
             reportExit()
         case let .failed(message):
             // e.g. the session vanished between restore and attach: show it

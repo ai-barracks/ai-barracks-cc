@@ -10,6 +10,10 @@ final class Daemon: @unchecked Sendable {
     /// Exited sessions are kept (with their final output) for a later
     /// attach; beyond this count the oldest are dropped.
     private static let keptExitedSessions = 32
+    /// Exited sessions whose child left processes running are kept (so a
+    /// KILL can still end them) up to this many; past it the oldest are
+    /// ended and dropped (r7).
+    private static let keptLeftoverSessions = 64
     private static let idleExit: TimeInterval = 300
     private static let idleCheckInterval: DispatchTimeInterval = .seconds(30)
     private static let shutdownGrace: DispatchTimeInterval = .seconds(4)
@@ -93,6 +97,8 @@ final class Daemon: @unchecked Sendable {
         case .detach:
             client.attached.remove(frame.session)
             updateFlowControl()
+        case .hello:
+            client.connection.send(Frame(.welcome, payload: PtyProtocol.json(Welcome(revision: PtyProtocol.revision))))
         case .list:
             let infos = sessions.values.map(\.info).sorted { $0.startedAt < $1.startedAt }
             client.connection.send(Frame(.sessions, payload: PtyProtocol.json(infos)))
@@ -157,9 +163,18 @@ final class Daemon: @unchecked Sendable {
         markIdleIfNeeded()
     }
 
+    /// Drops the oldest exited records past the limit — not one whose child
+    /// left processes running, which a KILL must still reach, unless those
+    /// pass their own limit; those are ended first (r7: pruning forgot them).
     private func pruneExitedSessions() {
         let exited = sessions.values.filter { !$0.isAlive }.sorted { $0.startedAt < $1.startedAt }
-        for session in exited.dropLast(Self.keptExitedSessions) {
+        let holding = exited.filter(\.hasLeftovers)
+        let held = Set(holding.map(\.id))
+        for session in exited.filter({ !held.contains($0.id) }).dropLast(Self.keptExitedSessions) {
+            sessions[session.id] = nil
+        }
+        for session in holding.dropLast(Self.keptLeftoverSessions) {
+            session.terminate()
             sessions[session.id] = nil
         }
     }
@@ -209,7 +224,8 @@ final class Daemon: @unchecked Sendable {
     /// Hangs up every session, waits briefly for exits, then quits.
     private func shutdown() {
         DaemonLog.write("shutdown requested")
-        sessions.values.filter(\.isAlive).forEach { $0.terminate() }
+        // Exited sessions too: what their children left running ends (r7).
+        sessions.values.forEach { $0.terminate() }
         queue.asyncAfter(deadline: .now() + Self.shutdownGrace) { [weak self] in self?.stop(status: 0) }
     }
 

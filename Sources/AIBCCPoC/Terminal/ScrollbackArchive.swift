@@ -11,6 +11,10 @@ struct ArchivedOutput: Codable, Equatable, Identifiable {
     let truncated: Bool
     /// The immutable payload file this record commits to (`<id>.<rev>.txt`).
     var payload: String?
+    /// The program's exit was confirmed when this was saved; otherwise it is
+    /// a snapshot (pane closed, connection lost) a later final save replaces
+    /// (r7). Absent in older records.
+    var final: Bool?
 }
 
 /// Terminal output kept on disk after a pane closes or its program ends
@@ -38,12 +42,13 @@ struct ScrollbackArchive {
 
     /// Saves (or replaces) the output `id`; empty output is not kept.
     @discardableResult
-    func save(id: String, title: String, barrackPath: String?, text: String, now: Date = Date()) -> ArchivedOutput? {
+    func save(id: String, title: String, barrackPath: String?, text: String, final: Bool = false,
+              now: Date = Date()) -> ArchivedOutput? {
         guard Self.isValid(id), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, prepareDirectory() else { return nil }
         let (kept, truncated) = Self.tail(text, maxBytes: maxBytesPerOutput)
         let payload = "\(id).\(UUID().uuidString.prefix(8)).txt"
         let entry = ArchivedOutput(id: id, title: title, barrackPath: barrackPath, closedAt: now,
-                                   byteLength: kept.utf8.count, truncated: truncated, payload: payload)
+                                   byteLength: kept.utf8.count, truncated: truncated, payload: payload, final: final)
         let previous = record(id)?.payload
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .millisecondsSince1970

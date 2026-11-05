@@ -15,7 +15,9 @@ MARKER=".aibcc-demo"
 case "$DEMO" in /tmp/*|/private/tmp/*) ;; *) echo "demo dir must be under /tmp" >&2; exit 1 ;; esac
 NAME="${DEMO#/private}"
 NAME="${NAME#/tmp/}"
-case "$NAME" in ""|*/*|.*) echo "demo dir must be a plain folder name directly under /tmp" >&2; exit 1 ;; esac
+# Letters, digits, dot, dash, underscore only: the path also reaches shell
+# commands (r7: a quote in the name injected one).
+case "$NAME" in ""|.*|*[!A-Za-z0-9._-]*) echo "demo dir must be a plain folder name (A-Z a-z 0-9 . _ -) directly under /tmp" >&2; exit 1 ;; esac
 DEMO="/private/tmp/$NAME"
 if [ -e "$DEMO" ] || [ -L "$DEMO" ]; then
   if [ -L "$DEMO" ] || [ ! -d "$DEMO" ] || [ ! -f "$DEMO/$MARKER" ]; then
@@ -33,10 +35,10 @@ NOW=$(date +%s)
 
 barrack() {   # name description
   local dir="$DEMO/$1"
-  zsh -lc "aib init '$dir'" >/dev/null 2>&1
+  zsh -lc 'aib init "$1"' _ "$dir" >/dev/null 2>&1
   # Before sync: sync re-registers the barrack with agent.yaml's description.
   sed -i '' "s|^description:.*|description: \"$2\"|" "$dir/agent.yaml"
-  zsh -lc "aib sync '$dir'" >/dev/null 2>&1
+  zsh -lc 'aib sync "$1"' _ "$dir" >/dev/null 2>&1
 }
 
 soul() {   # dir name expertise... (| separated lists: expertise|personality|values|constraints)

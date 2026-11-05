@@ -151,9 +151,33 @@ struct ActivationSuite {
     /// AC-01c (Codex r6 blocker): the real scheduler → runner →
     /// BoundedProcess chain with a fake CLI. The scheduler's cancel check
     /// runs inside the process gate; when it re-entered the gate's lock, the
-    /// first slot hung for good — AC-01a/b used stand-ins for one side.
+    /// first slot hung for good — AC-01a/b used stand-ins for one side. The
+    /// gate is process-wide, so the scenario runs in a child copy of the app
+    /// under a watchdog: a regression fails here instead of hanging the run
+    /// (r7).
     private func endToEnd() -> TestResult {
         let start = ContinuousClock.now
+        var failures: [String] = []
+        if let app = Bundle.main.executableURL {
+            let options = BoundedProcess.Options(timeout: AppConstants.SelfTest.probeTimeout, outputLimit: 64 * 1024, tag: "probe")
+            let result = BoundedProcess.run(app, [SelfTestProbe.argumentPrefix + SelfTestProbe.activationGate],
+                                            cwd: FileManager.default.temporaryDirectory,
+                                            environment: ProcessInfo.processInfo.environment, options: options, cancelled: { false })
+            switch result {
+            case let .success(output) where output.status == 0: break
+            case let .success(output): failures.append(String(decoding: output.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+            case .failure(.timedOut): failures.append("hung (watchdog)")
+            case let .failure(failure): failures.append("probe \(failure)")
+            }
+        } else {
+            failures.append("no executable")
+        }
+        return check("AC-01c", "실제 스케줄러·실행기·프로세스 게이트 연결: 슬롯 완료, 실행 중 OFF 즉시 종료(교착 없음, 별도 프로세스·watchdog)",
+                     failures, start)
+    }
+
+    /// The AC-01c scenario; runs in the probe process.
+    func endToEndFailures() -> [String] {
         var failures: [String] = []
         let directory = temp("activation-e2e")
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -199,7 +223,7 @@ struct ActivationSuite {
         if slowRun.view().history.first?.status != "failed" { failures.append("off \(slowRun.view().history.first?.status ?? "none")") }
         slowRun.release()
         quickRun.release()
-        return check("AC-01c", "실제 스케줄러·실행기·프로세스 게이트 연결: 슬롯 완료, 실행 중 OFF 즉시 종료(교착 없음)", failures, start)
+        return failures
     }
 
     /// Runs `work` on its own thread; false if it is still running after

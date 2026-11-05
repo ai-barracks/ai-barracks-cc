@@ -141,12 +141,20 @@ enum MarkdownPatch {
     static func hasHangingContent(_ lines: [String], after run: Range<Int>) -> Bool {
         var index = run.upperBound
         if index < lines.count {
-            let trimmed = stripEol(lines[index]).trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty, !trimmed.hasPrefix("#") { return true }
+            let content = stripEol(lines[index])
+            // Only a real ATX heading ends the item: `#tag` or seven hashes
+            // are its text (r7).
+            if !content.trimmingCharacters(in: .whitespaces).isEmpty, !isHeading(content) { return true }
         }
         while index < lines.count, stripEol(lines[index]).trimmingCharacters(in: .whitespaces).isEmpty { index += 1 }
         guard index < lines.count else { return false }
         return stripEol(lines[index]).first.map { $0 == " " || $0 == "\t" } ?? false
+    }
+
+    /// A CommonMark ATX heading line: up to 3 spaces, 1–6 `#`, then a space
+    /// or the end of the line.
+    static func isHeading(_ content: String) -> Bool {
+        Regex.matches(#"^ {0,3}#{1,6}([ \t]|$)"#, content)
     }
 
     /// Bullet texts of a section, skipping fenced code (v1 extractManagedBullets).

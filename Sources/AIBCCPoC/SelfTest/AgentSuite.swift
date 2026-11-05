@@ -11,7 +11,7 @@ struct AgentSuite {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
-         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), restoreFailureKeepsSessions(),
+         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(),
          await settingsApply()]
     }
 
@@ -322,6 +322,41 @@ struct AgentSuite {
             failures.append("discard \(workspace.discardRevision - revision) \(workspace.destination)")
         }
         return .make("NV-01b", "모델 진입점(⌘⇧A·pane 메뉴·알림·새 pane)도 편집 중 이동 확인, 버리면 편집 버퍼도 초기화",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
+    }
+
+    /// Codex r7: a Quick Command was typed, and a new pane made and saved,
+    /// while "leave the edit?" was still on screen; "cancel" kept both.
+    private func nothingBeforeConfirm() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        var failures: [String] = []
+        guard let recorder = harness.makeRecorderPane(name: "nv-quick") else {
+            return .make("NV-01c", "확인 전 부작용 없음", status: .fail, cause: .app, evidence: ["reason": "no recorder"], startedAt: start)
+        }
+        await harness.install([recorder.pane], layout: .single)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
+        let quick = QuickCommand(label: "nv", command: "nvq")
+        workspace.destination = .rules
+        workspace.editInProgress = true
+        let mark = recorder.log.mark()
+        _ = workspace.run(quick, in: recorder.pane)
+        let paneCount = workspace.panes.count
+        _ = workspace.runInPane(title: "nv-new", command: "true")
+        await harness.pause(AppConstants.SelfTest.changeGrace)
+        if !recorder.log.bytes(since: mark).isEmpty { failures.append("typed before confirm") }
+        if workspace.panes.count != paneCount { failures.append("pane made before confirm") }
+        workspace.cancelNavigation()
+        await harness.pause(AppConstants.SelfTest.changeGrace)
+        if !recorder.log.bytes(since: mark).isEmpty || workspace.panes.count != paneCount { failures.append("cancel left effects") }
+        // Confirmed, the command runs.
+        workspace.editInProgress = true
+        _ = workspace.run(quick, in: recorder.pane)
+        workspace.confirmNavigation()
+        let typed = await harness.settledBytes(recorder.log, since: mark, expectingAtLeast: 3)
+        if !String(decoding: typed, as: UTF8.self).contains("nvq") { failures.append("confirmed run missing \(Hex.string(typed))") }
+        return .make("NV-01c", "편집 중 Quick Command·새 pane은 확인 전 아무것도 안 함, 취소 시 부작용 없음, 확인 시 실행",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }

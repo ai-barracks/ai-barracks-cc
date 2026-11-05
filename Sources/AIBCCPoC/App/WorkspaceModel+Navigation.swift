@@ -24,14 +24,6 @@ extension WorkspaceModel {
         action?()
     }
 
-    /// Shows the terminal grid, focusing `pane` — after asking, if an edit
-    /// is open. The pane itself is already in the grid.
-    func showSessions(focusing pane: TerminalPane?) {
-        navigate { [weak self] in
-            self?.destination = .sessions
-            if let pane { self?.focusWhenAttached(pane) }
-        }
-    }
 
     func cancelNavigation() {
         pendingNavigation = nil

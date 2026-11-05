@@ -8,6 +8,17 @@ import PtyProtocol
 struct DaemonBackend: Sendable {
     let socketPath: String
     let executable: URL
+    /// What the launch found running (an older daemon is replaced or kept).
+    var upgrade: Upgrade = .current
+
+    enum Upgrade: Equatable, Sendable {
+        case current
+        /// An older daemon held no live session and was replaced.
+        case replaced
+        /// An older daemon keeps `sessions` live sessions; it is replaced
+        /// once they are all ended.
+        case outdated(sessions: Int)
+    }
 
     /// Session layout saved next to the socket; it belongs to that daemon.
     var sessionStoreURL: URL {
@@ -25,8 +36,10 @@ struct DaemonBackend: Sendable {
             .appendingPathComponent(AppConstants.Daemon.executableName),
             FileManager.default.isExecutableFile(atPath: executable.path)
         else { return nil }
-        let backend = DaemonBackend(socketPath: socket, executable: executable)
-        return backend.ensureRunning() ? backend : nil
+        var backend = DaemonBackend(socketPath: socket, executable: executable)
+        guard backend.ensureRunning() else { return nil }
+        backend.upgrade = backend.upgradeIfOutdated()
+        return backend
     }
 
     /// Which socket a launch uses: explicit `--ptyd-socket=`, else the
@@ -61,6 +74,27 @@ struct DaemonBackend: Sendable {
             usleep(AppConstants.Daemon.startPollMicroseconds)
         }
         return isReachable
+    }
+
+    /// The running daemon's revision; 1 when it does not answer HELLO.
+    func revision() -> Int {
+        guard let reply = FrameRequest.send(Frame(.hello), to: socketPath, expecting: .welcome,
+                                            timeout: AppConstants.Daemon.helloTimeout),
+              let welcome = PtyProtocol.decode(Welcome.self, from: reply.payload) else { return 1 }
+        return welcome.revision
+    }
+
+    /// An older daemon left running by an earlier app build: replaced at
+    /// once if it holds no live session, else kept (its sessions are the
+    /// user's work) and reported.
+    func upgradeIfOutdated() -> Upgrade {
+        guard revision() < PtyProtocol.revision else { return .current }
+        let alive = listSessions()?.filter(\.alive).count ?? 0
+        guard alive == 0 else { return .outdated(sessions: alive) }
+        shutdownSessions()
+        let deadline = Date().addingTimeInterval(AppConstants.Daemon.startTimeout)
+        while isReachable, Date() < deadline { usleep(AppConstants.Daemon.startPollMicroseconds) }
+        return ensureRunning() && revision() >= PtyProtocol.revision ? .replaced : .outdated(sessions: 0)
     }
 
     /// Sessions the daemon still holds (alive or exited with output).

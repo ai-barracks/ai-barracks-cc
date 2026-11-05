@@ -128,6 +128,38 @@ extension PersistSuite {
                      startedAt: start)
     }
 
+    /// PS-05c (Codex r7): an earlier snapshot of a session (pane closed or
+    /// connection lost mid-run) no longer stops its final output from being
+    /// archived when a pane attaches after the end.
+    func archiveReplacesSnapshot() async -> TestResult {
+        let start = ContinuousClock.now
+        guard let daemon = harness.workspace.daemon else {
+            return .make("PS-05c", "중간 보관본 → 최종 보관", status: .fail, cause: .app,
+                         evidence: ["reason": "no daemon"], startedAt: start)
+        }
+        let id = UUID()
+        let marker = "FINAL-AFTER-SNAPSHOT-\(UUID().uuidString.prefix(8))"
+        let request = DaemonLaunch.request(command: "sleep 1; printf '%s\\n' \(marker); exit 0", workingDirectory: nil, environment: [:])
+        let created = FrameRequest.send(Frame(.create, session: id, payload: PtyProtocol.json(request)),
+                                        to: daemon.socketPath, expecting: .created) != nil
+        let snapshot = harness.workspace.scrollback.save(id: id.uuidString, title: "snapshot", barrackPath: nil,
+                                                         text: "PARTIAL SNAPSHOT", final: false) != nil
+        let ended = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
+            daemon.listSessions()?.first { $0.id == id }?.alive == false
+        }
+        let pane = harness.workspace.makePane(title: "after-snapshot", attachingTo: id)
+        await harness.install([pane], layout: .single)
+        let replaced = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
+            harness.workspace.scrollback.text(of: id.uuidString)?.contains(marker) == true
+        }
+        let final = harness.workspace.scrollback.record(id.uuidString)?.final == true
+        return .make("PS-05c", "중간 보관본이 있어도 끝난 뒤 다시 붙으면 최종 출력으로 갱신(최종 표시)",
+                     status: created && snapshot && ended && replaced && final ? .pass : .fail, cause: .app,
+                     evidence: ["created": "\(created)", "snapshot": "\(snapshot)", "ended": "\(ended)",
+                                "replaced": "\(replaced)", "final": "\(final)"],
+                     startedAt: start)
+    }
+
     /// Runs after PS-02b, with the restarted daemon.
     func daemonKilled() async -> TestResult {
         let start = ContinuousClock.now

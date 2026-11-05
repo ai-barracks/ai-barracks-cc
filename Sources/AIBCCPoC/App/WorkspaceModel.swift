@@ -139,6 +139,11 @@ final class WorkspaceModel {
         selectedBarrackID = restoredSelection ?? barracks.first?.id
         activateSelectedGrid()
         startBackgroundWork()
+        if case let .outdated(count)? = daemon?.upgrade, count > 0 {
+            notices.post(AppNotice(kind: .daemon, title: "이전 버전 PTY 데몬이 세션 \(count)개를 유지 중",
+                                   body: "그 세션들이 모두 끝나면(또는 설정 → 세션 모두 종료) 다음 실행부터 새 데몬을 씁니다.",
+                                   actionLabel: nil, barrackID: nil, sessionID: nil))
+        }
     }
 
     var selectedBarrack: Barrack? {
@@ -428,7 +433,13 @@ extension WorkspaceModel {
         openPane(title: title, command: "/bin/zsh -lc " + AgentLauncher.shellQuote(command + "; exec /bin/zsh -l"))
     }
 
+    /// With an edit open, nothing is created until the user agreed to leave
+    /// it (r7: the pane was made and saved first, and stayed on "cancel").
     private func openPane(title: String, command: String?) -> TerminalPane? {
+        guard !editInProgress else {
+            navigate { [weak self] in _ = self?.openPane(title: title, command: command) }
+            return nil
+        }
         guard let barrack = selectedBarrack else { return nil }
         let current = grid
         guard current.panes.count < PaneLayout.quad.paneCount else { return nil }
@@ -437,7 +448,8 @@ extension WorkspaceModel {
         let needed = max(panes.count, current.layout.paneCount)
         let layout = PaneLayout.allCases.first { $0.paneCount >= needed } ?? .quad
         store(BarrackGrid(panes: panes, layout: layout, splitX: current.splitX, splitY: current.splitY))
-        showSessions(focusing: pane)
+        destination = .sessions
+        focusWhenAttached(pane)
         return pane
     }
 
@@ -584,7 +596,7 @@ extension WorkspaceModel {
             destination = .history
         case .sync:
             syncAll(paths: health?.outdatedBarracks ?? [])
-        case .registry:
+        case .registry, .daemon:
             break
         case .export:
             if let path = notice.sessionID { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
@@ -652,7 +664,14 @@ extension WorkspaceModel {
     @discardableResult
     func run(_ quick: QuickCommand, in pane: TerminalPane? = nil) -> Bool {
         guard let target = pane ?? focusedPane else { return false }
-        showSessions(focusing: target)
+        // Nothing is typed until the user agreed to leave an open edit (r7:
+        // the command ran while the question was still on screen).
+        guard !editInProgress else {
+            navigate { [weak self] in _ = self?.run(quick, in: target) }
+            return false
+        }
+        destination = .sessions
+        focusWhenAttached(target)
         return target.state.performBindingAction(GhosttyText.action(typing: quick.command, pressEnter: true))
     }
 

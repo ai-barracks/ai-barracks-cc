@@ -30,6 +30,10 @@ enum AgentYamlDocument {
         /// A block scalar (`|`, `>`) or a value continued on indented lines:
         /// a one-line edit would leave the rest as broken YAML (r5).
         case multilineValue
+        /// An anchor, tag or alias (`&m`, `!!str`, `*m`): the form would drop
+        /// the anchor an alias elsewhere needs, or turn an alias into text,
+        /// and a value behind one is not scanned for continuation (r7).
+        case nodeProperties
     }
 
     struct Failure: Error, Equatable {
@@ -156,6 +160,9 @@ enum AgentYamlDocument {
         let matches = lines.indices.filter { Regex.matches("^\(key)\\s*:", MarkdownPatch.stripEol(lines[$0])) }
         guard let index = matches.first else { return .failure(.keyNotFound) }
         guard matches.count == 1 else { return .failure(.multipleKeys) }
+        guard !YamlScalar.hasNodeProperties(YamlScalar.valuePart(MarkdownPatch.stripEol(lines[index]))) else {
+            return .failure(.nodeProperties)
+        }
         guard !YamlScalar.isMultiline(lines, at: index) else { return .failure(.multilineValue) }
         lines[index] = YamlScalar.renderLine(MarkdownPatch.stripEol(lines[index]), value) + MarkdownPatch.lineEol(lines[index])
         return .success(lines.joined())
@@ -174,6 +181,9 @@ enum AgentYamlDocument {
         guard let block = modelsBlock(lines) else { return .failure(.modelsNotFound) }
         guard let index = (block.start + 1..<block.end).first(where: { Regex.matches(#"^\s+primary\s*:"#, MarkdownPatch.stripEol(lines[$0])) }) else {
             return .failure(.primaryNotFound)
+        }
+        guard !YamlScalar.hasNodeProperties(YamlScalar.valuePart(MarkdownPatch.stripEol(lines[index]))) else {
+            return .failure(.nodeProperties)
         }
         guard !YamlScalar.isMultiline(lines, at: index) else { return .failure(.multilineValue) }
         lines[index] = YamlScalar.renderLine(MarkdownPatch.stripEol(lines[index]), value) + MarkdownPatch.lineEol(lines[index])
@@ -206,6 +216,9 @@ enum AgentYamlDocument {
         let listStart = fallback + 1
         var listEnd = listStart
         while listEnd < block.end, isItem(listEnd) { listEnd += 1 }
+        if (listStart..<listEnd).contains(where: { YamlScalar.hasNodeProperties(YamlScalar.listValuePart(content($0))) }) {
+            return .failure(.nodeProperties)
+        }
         // More items after a comment or blank line: the list the form shows
         // is not the whole list.
         for index in listEnd..<block.end {
@@ -318,6 +331,11 @@ enum YamlScalar {
             return content.prefix { $0 == " " || $0 == "\t" }.count > indent
         }
         return false
+    }
+
+    /// The value starts with an anchor (`&`), a tag (`!`) or is an alias (`*`).
+    static func hasNodeProperties(_ value: String) -> Bool {
+        value.trimmingCharacters(in: .whitespaces).first.map { "&!*".contains($0) } ?? false
     }
 
     /// A quoted scalar or flow collection that does not close on its own

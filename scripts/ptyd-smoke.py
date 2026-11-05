@@ -31,6 +31,11 @@ Checks, each printed as PASS/FAIL:
               (r4); the session lives on and I/O resumes once it reads (r6)
   leak        killed sessions are freed: daemon RSS stays flat over many
               create/output/kill cycles, each of which must succeed (r4, r6)
+  hello       HELLO is answered with the daemon's revision (2+), so an app
+              can tell an older daemon left running by an earlier build (r7)
+  leftovers   what an exited child left running is ended by KILL even if
+              forked after the exit, by SHUTDOWN, and survives record
+              pruning so a KILL still reaches it (r7)
   single      a second daemon on the same socket exits without stealing it
   shutdown    SHUTDOWN stops the daemon and its children
 Exit status 0 only if every check passed.
@@ -46,8 +51,8 @@ import tempfile
 import time
 import uuid
 
-CREATE, ATTACH, INPUT, RESIZE, DETACH, LIST, KILL, SHUTDOWN = range(1, 9)
-CREATED, ATTACHED, OUTPUT, EXITED, SESSIONS, FAILURE, INPUT_REFUSED = range(101, 108)
+CREATE, ATTACH, INPUT, RESIZE, DETACH, LIST, KILL, SHUTDOWN, HELLO = range(1, 10)
+CREATED, ATTACHED, OUTPUT, EXITED, SESSIONS, FAILURE, INPUT_REFUSED, WELCOME = range(101, 109)
 HEADER = struct.Struct(">B16sI")
 TIMEOUT = 5.0
 RESULTS = []
@@ -421,6 +426,60 @@ def scenario_leak(path, daemon_pid):
     client.close()
 
 
+def scenario_hello(path):
+    client = Client(path)
+    client.send(HELLO, uuid.UUID(int=0))
+    answered = client.wait_for(lambda c: c.first(WELCOME) is not None, timeout=2)
+    revision = json.loads(client.first(WELCOME) or b"{}").get("revision")
+    check("hello", answered and isinstance(revision, int) and revision >= 2, f"revision={revision}")
+    client.close()
+
+
+def leftover_session(client, script):
+    """An exited session whose HUP-ignoring helper keeps running; returns
+    (session, helper pid, late child pid file)."""
+    session = uuid.uuid4()
+    create(client, session, script)
+    client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
+    out = client.output(session)
+    helper = int(out.split(b"HELPER=")[1].split()[0]) if b"HELPER=" in out else 0
+    return session, helper
+
+
+def scenario_leftovers(path):
+    client = Client(path)
+    workdir = os.path.dirname(path)
+    # A child forked by the helper after the leader's exit (r7: a snapshot
+    # taken at reap missed it).
+    late_file = os.path.join(workdir, "late.pid")
+    late_script = (f"( trap '' HUP; sleep 1; sleep 600 & echo $! > {late_file}; wait ) & "
+                   "echo HELPER=$!; exit 0")
+    late_session, late_helper = leftover_session(client, late_script)
+    deadline = time.time() + 5
+    while not os.path.exists(late_file) and time.time() < deadline:
+        time.sleep(0.1)
+    time.sleep(0.2)
+    late = int(open(late_file).read().strip() or 0) if os.path.exists(late_file) else 0
+    client.send(KILL, late_session)
+    time.sleep(0.8)
+    late_ok = late > 0 and late_helper > 0 and not alive(late) and not alive(late_helper)
+    # Pruning keeps a record that still has processes, so KILL reaches them.
+    held_session, held = leftover_session(client, "( trap '' HUP; sleep 600 ) & echo HELPER=$!; exit 0")
+    for _ in range(34):
+        filler = uuid.uuid4()
+        create(client, filler, "exit 0")
+        client.wait_for(lambda c: c.first(EXITED, filler) is not None, timeout=5)
+    client.send(KILL, held_session)
+    time.sleep(0.8)
+    pruned_ok = held > 0 and not alive(held)
+    check("leftovers", late_ok and pruned_ok,
+          f"late={late} alive={alive(late) if late else None} after_prune_alive={alive(held) if held else None}")
+    for pid in (late, late_helper, held):
+        if pid > 0 and alive(pid):
+            os.kill(pid, 9)
+    client.close()
+
+
 def scenario_kill(client, shell, pid):
     client.send(KILL, shell)
     exited = client.wait_for(lambda c: c.first(EXITED, shell) is not None)
@@ -453,12 +512,16 @@ def main():
             scenario_kill_tree(path)
             scenario_input_cap(path)
             scenario_leak(path, daemon.pid)
+            scenario_hello(path)
+            scenario_leftovers(path)
 
             survivor = Client(path)
             lingering = uuid.uuid4()
             create(survivor, lingering, "sleep 60")
             survivor.wait_for(lambda c: c.first(CREATED, lingering) is not None)
             lingering_pid = json.loads(survivor.first(CREATED, lingering) or b"{}").get("pid", 0)
+            # SHUTDOWN also ends what an exited session's child left (r7).
+            _, orphan_pid = leftover_session(survivor, "( trap '' HUP; sleep 600 ) & echo HELPER=$!; exit 0")
 
             second = start_daemon(binary, path, log)
             second.wait(timeout=TIMEOUT)
@@ -471,8 +534,11 @@ def main():
             except subprocess.TimeoutExpired:
                 daemon.kill()
             time.sleep(0.2)
-            check("shutdown", daemon.returncode == 0 and not alive(lingering_pid) and not os.path.exists(path),
-                  f"exit={daemon.returncode}")
+            orphan_alive = orphan_pid > 0 and alive(orphan_pid)
+            if orphan_alive:
+                os.kill(orphan_pid, 9)
+            check("shutdown", daemon.returncode == 0 and not alive(lingering_pid) and not os.path.exists(path)
+                  and orphan_pid > 0 and not orphan_alive, f"exit={daemon.returncode} orphan_alive={orphan_alive}")
         finally:
             # A crashed scenario must not leave a daemon behind.
             if daemon.poll() is None:

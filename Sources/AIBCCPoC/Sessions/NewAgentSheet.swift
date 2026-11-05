@@ -36,7 +36,12 @@ struct NewAgentSheet: View {
                 Spacer()
                 Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("시작") {
-                    if workspace.launchAgent(client, skipPermissions: skipPermissions) != nil { dismiss() } else { full = true }
+                    // Waiting for "leave the open edit?" is not a full grid.
+                    if workspace.launchAgent(client, skipPermissions: skipPermissions) != nil || workspace.isConfirmingNavigation {
+                        dismiss()
+                    } else {
+                        full = true
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(workspace.selectedBarrack == nil)
