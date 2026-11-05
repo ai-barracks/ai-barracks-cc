@@ -2,6 +2,14 @@
 
 v2는 v1(CommandCenter 1.x, Tauri)과 **나란히 설치**된다. 번들 ID가 다르므로(`com.aibarracks.commandcenter2`) 설정·세션 저장 위치가 섞이지 않는다.
 
+## 릴리즈에서 설치
+
+[Releases](https://github.com/ai-barracks/ai-barracks-cc/releases)의 `v2.*`에서 DMG를 받아 앱을 `/Applications`로 끌어 놓은 뒤, 내려받은 앱의 격리 속성을 지운다(ad-hoc 서명, 공증 없음):
+
+```bash
+xattr -cr "/Applications/AI Barracks CommandCenter 2.app"
+```
+
 ## 빌드·설치 (로컬)
 
 ```bash
