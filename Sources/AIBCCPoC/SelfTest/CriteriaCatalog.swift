@@ -114,7 +114,7 @@ enum CriteriaCatalog {
         .init(id: "PS-03", title: "복원 실패 시 세션 보존", blocking: false, requires: ["PS-03a"]),
         .init(id: "PS-04", title: "replay 입력 경계·종료 출력 보관", blocking: false, requires: ["PS-04a", "PS-04b"]),
         .init(id: "PS-05", title: "입력 거부는 종료 아님·분리 중 종료 세션 보관", blocking: false, requires: ["PS-05a", "PS-05b"]),
-        .init(id: "R6-01", title: "Codex r6 회귀", blocking: false, requires: ["R6-01a"]),
+        .init(id: "R6-01", title: "Codex r6 회귀", blocking: false, requires: ["R6-01a", "R6-01b"]),
         .init(id: "NV-01", title: "편집 중 이동 확인", blocking: false, requires: ["NV-01a"]),
         .init(id: "R5-01", title: "Codex r5 전역 상태 회귀", blocking: false, requires: ["R5-01a"]),
         .init(id: "V1-01", title: "v1 설정 가져오기", blocking: false, requires: ["V1-01a"]),

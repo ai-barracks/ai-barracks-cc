@@ -178,10 +178,6 @@ struct SkillEditorSheet: View {
     private func saveEdit(_ slug: String, _ original: String) {
         let edited: String
         if isRaw {
-            // The aib skills doctor rules, so a raw save cannot break the catalog.
-            guard SkillDocument.split(rawText) != nil else { return error = "frontmatter(--- … ---)가 필요합니다." }
-            guard SkillDocument.name(rawText) == slug else { return error = "frontmatter의 name이 slug(\(slug))와 같아야 합니다." }
-            guard !SkillDocument.fields(rawText).description.isEmpty else { return error = "description이 필요합니다." }
             edited = rawText
         } else {
             guard cleanedFields.description.count >= SkillDocument.minimumDescription else {
@@ -192,6 +188,8 @@ struct SkillEditorSheet: View {
             case let .failure(failure): return error = "폼으로 저장할 수 없습니다(\(failure)). 원문으로 편집하세요."
             }
         }
+        // Either editor: a save cannot break the catalog.
+        if let problem = SkillDocument.saveProblem(edited, slug: slug) { return error = problem }
         switch SkillFiles.update(in: barrack, slug: slug, original: original, edited: edited) {
         case .success: finish(slug)
         case let .failure(failure): error = failure.message

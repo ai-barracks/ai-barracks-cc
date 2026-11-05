@@ -34,6 +34,16 @@ enum SkillDocument {
         let body: String
     }
 
+    /// Why an edited SKILL.md must not be saved under `slug` (the aib skills
+    /// doctor rules), whichever editor produced it — the form keeps a raw
+    /// edit's frontmatter, so it is checked too (Codex r6).
+    static func saveProblem(_ text: String, slug: String) -> String? {
+        guard split(text) != nil else { return "frontmatter(--- … ---)가 필요합니다." }
+        guard name(text) == slug else { return "frontmatter의 name이 slug(\(slug))와 같아야 합니다." }
+        guard !fields(text).description.isEmpty else { return "description이 필요합니다." }
+        return nil
+    }
+
     static func validate(slug: String) -> String? {
         if slug.isEmpty { return "slug가 비었습니다" }
         guard Regex.matches(#"^[a-z][a-z0-9-]*$"#, slug) else { return "slug는 영소문자로 시작하고 영소문자·숫자·-만 씁니다" }

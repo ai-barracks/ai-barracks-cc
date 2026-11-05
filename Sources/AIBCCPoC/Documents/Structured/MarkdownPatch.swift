@@ -122,7 +122,7 @@ enum MarkdownPatch {
             return .failure(.noBulletRun)
         }
         let indents = Set(lines[run].map { stripEol($0).prefix { $0 == " " || $0 == "\t" } })
-        guard indents.count == 1 else { return .failure(.nestedBullets) }
+        guard indents.count == 1, !hasHangingContent(lines, after: run) else { return .failure(.nestedBullets) }
         let eol = lines[run].map(lineEol).first { !$0.isEmpty } ?? detectEol(raw)
         let lastHadEol = !lineEol(lines[run.upperBound - 1]).isEmpty
         let replacement = bullets.enumerated().map { offset, bullet in
@@ -132,6 +132,21 @@ enum MarkdownPatch {
         var updated = all
         updated[index] = Section(level: all[index].level, heading: all[index].heading, raw: patched.joined())
         return .success(updated.map(\.raw).joined())
+    }
+
+    /// Lines after a bullet run that still belong to its last item, which a
+    /// rewrite of the run would hand to another item: a line straight after
+    /// it (a lazy continuation, unless a heading), or indented content after
+    /// blank lines — an ordered sub-list, a second paragraph (Codex r6).
+    static func hasHangingContent(_ lines: [String], after run: Range<Int>) -> Bool {
+        var index = run.upperBound
+        if index < lines.count {
+            let trimmed = stripEol(lines[index]).trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty, !trimmed.hasPrefix("#") { return true }
+        }
+        while index < lines.count, stripEol(lines[index]).trimmingCharacters(in: .whitespaces).isEmpty { index += 1 }
+        guard index < lines.count else { return false }
+        return stripEol(lines[index]).first.map { $0 == " " || $0 == "\t" } ?? false
     }
 
     /// Bullet texts of a section, skipping fenced code (v1 extractManagedBullets).

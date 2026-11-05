@@ -75,9 +75,11 @@ struct DocumentSuite {
     private func patchBulletRuns() -> TestResult {
         let start = ContinuousClock.now
         var failures: [String] = []
-        let doc = "# T\n\n## S\n<!-- c -->\nintro\n- a\n- b\ntail\n\n## O\n- x\n"
+        // "tail" sits after a blank line: straight after "- b" it would be b's
+        // own text (CommonMark lazy continuation), which R6-01b refuses.
+        let doc = "# T\n\n## S\n<!-- c -->\nintro\n- a\n- b\n\ntail\n\n## O\n- x\n"
         let patch = { (raw: String, bullets: [String]) in MarkdownPatch.patchBulletRun(raw, level: 2, heading: "S", bullets: bullets) }
-        if (try? patch(doc, ["a", "b", "c"]).get()) != "# T\n\n## S\n<!-- c -->\nintro\n- a\n- b\n- c\ntail\n\n## O\n- x\n" {
+        if (try? patch(doc, ["a", "b", "c"]).get()) != "# T\n\n## S\n<!-- c -->\nintro\n- a\n- b\n- c\n\ntail\n\n## O\n- x\n" {
             failures.append("replace run")
         }
         if (try? patch(doc, ["a", "b"]).get()) != doc { failures.append("no-op") }

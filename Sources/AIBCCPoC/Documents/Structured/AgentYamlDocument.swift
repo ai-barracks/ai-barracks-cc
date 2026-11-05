@@ -309,7 +309,7 @@ enum YamlScalar {
     /// indented lines (blank lines and comments in between allowed).
     static func isMultiline(_ lines: [String], at index: Int) -> Bool {
         let line = MarkdownPatch.stripEol(lines[index])
-        if Regex.matches(#"^[|>][-+0-9]*$"#, valuePart(line)) { return true }
+        if Regex.matches(#"^[|>][-+0-9]*$"#, valuePart(line)) || continuesOnNextLine(valuePart(line)) { return true }
         let indent = line.prefix { $0 == " " || $0 == "\t" }.count
         for next in lines[(index + 1)...] {
             let content = MarkdownPatch.stripEol(next)
@@ -318,6 +318,56 @@ enum YamlScalar {
             return content.prefix { $0 == " " || $0 == "\t" }.count > indent
         }
         return false
+    }
+
+    /// A quoted scalar or flow collection that does not close on its own
+    /// line goes on at any indentation, the same one included (Codex r6: a
+    /// `"first` / `second"` pair at one indent passed the indent check).
+    static func continuesOnNextLine(_ value: String) -> Bool {
+        let chars = Array(value.trimmingCharacters(in: .whitespaces))
+        guard let first = chars.first else { return false }
+        var index = 1
+        switch first {
+        case "\"":
+            while index < chars.count {
+                if chars[index] == "\\" { index += 2; continue }
+                if chars[index] == "\"" { return false }
+                index += 1
+            }
+            return true
+        case "'":
+            while index < chars.count {
+                if chars[index] == "'" {
+                    if index + 1 < chars.count, chars[index + 1] == "'" { index += 2; continue }
+                    return false
+                }
+                index += 1
+            }
+            return true
+        case "[", "{":
+            var depth = 0
+            var quote: Character?
+            index = 0
+            while index < chars.count {
+                let char = chars[index]
+                if let open = quote {
+                    if open == "\"", char == "\\" { index += 2; continue }
+                    if char == open { quote = nil }
+                } else if char == "\"" || char == "'" {
+                    quote = char
+                } else if char == "[" || char == "{" {
+                    depth += 1
+                } else if char == "]" || char == "}" {
+                    depth -= 1
+                } else if char == "#", index > 0, chars[index - 1] == " " {
+                    break
+                }
+                index += 1
+            }
+            return quote != nil || depth > 0
+        default:
+            return false
+        }
     }
 
     static func doubleQuoted(_ value: String) -> String {

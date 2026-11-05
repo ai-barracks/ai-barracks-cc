@@ -12,7 +12,57 @@ struct ReviewR6Suite {
     }
 
     func run() -> [TestResult] {
-        [backlogReentry()]
+        [backlogReentry(), documents()]
+    }
+
+    /// R6-01b: shapes the r5 form-editor guards still let through.
+    private func documents() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        // A quoted or flow value that goes on at the same indentation.
+        for raw in ["name: a\nmodels:\n  primary: \"first\n  second\"\n",
+                    "name: a\nmodels:\n  primary: 'first\n  second'\n",
+                    "name: a\nmodels:\n  primary: [one,\n  two]\n"] {
+            var next = AgentYamlDocument.parse(raw)
+            next.primaryModel = "new"
+            if AgentYamlDocument.patch(raw, to: next) != .failure(.init(field: .primaryModel, reason: .multilineValue)) {
+                failures.append("yaml \(raw.dropFirst(18).prefix(12))")
+            }
+        }
+        let closed = "name: a\nmodels:\n  primary: \"say \\\"hi\\\"\"\n  fallback: []\n"
+        var closedNext = AgentYamlDocument.parse(closed)
+        closedNext.primaryModel = "new"
+        if case .failure = AgentYamlDocument.patch(closed, to: closedNext) { failures.append("closed quote refused") }
+        // An ordered sub-list or a continued item body after the run.
+        for tail in ["  1. child\n", "continued body\n", "\n  second paragraph\n"] {
+            let raw = "## Must Always\n- a\n- b\n" + tail + "\n## Must Never\n\n## Learned\n"
+            var rules = RulesDocument.parse(raw)
+            rules.mustAlways = ["a"]
+            if case let .failure(failure) = RulesDocument.patch(raw, to: rules), failure.reason == .nestedBullets {} else {
+                failures.append("hanging \(tail.prefix(8))")
+            }
+        }
+        let plainRules = "## Must Always\n- a\n- b\n\n## Must Never\n\n## Learned\n"
+        var plainNext = RulesDocument.parse(plainRules)
+        plainNext.mustAlways = ["a"]
+        if case .failure = RulesDocument.patch(plainRules, to: plainNext) { failures.append("plain list refused") }
+        // The form and the tokenizer agree on backslashes before a pipe.
+        let cells: [(String, Bool)] = [("A \\| B", true), ("A \\\\| B", false), ("A \\\\\\| B", true), ("A | B", false), ("plain", true)]
+        for (text, expected) in cells where GrowthDocument.isCellText(text) != expected { failures.append("cell \(text)") }
+        let table = "| 세션 중 이벤트 | 기록 위치 | 예시 |\n|---|---|---|\n| E | L | X |\n"
+        var growth = GrowthDocument.parse(table)
+        growth.decisionTable[0].event = "A \\\\| B"
+        if case .failure(.init(field: .decisionTable, reason: .malformedRow)) = GrowthDocument.patch(table, to: growth) {} else {
+            failures.append("bad row written")
+        }
+        // A raw edit of `name` survives the switch to the form: still checked.
+        let renamed = "---\nname: bar\ndescription: Does the thing for the test suite\n---\nBody\n"
+        let viaForm = try? SkillEditBuffer.toRaw(base: renamed, fields: SkillDocument.fields(renamed), body: "Body\n").get()
+        if viaForm.map({ SkillDocument.saveProblem($0, slug: "foo") == nil }) != false { failures.append("skill name bypass") }
+        if SkillDocument.saveProblem("---\nname: foo\ndescription: ok\n---\n", slug: "foo") != nil { failures.append("valid skill refused") }
+        return .make("R6-01b", "YAML 따옴표·flow 여러 줄 값, 목록 뒤 이어지는 내용, 셀의 \\\\|, 폼 경유 skill name — 거부",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// R6-01a: libghostty patch 4 delivered backlog changes holding a lock,

@@ -144,6 +144,13 @@ enum GrowthDocument {
         return cells
     }
 
+    /// Text that stays one cell when written between pipes — judged by the
+    /// tokenizer that reads it back, so the form and the file agree on `\\|`
+    /// (Codex r6: the form's own regex let `A\\|B` through as one cell).
+    static func isCellText(_ text: String) -> Bool {
+        cells("| \(text) |").map { $0.trimmingCharacters(in: .whitespaces) } == [text.trimmingCharacters(in: .whitespaces)]
+    }
+
     private static func row(_ trimmed: String) -> DecisionRow? {
         let columns = cells(trimmed)
         guard columns.count == 3 else { return nil }
@@ -183,6 +190,10 @@ enum GrowthDocument {
         let newLines = rows.enumerated().map { offset, row in
             "| \(row.event) | \(row.location) | \(row.example) |" + (offset == rows.count - 1 && !lastHadEol ? "" : eol)
         }
+        // Every written row must read back as itself.
+        guard zip(rows, newLines).allSatisfy({ row($1.trimmingCharacters(in: .whitespacesAndNewlines)) == $0 }) else {
+            return .failure(.malformedRow)
+        }
         var head = Array(lines[..<dataStart])
         if !hadRows, !rows.isEmpty, MarkdownPatch.lineEol(lines[separator]).isEmpty { head[separator] += eol }
         return .success((head + newLines + Array(lines[dataEnd...])).joined())
@@ -197,7 +208,7 @@ enum GrowthDocument {
         guard runs.count <= 1 else { return .failure(.multipleBulletRuns) }
         if let run = runs.first {
             let indents = Set(lines[run].map { MarkdownPatch.stripEol($0).prefix { $0 == " " || $0 == "\t" } })
-            guard indents.count == 1 else { return .failure(.nestedBullets) }
+            guard indents.count == 1, !MarkdownPatch.hasHangingContent(lines, after: run) else { return .failure(.nestedBullets) }
             let eol = lines[run].map(MarkdownPatch.lineEol).first { !$0.isEmpty } ?? MarkdownPatch.detectEol(raw)
             let lastHadEol = !MarkdownPatch.lineEol(lines[run.upperBound - 1]).isEmpty
             let bullets = new.enumerated().map { offset, item in "- \(item)" + (offset == new.count - 1 && !lastHadEol ? "" : eol) }

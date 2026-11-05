@@ -73,7 +73,7 @@ struct GrowthEditorView: View {
             .filter { !($0.event.isEmpty && $0.location.isEmpty && $0.example.isEmpty) }
         // An unescaped "|" would split the cell when the row is read back
         // ("\|" is a literal pipe in a Markdown table and stays).
-        if rows.contains(where: { [$0.event, $0.location, $0.example].contains { Regex.matches(#"(^|[^\\])\|"#, $0) } }) {
+        if rows.contains(where: { [$0.event, $0.location, $0.example].contains { !GrowthDocument.isCellText($0) } }) {
             error = "표의 칸에 | 를 쓰려면 \\| 로 적으세요."
             return
         }
