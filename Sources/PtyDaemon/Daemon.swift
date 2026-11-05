@@ -80,7 +80,10 @@ final class Daemon: @unchecked Sendable {
         switch frame.type {
         case .create: create(frame, for: client)
         case .attach: attach(frame.session, for: client)
-        case .input: sessions[frame.session]?.write(frame.payload)
+        case .input:
+            if sessions[frame.session]?.write(frame.payload) == false {
+                fail(frame.session, "input refused: the program is not reading its input", to: client)
+            }
         case .resize:
             if let request = PtyProtocol.decode(ResizeRequest.self, from: frame.payload) {
                 sessions[frame.session]?.resize(request)
@@ -107,12 +110,15 @@ final class Daemon: @unchecked Sendable {
         sessions[session.id] = session
         client.attached.insert(session.id)
         client.connection.send(Frame(.created, session: session.id, payload: PtyProtocol.json(session.info)))
+        // The id, not the session: a closure holding the session it is
+        // stored in kept every ended session alive (Codex r4).
+        let id = session.id
         session.start(
             onOutput: { [weak self] data in
-                self?.broadcast(Frame(.output, session: session.id, payload: data))
+                self?.broadcast(Frame(.output, session: id, payload: data))
                 self?.updateFlowControl()
             },
-            onExit: { [weak self] info in self?.sessionExited(session.id, info) }
+            onExit: { [weak self] info in self?.sessionExited(id, info) }
         )
         DaemonLog.write("created \(session.id) pid=\(session.pid) argv0=\(request.argv.first ?? "")")
     }

@@ -11,6 +11,11 @@ final class PtyReader: @unchecked Sendable {
     private static let readChunk = 65_536
     /// Hand a hot stream to the queue in bounded pieces.
     private static let maxBatch = 1024 * 1024
+    /// Output read but not yet taken by the queue; past this the reader
+    /// waits (a stream that never pauses must not grow it without bound).
+    private static let maxPending = 8 * 1024 * 1024
+    /// What a stop still reads from a child that keeps writing.
+    private static let stopDrainLimit = 4 * 1024 * 1024
     /// While output streams (last hand-over within `streamWindow`), wait up
     /// to `coalesceWait` for more so a flood travels in large frames; output
     /// after a pause (an echo) is handed over at once.
@@ -91,7 +96,7 @@ final class PtyReader: @unchecked Sendable {
                 return stopping
             }
             if stop {
-                ended = drain(&buffer)
+                ended = drain(&buffer, limit: Self.stopDrainLimit)
                 break
             }
             let ready = poll(&fds, 2, -1)
@@ -105,18 +110,25 @@ final class PtyReader: @unchecked Sendable {
         finish(ended: ended)
     }
 
-    /// Reads until EAGAIN; true at EOF/EIO (the slave side is gone).
-    private func drain(_ buffer: inout [UInt8]) -> Bool {
+    /// Reads until EAGAIN; true at EOF/EIO (the slave side is gone). A
+    /// stream that never runs dry yields after each batch once paused or
+    /// stopping (Codex r4: pause was only seen at EAGAIN); `limit` bounds a
+    /// stop's final read.
+    private func drain(_ buffer: inout [UInt8], limit: Int? = nil) -> Bool {
         var chunk = Data()
         var ended = false
+        var total = 0
         while true {
             let count = read(fd, &buffer, buffer.count)
             if count > 0 {
                 chunk.append(contentsOf: buffer[0..<count])
+                total += count
                 if chunk.count >= Self.maxBatch {
                     deliver(chunk)
                     chunk = Data()
+                    if limit == nil, condition.withLock({ paused || stopping }) { break }
                 }
+                if let limit, total >= limit { break }
             } else if count < 0 && errno == EINTR {
                 continue
             } else if count < 0 && errno == EAGAIN && !chunk.isEmpty && isStreaming && moreArrives() {
@@ -147,6 +159,9 @@ final class PtyReader: @unchecked Sendable {
             return !flushScheduled
         }
         if schedule { queue.async { self.flush() } }
+        condition.withLock {
+            while pending.count > Self.maxPending && !stopping { condition.wait() }
+        }
     }
 
     private func flush() {
@@ -154,6 +169,7 @@ final class PtyReader: @unchecked Sendable {
             defer {
                 pending = Data()
                 flushScheduled = false
+                condition.broadcast()
             }
             return pending
         }

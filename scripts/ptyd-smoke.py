@@ -17,8 +17,18 @@ Checks, each printed as PASS/FAIL:
   echo        keystroke round trip (cat in raw mode) p95 < 5 ms: coalescing
               must not delay interactive output
   throughput  100k lines (11.2 MB) delivered in < 1 s
-  pressure    a client that stops reading throttles the child (daemon RSS
-              bounded) and, once it reads again, gets every line in order
+  pressure    a client that stops reading throttles the child even while it
+              writes without pause (daemon RSS bounded, child still running),
+              and once it reads again gets exactly every line of a fixed-size
+              sequence, then the end marker, then one EXITED (Codex r4)
+  exit-order  a descendant that keeps the PTY busy after the child exited
+              neither delays EXITED for ever nor lets an ATTACH see EXITED
+              before OUTPUT (r4: EXITED -> OUTPUT -> EXITED)
+  kill-tree   KILL also ends a HUP-ignoring background job of the child (r4)
+  input-cap   input to a child that does not read is refused past the cap
+              with a FAILURE frame instead of buffered without bound (r4)
+  leak        killed sessions are freed: daemon RSS stays flat over many
+              create/output/kill cycles (r4: callbacks retained the session)
   single      a second daemon on the same socket exits without stealing it
   shutdown    SHUTDOWN stops the daemon and its children
 Exit status 0 only if every check passed.
@@ -247,28 +257,142 @@ def rss_kb(pid):
     return int(out or 0)
 
 
+PRESSURE_LINES = 200_000
+PRESSURE_END = b"PRESSURE-END"
+
+
+def frame_kinds(client, session):
+    return [k for k, s, _ in client.frames if s == session]
+
+
+def exited_once_after_output(client, session):
+    """Exactly one EXITED, and no OUTPUT after it."""
+    kinds = frame_kinds(client, session)
+    if kinds.count(EXITED) != 1:
+        return False
+    return OUTPUT not in kinds[kinds.index(EXITED):]
+
+
 def scenario_pressure(path, daemon_pid):
     client = Client(path)
     session = uuid.uuid4()
-    create(client, session, "python3 -c \"import sys\nfor i in range(10**9): sys.stdout.write('%012d %s\\n' % (i, 'y' * 100))\"")
+    # cat writes the prepared sequence in kernel-sized blocks back to back:
+    # the PTY never runs dry, so a reader that only looks at pause when a read
+    # comes back empty never does. -onlcr: no CR insertion (macOS emits a
+    # stray CR when it splits a write at a newline).
+    sequence = os.path.join(os.path.dirname(path), "pressure.txt")
+    with open(sequence, "wb") as handle:
+        for block in range(0, PRESSURE_LINES, 1000):
+            handle.write("".join("%012d %s\n" % (i, "y" * 100) for i in range(block, block + 1000)).encode())
+        handle.write(PRESSURE_END + b"\n")
+    create(client, session, f"stty -onlcr; cat {sequence}")
     client.wait_for(lambda c: c.first(CREATED, session) is not None)
+    pid = json.loads(client.first(CREATED, session) or b"{}").get("pid", 0)
     time.sleep(0.5)
     # Stop reading: the kernel socket buffer fills, then the daemon must stop
     # reading the PTY instead of buffering without bound.
     baseline = rss_kb(daemon_pid)
     time.sleep(3)
     stalled = rss_kb(daemon_pid)
-    client.sock.settimeout(0.05)
-    deadline = time.time() + 4
-    while time.time() < deadline:
+    throttled = alive(pid)
+    exited = client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=30)
+    client.wait_for(lambda c: False, timeout=0.3)
+    lines = [line for line in client.output(session).split(b"\n") if line]
+    numbers = [int(line[:12]) for line in lines if len(line) == 113]
+    complete = numbers == list(range(PRESSURE_LINES)) and len(lines) == PRESSURE_LINES + 1 and lines[-1] == PRESSURE_END
+    check("pressure", stalled - baseline < 32 * 1024 and throttled and exited and complete
+          and exited_once_after_output(client, session),
+          f"rss {baseline}KB -> {stalled}KB while stalled, throttled={throttled}, lines={len(numbers)}/{PRESSURE_LINES}, "
+          f"end={lines[-1][:16] if lines else None}, exited={exited}")
+    client.close()
+
+
+def scenario_exit_order(path):
+    """The child exits while a HUP-ignoring background job keeps writing to
+    the PTY: the reader's final read must end, and a client attaching in
+    between must never see OUTPUT after EXITED."""
+    client = Client(path)
+    session = uuid.uuid4()
+    create(client, session, "( trap '' HUP; while :; do echo spam-spam-spam-spam; done ) & sleep 0.3; echo LEADER-DONE; exit 4")
+    client.wait_for(lambda c: c.first(CREATED, session) is not None)
+    pid = json.loads(client.first(CREATED, session) or b"{}").get("pid", 0)
+    deadline = time.time() + TIMEOUT
+    while alive(pid) and time.time() < deadline:
         client.pump()
+    late = Client(path)
+    late.send(ATTACH, session)
+    late.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
+    exited = client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
+    late.wait_for(lambda c: False, timeout=0.5)
+    client.wait_for(lambda c: False, timeout=0.5)
+    status = json.loads(client.first(EXITED, session) or b"{}").get("status")
+    ordered = exited_once_after_output(client, session) and exited_once_after_output(late, session)
+    check("exit-order", exited and status == 4 and ordered and b"LEADER-DONE" in client.output(session),
+          f"status={status} late={[k for k in frame_kinds(late, session) if k != OUTPUT][:4]} "
+          f"late_tail_kinds={frame_kinds(late, session)[-3:]}")
+    try:
+        os.killpg(pid, 9)
+    except (ProcessLookupError, PermissionError):
+        pass
     client.send(KILL, session)
-    client.wait_for(lambda c: c.first(EXITED, session) is not None)
-    lines = [line for line in client.output(session).split(b"\r\n") if len(line) == 113]
-    numbers = [int(line[:12]) for line in lines]
-    ordered = bool(numbers) and numbers == list(range(numbers[0], numbers[0] + len(numbers)))
-    check("pressure", stalled - baseline < 32 * 1024 and ordered and numbers[0] == 0 and len(numbers) > 10000,
-          f"rss {baseline}KB -> {stalled}KB while stalled, lines={len(numbers)} ordered={ordered}")
+    late.close()
+    client.close()
+
+
+def scenario_kill_tree(path):
+    client = Client(path)
+    session = uuid.uuid4()
+    create(client, session, "trap '' HUP; sleep 600 & echo BG=$!; wait")
+    client.wait_for(lambda c: b"BG=" in c.output(session))
+    out = client.output(session)
+    background = int(out.split(b"BG=")[1].split()[0]) if b"BG=" in out else 0
+    client.send(KILL, session)
+    exited = client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
+    time.sleep(0.5)
+    survived = background > 0 and alive(background)
+    check("kill-tree", exited and background > 0 and not survived, f"background={background} survived={survived}")
+    if survived:
+        os.kill(background, 9)
+    client.close()
+
+
+def scenario_input_cap(path):
+    client = Client(path)
+    session = uuid.uuid4()
+    create(client, session, "stty raw -echo; sleep 30")
+    client.wait_for(lambda c: c.first(CREATED, session) is not None)
+    time.sleep(0.3)
+    chunk = b"i" * (1024 * 1024)
+    for _ in range(12):
+        client.send(INPUT, session, chunk)
+        client.pump()
+    refused = client.wait_for(lambda c: c.first(FAILURE, session) is not None)
+    message = (client.first(FAILURE, session) or b"").decode(errors="replace")
+    check("input-cap", refused and "input refused" in message, repr(message[:60]))
+    client.send(KILL, session)
+    client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
+    client.close()
+
+
+def scenario_leak(path, daemon_pid):
+    client = Client(path)
+    cycles, size = 60, 900 * 1024
+
+    def cycle():
+        session = uuid.uuid4()
+        create(client, session, f"head -c {size} /dev/zero | tr '\\0' z; sleep 30")
+        client.wait_for(lambda c: len(c.output(session)) >= size, timeout=10)
+        client.send(KILL, session)
+        client.wait_for(lambda c: c.first(EXITED, session) is not None, timeout=10)
+        client.frames = []
+
+    for _ in range(5):
+        cycle()
+    baseline = rss_kb(daemon_pid)
+    for _ in range(cycles):
+        cycle()
+    grown = rss_kb(daemon_pid) - baseline
+    check("leak", grown < 16 * 1024, f"rss +{grown}KB over {cycles} sessions of {size // 1024}KB")
     client.close()
 
 
@@ -300,6 +424,10 @@ def main():
             scenario_echo(path)
             scenario_throughput(path)
             scenario_pressure(path, daemon.pid)
+            scenario_exit_order(path)
+            scenario_kill_tree(path)
+            scenario_input_cap(path)
+            scenario_leak(path, daemon.pid)
 
             survivor = Client(path)
             lingering = uuid.uuid4()

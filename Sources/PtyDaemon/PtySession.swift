@@ -5,6 +5,8 @@ import PtyProtocol
 /// TIOCSWINSZ is a function-like macro that Swift does not import.
 private let terminalSetWindowSize: UInt = 0x8008_7467
 private let killGrace: DispatchTimeInterval = .seconds(3)
+/// Input the child has not read yet; more is refused (Codex r4: unbounded).
+private let maxInputBacklog = 8 * 1024 * 1024
 
 /// One child process on a PTY owned by the daemon. Every member is touched on
 /// the daemon's serial queue only; output is read by a `PtyReader` thread.
@@ -22,6 +24,11 @@ final class PtySession: @unchecked Sendable {
     private var exitSource: DispatchSourceProcess?
     private var masterOpen = true
     private var masterClosed = false
+    /// waitpid returned: the pid may be reused from here on.
+    private var reaped = false
+    /// Write sources not yet fully cancelled; the fd closes after them.
+    private var liveWriteSources = 0
+    private var closeWanted = false
     private(set) var isOutputPaused = false
     /// Set by KILL: the record is dropped at exit instead of kept for attach.
     var discardOnExit = false
@@ -73,11 +80,15 @@ final class PtySession: @unchecked Sendable {
     }
 
     /// Queues input; a large paste is written as the PTY drains instead of
-    /// being dropped on EAGAIN.
-    func write(_ data: Data) {
-        guard isAlive, masterOpen else { return }
+    /// being dropped on EAGAIN. False when the child is not reading and the
+    /// backlog is full: the input is refused, not buffered without bound.
+    @discardableResult
+    func write(_ data: Data) -> Bool {
+        guard isAlive, masterOpen else { return true }
+        guard inputBacklog.count + data.count <= maxInputBacklog else { return false }
         inputBacklog.append(data)
         flushInput()
+        return true
     }
 
     func resize(_ request: ResizeRequest) {
@@ -96,13 +107,32 @@ final class PtySession: @unchecked Sendable {
     }
 
     /// Hangs up like a closing terminal (the kernel sends SIGHUP to the
-    /// session), then SIGKILLs a child that ignores it.
+    /// session), then SIGKILLs whatever of the session is left — the child
+    /// and its descendants, background jobs included (Codex r4: a HUP-ignoring
+    /// descendant outlived its closed pane).
     func terminate() {
-        guard isAlive else { return }
+        guard !reaped, isAlive else { return }
         closeMaster {}
+        let session = pid
         queue.asyncAfter(deadline: .now() + killGrace) { [weak self] in
-            guard let self, self.isAlive else { return }
+            Self.killSessionMembers(session)
+            guard let self, !self.reaped else { return }
             kill(self.pid, SIGKILL)
+        }
+    }
+
+    /// SIGKILL to every process in session `sid` except its leader (the
+    /// child: forkpty runs setsid), which is killed only while unreaped. A
+    /// session with members keeps its id from being reused; once the leader
+    /// is reaped and the session empty, a new process that got the number
+    /// is itself a leader and stays out.
+    static func killSessionMembers(_ sid: pid_t) {
+        let count = proc_listallpids(nil, 0)
+        guard count > 0 else { return }
+        var pids = [pid_t](repeating: 0, count: Int(count) * 2)
+        let filled = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
+        for candidate in pids.prefix(Int(max(filled, 0))) where candidate > 1 && candidate != sid && getsid(candidate) == sid {
+            kill(candidate, SIGKILL)
         }
     }
 
@@ -138,6 +168,8 @@ final class PtySession: @unchecked Sendable {
         guard writeSource == nil else { return }
         let source = DispatchSource.makeWriteSource(fileDescriptor: masterFD, queue: queue)
         source.setEventHandler { [weak self] in self?.flushInput() }
+        liveWriteSources += 1
+        source.setCancelHandler { [weak self] in self?.writeSourceEnded() }
         source.resume()
         writeSource = source
     }
@@ -150,17 +182,27 @@ final class PtySession: @unchecked Sendable {
         }
     }
 
-    /// EXITED goes out only after the reader handed over its last output.
+    /// EXITED goes out only after the reader handed over its last output,
+    /// and only then does the session count as exited: an ATTACH in
+    /// between gets its replay and later the last OUTPUT, then EXITED
+    /// (Codex r4: EXITED → OUTPUT → EXITED).
     private func reapIfExited() {
-        guard isAlive else { return }
+        guard !reaped else { return }
         var status: Int32 = 0
         guard waitpid(pid, &status, WNOHANG) == pid else { return }
+        reaped = true
         let runtime = UInt64(max(Date().timeIntervalSince(startedAt), 0) * 1000)
         let info = ExitInfo(status: Self.exitCode(fromWaitStatus: status), runtimeMilliseconds: runtime)
-        exitInfo = info
         exitSource?.cancel()
         exitSource = nil
-        closeMaster { [weak self] in self?.onExit(info) }
+        closeMaster { [weak self] in
+            guard let self else { return }
+            self.exitInfo = info
+            self.onExit(info)
+            // Nothing more will come; drop the daemon's closures.
+            self.onOutput = { _ in }
+            self.onExit = { _ in }
+        }
     }
 
     /// Stops writing now; the fd is closed once the reader thread has left
@@ -180,10 +222,18 @@ final class PtySession: @unchecked Sendable {
         }
     }
 
+    /// Closes the master once no write source can still touch the number
+    /// (Apple: release a source's fd only after its cancellation, Codex r4).
     private func closeFD() {
-        guard !masterClosed else { return }
+        closeWanted = true
+        guard !masterClosed, liveWriteSources == 0 else { return }
         masterClosed = true
         close(masterFD)
+    }
+
+    private func writeSourceEnded() {
+        liveWriteSources -= 1
+        if closeWanted { closeFD() }
     }
 
     /// WIFEXITED/WEXITSTATUS/WTERMSIG are macros Swift does not import.

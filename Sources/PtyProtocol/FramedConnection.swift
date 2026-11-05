@@ -38,7 +38,14 @@ public final class FramedConnection: @unchecked Sendable {
     /// queued read or write may touch it.
     private var fdClosed = false
     private var readBuffer = [UInt8](repeating: 0, count: FramedConnection.readChunk)
-    private var hadBacklog = false
+    /// Sources not yet fully cancelled: the fd is released after them
+    /// (Apple's rule; Codex r4: it was closed right after cancel()).
+    private var liveSources = 0
+    private var closeRequested = false
+    private var released = false
+    // Guarded by `lock`: the backlog went above the low-water mark since the
+    // last drain notice (with or without an EAGAIN on the way — Codex r4).
+    private var aboveLowWater = false
 
     private let onFrames: ([Frame]) -> Void
     private let onClose: () -> Void
@@ -60,6 +67,8 @@ public final class FramedConnection: @unchecked Sendable {
             guard !lock.withLock({ isClosed }) else { return }
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
             source.setEventHandler { [weak self] in self?.readAvailable() }
+            liveSources += 1
+            source.setCancelHandler { [self] in sourceEnded() }
             source.resume()
             readSource = source
             applyReadPause()
@@ -74,6 +83,7 @@ public final class FramedConnection: @unchecked Sendable {
             guard !isClosed else { return (false, false) }
             queued.append(bytes)
             pendingCount += bytes.count
+            if pendingCount > Self.writeLowWater { aboveLowWater = true }
             defer { flushScheduled = true }
             return (!flushScheduled, pendingCount > Self.maxPendingWriteBytes)
         }
@@ -113,9 +123,23 @@ public final class FramedConnection: @unchecked Sendable {
             writeSource?.cancel()
             readSource = nil
             writeSource = nil
-            Darwin.close(fd)
-            onClose()
+            closeRequested = true
+            releaseIfQuiescent()
         }
+    }
+
+    private func sourceEnded() {
+        liveSources -= 1
+        releaseIfQuiescent()
+    }
+
+    /// The fd closes (and `onClose` fires) once, after every source's
+    /// cancellation has completed.
+    private func releaseIfQuiescent() {
+        guard closeRequested, liveSources == 0, !released else { return }
+        released = true
+        Darwin.close(fd)
+        onClose()
     }
 
     // MARK: - Queue
@@ -153,15 +177,16 @@ public final class FramedConnection: @unchecked Sendable {
             writeOffset = 0
         }
         let result = writeBuffered()
-        let (remaining, closeNow, more): (Int, Bool, Bool) = lock.withLock {
+        let (closeNow, more, drained): (Bool, Bool, Bool) = lock.withLock {
             pendingCount -= result.written
             let idle = pendingCount == 0
             if idle { flushScheduled = false }
-            return (pendingCount, idle && closesWhenDrained, !idle && writeOffset >= writing.count)
+            let drained = aboveLowWater && pendingCount <= Self.writeLowWater
+            if drained { aboveLowWater = false }
+            return (idle && closesWhenDrained, !idle && writeOffset >= writing.count, drained)
         }
         if result.failed || closeNow { return close() }
         if result.blocked {
-            hadBacklog = true
             waitForWritable()
         } else {
             writeSource?.cancel()
@@ -169,10 +194,7 @@ public final class FramedConnection: @unchecked Sendable {
             // Frames queued while this batch was written.
             if more { queue.async { self.flushWrites() } }
         }
-        if hadBacklog && remaining <= Self.writeLowWater {
-            hadBacklog = false
-            onWriteDrained?()
-        }
+        if drained { onWriteDrained?() }
     }
 
     private func writeBuffered() -> (written: Int, blocked: Bool, failed: Bool) {
@@ -201,6 +223,8 @@ public final class FramedConnection: @unchecked Sendable {
         guard writeSource == nil else { return }
         let source = DispatchSource.makeWriteSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.flushWrites() }
+        liveSources += 1
+        source.setCancelHandler { [self] in sourceEnded() }
         source.resume()
         writeSource = source
     }
