@@ -262,8 +262,10 @@ struct ActivationSuite {
                        "--disable", "multi_agent", "--disable", "browser_use", "--disable", "computer_use", "--disable",
                        "image_generation", "--disable", "skill_mcp_dependency_install", "--disable", "memories",
                        "Reply exactly OK. Do not use any tools."]
-        if lines.first?.contains("aibcc-activation-") != true || Array(lines.dropFirst().prefix(v1Claude.count)) != v1Claude {
-            failures.append("claude argv/cwd")
+        // The whole argv, nothing appended (r6: a prefix compare let extra
+        // arguments through); the log ends with a newline, hence the "".
+        if lines.first?.contains("aibcc-activation-") != true || Array(lines.dropFirst()) != v1Claude + [""] {
+            failures.append("claude argv/cwd \(Array(lines.dropFirst()).count)")
         }
         if ActivationRunner.requestArguments(.codex) != v1Codex { failures.append("codex argv") }
         // r5 blocker: once cancelled, no child is spawned at all (the old code

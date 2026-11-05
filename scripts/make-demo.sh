@@ -8,9 +8,24 @@
 set -eo pipefail  # no -u: bash 3.2 treats an empty array as unbound
 
 DEMO="${1:-/tmp/aibcc-demo}"
+MARKER=".aibcc-demo"
+# Deletes only a plain folder directly under /tmp that this script made
+# (marker file): a prefix check let /tmp/../../Users/… through to rm -rf
+# (Codex r6).
 case "$DEMO" in /tmp/*|/private/tmp/*) ;; *) echo "demo dir must be under /tmp" >&2; exit 1 ;; esac
-rm -rf "$DEMO"
-mkdir -p "$DEMO"
+NAME="${DEMO#/private}"
+NAME="${NAME#/tmp/}"
+case "$NAME" in ""|*/*|.*) echo "demo dir must be a plain folder name directly under /tmp" >&2; exit 1 ;; esac
+DEMO="/private/tmp/$NAME"
+if [ -e "$DEMO" ] || [ -L "$DEMO" ]; then
+  if [ -L "$DEMO" ] || [ ! -d "$DEMO" ] || [ ! -f "$DEMO/$MARKER" ]; then
+    echo "$DEMO exists and was not made by this script; remove it yourself" >&2
+    exit 1
+  fi
+  rm -rf "$DEMO"
+fi
+mkdir "$DEMO"
+touch "$DEMO/$MARKER"
 export AIB_REGISTRY="$DEMO/barracks.json" AIB_REGISTER_FORCE=1
 export AIB_CLAUDE_SETTINGS="$DEMO/.claude-settings.json" AIB_GEMINI_SETTINGS="$DEMO/.gemini-settings.json"
 echo '[]' > "$AIB_REGISTRY"

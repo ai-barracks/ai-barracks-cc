@@ -5,6 +5,13 @@ import Foundation
 /// probe against fake CLIs (never the real one, never a model turn).
 @MainActor
 struct ProviderSuite {
+    private final class SentMethods: @unchecked Sendable {
+        private let lock = NSLock()
+        private var methods: [String] = []
+        func add(_ method: String) { lock.withLock { methods.append(method) } }
+        var all: [String] { lock.withLock { methods } }
+    }
+
     func run() async -> [TestResult] {
         [profiles(), await probe()]
     }
@@ -76,11 +83,17 @@ struct ProviderSuite {
         echo '{"id":3,"result":{"data":[{"model":"other"},{"model":"future"}],"nextCursor":null}}'
         while read anything; do record "$anything"; done
         """)
-        let listed = await CodexModelProbe.list(binary: good, timeout: 5)
+        // Recorded at the write (r6: the fake's own log raced the kill, so a
+        // request after the last page could go unseen); the fake's log still
+        // shows what it received.
+        let spy = SentMethods()
+        let listed = await CodexModelProbe.list(binary: good, timeout: 5, onSend: { spy.add($0) })
         if (try? listed.get())?.map(\.model) != ["future", "other"] { failures.append("handshake/pagination \(listed)") }
+        let expected = ["initialize", "initialized", "model/list", "model/list"]
+        if spy.all != expected { failures.append("sent \(spy.all)") }
         usleep(200_000)
-        let sent = ((try? String(contentsOf: requests, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
-        if sent != ["initialize", "initialized", "model/list", "model/list"] { failures.append("requests \(sent)") }
+        let received = ((try? String(contentsOf: requests, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        if received != expected { failures.append("received \(received)") }
         let workerPID = Int32(((try? String(contentsOf: worker, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
         if workerPID <= 0 || kill(workerPID, 0) == 0 { failures.append("worker survived") }
         let huge = String(repeating: "x", count: 70 * 1024)

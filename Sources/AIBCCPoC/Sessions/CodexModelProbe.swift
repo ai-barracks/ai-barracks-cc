@@ -45,8 +45,12 @@ enum CodexModelProbe {
         return path.hasPrefix("/") && FileManager.default.isExecutableFile(atPath: path) ? URL(fileURLWithPath: path) : nil
     }
 
-    static func list(binary: URL, timeout: TimeInterval = timeout) async -> Result<[ProviderModel], Failure> {
-        await Task.detached { run(binary: binary, timeout: timeout) }.value
+    /// `onSend` sees the method of every message written, at the write —
+    /// a self-test's record of what reached the CLI cannot race the kill
+    /// that ends it (Codex r6).
+    static func list(binary: URL, timeout: TimeInterval = timeout,
+                     onSend: (@Sendable (String) -> Void)? = nil) async -> Result<[ProviderModel], Failure> {
+        await Task.detached { run(binary: binary, timeout: timeout, onSend: onSend) }.value
     }
 
     /// v1 sanitized_command: no alternate billing/provider credentials or
@@ -78,7 +82,7 @@ enum CodexModelProbe {
         return .success(models)
     }
 
-    private static func run(binary: URL, timeout: TimeInterval) -> Result<[ProviderModel], Failure> {
+    private static func run(binary: URL, timeout: TimeInterval, onSend: (@Sendable (String) -> Void)?) -> Result<[ProviderModel], Failure> {
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-codex-\(UUID().uuidString)")
         guard (try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)) != nil else { return .failure(.couldNotStart) }
         defer { try? FileManager.default.removeItem(at: scratch) }
@@ -99,7 +103,7 @@ enum CodexModelProbe {
             BoundedProcess.finish(pid)
         }
         let session = Session(reader: LineReader(output.fileHandleForReading), writer: input.fileHandleForWriting,
-                              deadline: Date().addingTimeInterval(timeout))
+                              deadline: Date().addingTimeInterval(timeout), onSend: onSend)
         return session.exchange()
     }
 
@@ -108,6 +112,7 @@ enum CodexModelProbe {
         let reader: LineReader
         let writer: FileHandle
         let deadline: Date
+        let onSend: (@Sendable (String) -> Void)?
 
         func exchange() -> Result<[ProviderModel], Failure> {
             let initialize: [String: Any] = ["clientInfo": ["name": "aibcc", "version": "2"], "capabilities": ["experimentalApi": false]]
@@ -142,6 +147,7 @@ enum CodexModelProbe {
 
         private func send(_ message: [String: Any]) -> Bool {
             guard let data = try? JSONSerialization.data(withJSONObject: message, options: .withoutEscapingSlashes) else { return false }
+            onSend?(message["method"] as? String ?? "?")
             return (try? writer.write(contentsOf: data + Data("\n".utf8))) != nil
         }
 
