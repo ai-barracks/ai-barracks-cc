@@ -39,6 +39,8 @@ enum AppConstants {
             "super+alt+i", "super+alt+1", "super+alt+2", "super+alt+4", "super+alt+shift+l",
             "super+n", "super+shift+a", "super+shift+c", "super+k",
         ]
+        /// The Agents bar's skip-permissions checkbox (kept across launches).
+        static let skipPermissionsKey = "agentSkipPermissions"
     }
 
     /// Opt-in daemon PTY backend (persistence spike, known issue #4).

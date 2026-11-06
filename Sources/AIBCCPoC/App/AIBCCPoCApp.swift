@@ -61,7 +61,7 @@ struct AIBCCPoCApp: App {
                         .keyboardShortcut(KeyEquivalent(Character(preset.label)), modifiers: [.command, .option])
                 }
                 Divider()
-                Button("산출물 패널 토글") { workspace.isArtifactPanelVisible.toggle() }
+                Button("Outputs 패널 토글") { workspace.isArtifactPanelVisible.toggle() }
                     .keyboardShortcut("i", modifiers: [.command, .option])
                 Divider()
                 Button("입력 호출 로그 저장 (IME fixture)") {

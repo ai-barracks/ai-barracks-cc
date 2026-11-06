@@ -51,7 +51,13 @@ struct MainView: View {
     @ViewBuilder
     private var center: some View {
         if workspace.destination == .sessions || workspace.selectedBarrack == nil {
-            TerminalGridView(workspace: workspace)
+            VStack(spacing: 0) {
+                if workspace.selectedBarrack != nil {
+                    AgentBar(workspace: workspace)
+                    Divider()
+                }
+                TerminalGridView(workspace: workspace)
+            }
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .history {
             HistoryDestinationView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
@@ -92,7 +98,7 @@ struct MainView: View {
             } label: {
                 Image(systemName: "doc.richtext")
             }
-            .help("산출물 패널")
+            .help("Outputs 패널")
         }
     }
 

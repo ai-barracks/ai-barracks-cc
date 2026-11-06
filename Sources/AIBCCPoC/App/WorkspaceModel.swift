@@ -10,7 +10,7 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .sessions: "세션"
+        case .sessions: "Agents"
         case .history: "기록"
         case .rules: "규칙"
         case .wiki: "Wiki"
@@ -40,9 +40,9 @@ enum InspectorTab: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .artifacts: "산출물"
-        case .context: "문맥"
-        case .maintenance: "정비"
+        case .artifacts: "Outputs"
+        case .context: "Barrack Info"
+        case .maintenance: "Barrack Status"
         }
     }
 }
@@ -647,6 +647,20 @@ extension WorkspaceModel {
         let panes = remaining.isEmpty ? [makePane(title: "shell 1")] : remaining
         let fitting = PaneLayout.allCases.first { $0.paneCount >= min(panes.count, current.layout.paneCount) } ?? .single
         store(BarrackGrid(panes: panes, layout: fitting, splitX: current.splitX, splitY: current.splitY))
+    }
+
+    /// An Agents bar chip: focus a pane that is on screen where it is; bring
+    /// a hidden one to the front.
+    func selectPane(id paneID: UUID) {
+        guard let index = panes.firstIndex(where: { $0.id == paneID }) else { return }
+        guard index < layout.paneCount else { return bringToFront(id: paneID) }
+        focusWhenAttached(panes[index])
+    }
+
+    /// What the agent in `pane` is doing (aib liveness), if one runs there.
+    func liveness(of pane: TerminalPane) -> Liveness? {
+        guard let barrack = selectedBarrackID else { return nil }
+        return liveness.sessions(of: barrack).first { self.pane(running: $0, in: barrack)?.id == pane.id }?.state
     }
 
     /// Moves a (possibly hidden) pane into the first slot and focuses it.

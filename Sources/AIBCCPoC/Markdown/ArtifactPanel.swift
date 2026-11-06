@@ -24,7 +24,7 @@ struct ArtifactPanel: View {
 
     private var fileList: some View {
         List(selection: selectionBinding) {
-            Section("최근 산출물") {
+            Section("최근 수정 문서") {
                 ForEach(store.files) { file in
                     ArtifactRow(file: file).tag(file.url)
                 }
@@ -33,7 +33,7 @@ struct ArtifactPanel: View {
         .listStyle(.inset)
         .overlay {
             if store.files.isEmpty {
-                ContentUnavailableView("산출물 없음", systemImage: "doc.text.magnifyingglass")
+                ContentUnavailableView("표시할 문서 없음", systemImage: "doc.text.magnifyingglass")
             }
         }
     }
