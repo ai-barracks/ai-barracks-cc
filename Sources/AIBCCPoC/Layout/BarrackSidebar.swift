@@ -81,6 +81,9 @@ struct BarrackSidebar: View {
 
     private func count(for destination: Destination, _ barrack: Barrack) -> Int? {
         switch destination {
+        case .barrack:
+            let items = workspace.maintenance.items.count
+            return items > 0 ? items : nil
         case .sessions:
             let running = workspace.liveness.sessions(of: barrack.id).filter { $0.state.isRunning }.count
             return running > 0 ? running : nil

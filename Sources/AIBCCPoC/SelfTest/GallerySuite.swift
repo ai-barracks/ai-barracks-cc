@@ -20,14 +20,6 @@ struct GallerySuite {
             }
         }
         workspace.destination = .sessions
-        for tab in InspectorTab.allCases {
-            workspace.inspectorTab = tab
-            await harness.pause(.seconds(2))
-            if let image = await harness.requestCapture(label: "gallery-inspector-\(tab.rawValue)") {
-                captures.append(image.lastPathComponent)
-            }
-        }
-        workspace.inspectorTab = .artifacts
         if let window = harness.window {
             workspace.isPalettePresented = true
             await harness.pause(.seconds(1))

@@ -253,7 +253,7 @@ struct DocumentView: View {
                 + topics.filter { $0.pathExtension == "md" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         case .council:
             return BarrackDocuments.councilMinutes(in: root)
-        case .sessions, .history, .git, .skills:
+        case .barrack, .sessions, .history, .git, .skills:
             return []
         }
     }

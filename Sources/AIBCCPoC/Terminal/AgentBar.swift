@@ -23,7 +23,7 @@ struct AgentBar: View {
                 closing = nil
             }
         } message: {
-            Text("실행 중인 프로그램이 종료됩니다. 출력은 기록 → 터미널 출력에 보관됩니다.")
+            Text("실행 중인 프로그램이 종료됩니다. 출력은 History → 터미널 출력에 보관됩니다.")
         }
     }
 

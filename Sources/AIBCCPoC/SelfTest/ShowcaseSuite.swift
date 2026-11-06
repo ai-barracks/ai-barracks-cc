@@ -90,18 +90,14 @@ struct ShowcaseSuite {
 
     private func workspaceScene(_ barrack: Barrack, _ shoot: (String) async -> Void) async {
         workspace.destination = .sessions
-        workspace.inspectorTab = .artifacts
         await harness.pause(.seconds(1))
         if let design = harness.artifacts.files.first(where: { $0.name == "checkout-redesign.md" }) { harness.artifacts.select(design) }
         await harness.pause(.seconds(2))
         await shoot("01-workspace")
-        workspace.inspectorTab = .context
-        await harness.pause(.seconds(2))
-        await shoot("02-context")
-        workspace.inspectorTab = .maintenance
+        workspace.destination = .barrack
         await harness.pause(.seconds(3))
-        await shoot("03-maintenance")
-        workspace.inspectorTab = .artifacts
+        await shoot("02-barrack")
+        workspace.destination = .sessions
         workspace.isPalettePresented = true
         await harness.pause(.seconds(1))
         if let window = harness.window { _ = EventSynthesizer.type("checkout", in: window) }
@@ -166,12 +162,13 @@ struct ShowcaseSuite {
 
     private func lightAndSettings(_ shoot: (String) async -> Void) async -> String {
         NSApp.appearance = NSAppearance(named: .darkAqua)
-        workspace.inspectorTab = .artifacts
+        workspace.destination = .sessions
         await harness.pause(.seconds(2))
         await shoot("16-workspace-dark")
-        workspace.inspectorTab = .context
+        workspace.destination = .barrack
         await harness.pause(.seconds(2))
-        await shoot("17-context-dark")
+        await shoot("17-barrack-dark")
+        workspace.destination = .sessions
         NSApp.appearance = nil
         await harness.pause(.seconds(1))
         NSApp.activate()

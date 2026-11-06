@@ -1,34 +1,28 @@
 import SwiftUI
 
-/// Right inspector (spec §4): 산출물 (P1, default) and 문맥.
+/// Right inspector: Outputs, the barrack's recent documents next to the
+/// terminals (spec §4, P1). The barrack's info and status moved to the
+/// Barrack destination (user feedback 2026-11-06).
 struct InspectorView: View {
     @Bindable var workspace: WorkspaceModel
     let artifacts: ArtifactStore
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $workspace.inspectorTab) {
-                ForEach(InspectorTab.allCases) { tab in
-                    let count = tab == .maintenance ? workspace.maintenance.items.count : 0
-                    Text(count > 0 ? "\(tab.label) \(count)" : tab.label).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(Tokens.Spacing.s)
+            Text("Outputs")
+                .font(Tokens.Font.title)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Tokens.Spacing.m)
+                .padding(.vertical, Tokens.Spacing.s)
             Divider()
-            switch workspace.inspectorTab {
-            case .artifacts: ArtifactPanel(store: artifacts)
-            case .context: ContextPanel(workspace: workspace, changes: artifacts.fileEvents)
-            case .maintenance: MaintenancePanel(workspace: workspace, store: workspace.maintenance)
-            }
+            ArtifactPanel(store: artifacts)
         }
     }
 }
 
 /// Where you are and what runs there: barrack facts (v1 Overview) and
 /// live sessions.
-private struct ContextPanel: View {
+struct BarrackInfoPanel: View {
     let workspace: WorkspaceModel
     var changes = 0
     @State private var overview = BarrackOverview()

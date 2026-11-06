@@ -4,15 +4,17 @@ import Observation
 
 /// What the center shows for the selected barrack (spec §4 destinations).
 enum Destination: String, CaseIterable, Identifiable, Sendable {
-    case sessions, history, rules, wiki, skills, council, git
+    /// `barrack` first: the barrack itself (info and status), then its work.
+    case barrack, sessions, history, rules, wiki, skills, council, git
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .barrack: "Barrack"
         case .sessions: "Agents"
-        case .history: "기록"
-        case .rules: "규칙"
+        case .history: "History"
+        case .rules: "Rules"
         case .wiki: "Wiki"
         case .skills: "Skills"
         case .council: "Council"
@@ -22,6 +24,7 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
 
     var symbol: String {
         switch self {
+        case .barrack: "building.2"
         case .sessions: "terminal"
         case .history: "clock.arrow.circlepath"
         case .rules: "list.bullet.rectangle"
@@ -29,20 +32,6 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .skills: "puzzlepiece.extension"
         case .council: "person.3"
         case .git: "arrow.triangle.branch"
-        }
-    }
-}
-
-/// Right inspector tabs (spec §4): artifacts first (P1).
-enum InspectorTab: String, CaseIterable, Identifiable, Sendable {
-    case artifacts, context, maintenance
-
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .artifacts: "Outputs"
-        case .context: "Barrack Info"
-        case .maintenance: "Barrack Status"
         }
     }
 }
@@ -90,7 +79,6 @@ final class WorkspaceModel {
     @ObservationIgnored private var pendingPersist: Task<Void, Never>?
     var isArtifactPanelVisible = true
     var destination: Destination = .sessions
-    var inspectorTab: InspectorTab = .artifacts
     var isNewAgentSheetPresented = false
     var isCouncilSheetPresented = false
     var isAddBarrackPresented = false
@@ -473,8 +461,8 @@ extension WorkspaceModel {
         if let pane = pane(running: session, in: barrack.id) {
             focusWhenAttached(pane)
         } else {
-            isArtifactPanelVisible = true
-            inspectorTab = .context
+            // No pane runs it here: the barrack's session list shows it.
+            destination = .barrack
         }
         if session.state == .done {
             LivenessAck.write(barrackPath: barrack.path, sessionID: session.id, runID: session.runID)

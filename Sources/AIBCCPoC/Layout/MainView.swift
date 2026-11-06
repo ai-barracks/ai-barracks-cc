@@ -58,6 +58,8 @@ struct MainView: View {
                 }
                 TerminalGridView(workspace: workspace)
             }
+        } else if workspace.destination == .barrack {
+            BarrackView(workspace: workspace, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .history {
             HistoryDestinationView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
