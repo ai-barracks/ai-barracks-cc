@@ -13,7 +13,7 @@ struct ReviewR7Suite {
     }
 
     func run() async -> [TestResult] {
-        [await daemonUpgrade(), documents(), backlogOrder(), lockPath()]
+        [await daemonUpgrade(), documents(), backlogOrder(), lockPath(), layoutMinimums()]
     }
 
     private func result(_ id: String, _ title: String, _ failures: [String], _ start: ContinuousClock.Instant) -> TestResult {
@@ -140,6 +140,27 @@ struct ReviewR7Suite {
         for _ in 0 ..< 100 where seen.all.count < 2 { usleep(20_000) }
         if seen.all != ["true", "false"] { failures.append("order \(seen.all)") }
         return result("R7-01c", "두 스레드의 backlog 변화: 두 번째는 기다리지도 끼어들지도 않고 순서대로 전달", failures, start)
+    }
+
+    /// LY-01 (2026-11-06): every center destination, the Outputs panel and
+    /// the sidebar fit what a minimum-size window leaves them. Measured in a
+    /// probe child (SelfTestProbe) so a regression cannot wedge this run.
+    private func layoutMinimums() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        if let app = Bundle.main.executableURL {
+            let options = BoundedProcess.Options(timeout: AppConstants.SelfTest.probeTimeout, outputLimit: 64 * 1024, tag: "probe")
+            switch BoundedProcess.run(app, [SelfTestProbe.argumentPrefix + SelfTestProbe.layoutMinimums],
+                                      cwd: FileManager.default.temporaryDirectory,
+                                      environment: ProcessInfo.processInfo.environment, options: options, cancelled: { false }) {
+            case let .success(output) where output.status == 0: break
+            case let .success(output): failures.append(String(decoding: output.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+            case let .failure(failure): failures.append("probe \(failure)")
+            }
+        } else {
+            failures.append("no executable")
+        }
+        return result("LY-01a", "화면별 최소 폭·높이가 최소 창에서 각 열에 남는 공간 안", failures, start)
     }
 
     /// R7-01d: the development and release apps lock the same file for

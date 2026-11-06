@@ -72,7 +72,9 @@ struct DocumentView: View {
                 }
             }
             .listStyle(.sidebar)
-            .frame(width: AppConstants.Documents.listWidth)
+            .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.listWidth,
+                   maxWidth: AppConstants.Documents.listWidth)
+            .layoutPriority(1)
             Divider()
             reader
         }
@@ -127,7 +129,11 @@ struct DocumentView: View {
                     OwnershipSeal(ownership: ownership)
                 }
                 Spacer()
-                editControls
+                // Buttons are AppKit controls that will not go below their
+                // own width; a layout that assumed they could kept
+                // invalidating it on a narrow window until AppKit aborted
+                // (UX-02). fixedSize tells SwiftUI the real minimum.
+                editControls.fixedSize()
             }
             .padding(Tokens.Spacing.m)
             if isListEditing, let original, let file = loadedFile, file == selection, let kind = StructuredKind(file: file) {
@@ -172,9 +178,9 @@ struct DocumentView: View {
                 Button("취소") { isEditing = false; saveError = nil }
                 Button("저장") { save() }.keyboardShortcut("s", modifiers: .command)
             } else if isListEditing {
-                if let saveError { Text(saveError).font(Tokens.Font.meta).foregroundStyle(Tokens.red).lineLimit(2) }
+                if let saveError { Text(saveError).font(Tokens.Font.meta).foregroundStyle(Tokens.red).lineLimit(1).help(saveError) }
             } else {
-                if let validation { Text(validation).font(Tokens.Font.meta).foregroundStyle(Tokens.orange).lineLimit(2) }
+                if let validation { Text(validation).font(Tokens.Font.meta).foregroundStyle(Tokens.orange).lineLimit(1).help(validation) }
                 let kind = StructuredKind(file: file)
                 if let kind { Button(kind.editLabel) { isListEditing = true } }
                 Button(kind == nil ? "편집" : "원문 편집") { draft = original ?? ""; isEditing = true }

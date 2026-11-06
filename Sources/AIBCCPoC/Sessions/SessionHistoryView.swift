@@ -36,7 +36,9 @@ struct SessionHistoryView: View {
                 Text("\(filtered.count) / \(records.count)").font(Tokens.Font.meta)
                     .foregroundStyle(Tokens.textTertiary).padding(6)
             }
-            .frame(width: AppConstants.Documents.historyListWidth)
+            .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.historyListWidth,
+                   maxWidth: AppConstants.Documents.historyListWidth)
+            .layoutPriority(1)
             Divider()
             if let detail {
                 SessionDetailView(detail: detail, workspace: workspace)
@@ -140,12 +142,16 @@ private struct SessionDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
-            Text(detail.record.task.isEmpty ? detail.record.id : detail.record.task).font(Tokens.Font.title)
+            // One line each (full text on hover): text that wrapped as the
+            // pane narrowed raised the window's minimum height in a loop
+            // until AppKit aborted (UX-02).
+            let title = detail.record.task.isEmpty ? detail.record.id : detail.record.task
+            Text(title).font(Tokens.Font.title).lineLimit(1).truncationMode(.tail).help(title)
             Text("\(detail.record.client) · \(detail.record.started) → \(detail.record.ended) · \(detail.record.status)")
-                .font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary)
+                .font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary).lineLimit(1)
             if !detail.record.continues.isEmpty && detail.record.continues != "(없음)" {
                 Label("이어받음: \(detail.record.continues)", systemImage: "arrow.turn.down.right")
-                    .font(Tokens.Font.meta).foregroundStyle(Tokens.teal)
+                    .font(Tokens.Font.meta).foregroundStyle(Tokens.teal).lineLimit(1)
             }
             HStack {
                 Menu("Continue") {
@@ -169,8 +175,8 @@ private struct SessionDetailView: View {
     private var sealBanner: some View {
         HStack(spacing: Tokens.Spacing.s) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Tokens.orange)
-            Text(detail.seal == .modified ? "종료 후 봉인된 기록이 바뀌었습니다." : "봉인을 검증할 수 없습니다.")
-            Text("승인: 터미널에서 aib sessions seal \(detail.record.id)").foregroundStyle(Tokens.textSecondary)
+            Text(detail.seal == .modified ? "종료 후 봉인된 기록이 바뀌었습니다." : "봉인을 검증할 수 없습니다.").lineLimit(1)
+            Text("승인: 터미널에서 aib sessions seal \(detail.record.id)").foregroundStyle(Tokens.textSecondary).lineLimit(1)
         }
         .font(Tokens.Font.meta)
         .padding(Tokens.Spacing.s)

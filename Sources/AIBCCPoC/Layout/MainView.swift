@@ -14,14 +14,13 @@ struct MainView: View {
                     ideal: AppConstants.Layout.sidebarMinWidth + 40
                 )
         } detail: {
-            center
-                .inspector(isPresented: $workspace.isArtifactPanelVisible) {
-                    InspectorView(workspace: workspace, artifacts: artifacts)
-                        .inspectorColumnWidth(
-                            min: AppConstants.Layout.inspectorMinWidth,
-                            ideal: AppConstants.Layout.inspectorIdealWidth
-                        )
+            HStack(spacing: 0) {
+                center
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if workspace.isArtifactPanelVisible {
+                    OutputsColumn(workspace: workspace, artifacts: artifacts)
                 }
+            }
         }
         .toolbar { toolbarContent }
         .sheet(isPresented: $workspace.isNewAgentSheetPresented) { NewAgentSheet(workspace: workspace) }
@@ -46,37 +45,8 @@ struct MainView: View {
         }
     }
 
-    /// Terminals leave the hierarchy while a document is shown; panes keep
-    /// their views and shells (same as a barrack switch, WS-01).
-    @ViewBuilder
     private var center: some View {
-        if workspace.destination == .sessions || workspace.selectedBarrack == nil {
-            VStack(spacing: 0) {
-                if workspace.selectedBarrack != nil {
-                    AgentBar(workspace: workspace)
-                    Divider()
-                }
-                TerminalGridView(workspace: workspace)
-            }
-        } else if workspace.destination == .barrack {
-            BarrackView(workspace: workspace, changes: artifacts.fileEvents)
-        } else if let barrack = workspace.selectedBarrack, workspace.destination == .history {
-            HistoryDestinationView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
-        } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
-            GitView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
-        } else if let barrack = workspace.selectedBarrack, workspace.destination == .skills {
-            SkillsView(barrack: barrack, changes: artifacts.fileEvents,
-                       pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),
-                       pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }))
-        } else if let barrack = workspace.selectedBarrack {
-            DocumentView(barrack: barrack, destination: workspace.destination,
-                         startCouncil: { workspace.isCouncilSheetPresented = true },
-                         changes: artifacts.fileEvents,
-                         pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),
-                         pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }),
-                         editInProgress: Binding(get: { workspace.editInProgress }, set: { workspace.editInProgress = $0 }),
-                         discardRevision: workspace.discardRevision)
-        }
+        CenterView(workspace: workspace, artifacts: artifacts)
     }
 
     @ToolbarContentBuilder
@@ -110,4 +80,44 @@ struct MainView: View {
             set: { workspace.setLayout($0) }
         )
     }
+}
+
+/// The detail column's content for the current destination. Its minimum
+/// width must stay within `Layout.detailMinWidth` (LY-01).
+struct CenterView: View {
+    @Bindable var workspace: WorkspaceModel
+    let artifacts: ArtifactStore
+
+    /// Terminals leave the hierarchy while a document is shown; panes keep
+    /// their views and shells (same as a barrack switch, WS-01).
+    var body: some View {
+        if workspace.destination == .sessions || workspace.selectedBarrack == nil {
+            VStack(spacing: 0) {
+                if workspace.selectedBarrack != nil {
+                    AgentBar(workspace: workspace)
+                    Divider()
+                }
+                TerminalGridView(workspace: workspace)
+            }
+        } else if workspace.destination == .barrack {
+            BarrackView(workspace: workspace, changes: artifacts.fileEvents)
+        } else if let barrack = workspace.selectedBarrack, workspace.destination == .history {
+            HistoryDestinationView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
+        } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
+            GitView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
+        } else if let barrack = workspace.selectedBarrack, workspace.destination == .skills {
+            SkillsView(barrack: barrack, changes: artifacts.fileEvents,
+                       pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),
+                       pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }))
+        } else if let barrack = workspace.selectedBarrack {
+            DocumentView(barrack: barrack, destination: workspace.destination,
+                         startCouncil: { workspace.isCouncilSheetPresented = true },
+                         changes: artifacts.fileEvents,
+                         pending: Binding(get: { workspace.pendingDocument }, set: { workspace.pendingDocument = $0 }),
+                         pendingEdit: Binding(get: { workspace.pendingStructuredEdit }, set: { workspace.pendingStructuredEdit = $0 }),
+                         editInProgress: Binding(get: { workspace.editInProgress }, set: { workspace.editInProgress = $0 }),
+                         discardRevision: workspace.discardRevision)
+        }
+    }
+
 }

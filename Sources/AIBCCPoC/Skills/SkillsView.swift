@@ -25,7 +25,10 @@ struct SkillsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            catalog.frame(width: AppConstants.Documents.historyListWidth)
+            catalog
+                .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.historyListWidth,
+                       maxWidth: AppConstants.Documents.historyListWidth)
+                .layoutPriority(1)
             Divider()
             reader
         }
@@ -92,7 +95,8 @@ struct SkillsView: View {
                     let seeded = defaultSkills.contains(skill.slug)
                     if seeded {
                         Text("aib 기본 skill — 지우거나 이름을 바꾸면 aib sync가 다시 만듭니다")
-                            .font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(2)
+                            .font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(1)
+                            .help("aib 기본 skill — 지우거나 이름을 바꾸면 aib sync가 다시 만듭니다")
                     }
                     Button("편집") { openEditor(skill) }
                     Button("이름 변경") { sheet = .rename(skill) }.disabled(seeded)
@@ -131,7 +135,7 @@ struct SkillsView: View {
 
     private func banner(_ label: some View, color: Color, @ViewBuilder actions: () -> some View) -> some View {
         HStack {
-            label.font(Tokens.Font.meta).foregroundStyle(color).lineLimit(2)
+            label.font(Tokens.Font.meta).foregroundStyle(color).lineLimit(1)
             Spacer()
             actions()
         }

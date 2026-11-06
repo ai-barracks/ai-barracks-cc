@@ -104,6 +104,11 @@ enum AppConstants {
         static let ruleFiles = ["RULES.md", "SOUL.md", "GROWTH.md", "agent.yaml"]
         static let listWidth: CGFloat = 220
         static let historyListWidth: CGFloat = 300
+        /// How narrow a list beside a reader may get when the window is
+        /// small. Fixed-width lists kept the center's minimum near the
+        /// space a minimum-size window leaves it, and the split view then
+        /// looped its constraint pass until AppKit aborted (UX-02).
+        static let listMinWidth: CGFloat = 120
     }
 
     enum Liveness {
@@ -120,6 +125,20 @@ enum AppConstants {
         static let defaultWindowHeight: CGFloat = 900
         static let inspectorMinWidth: CGFloat = 300
         static let inspectorIdealWidth: CGFloat = 360
+        static let outputsMaxWidth: CGFloat = 640
+        static let outputsWidthKey = "outputsColumnWidth"
+        /// What a minimum-size window leaves the center column (window
+        /// minimum − sidebar − inspector). Center content must need no more
+        /// (LY-01); it is not imposed as a frame — a fixed minimum made the
+        /// columns' sum equal the window minimum, and a narrower window then
+        /// looped AppKit's constraint pass until it aborted.
+        static let detailMinWidth: CGFloat = 460
+        static let barrackColumnsMinWidth: CGFloat = 640
+        /// Title bar and toolbar above the columns (unified toolbar style).
+        static let toolbarAllowance: CGFloat = 52
+        /// A Markdown view's size when nothing is proposed.
+        static let markdownIdealWidth: CGFloat = 480
+        static let markdownIdealHeight: CGFloat = 400
         static let artifactListMinHeight: CGFloat = 90
         static let artifactListIdealHeight: CGFloat = 150
         static let artifactListMaxHeight: CGFloat = 260

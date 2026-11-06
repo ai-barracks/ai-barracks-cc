@@ -41,7 +41,9 @@ struct ScrollbackArchiveView: View {
                 }
                 .padding(6)
             }
-            .frame(width: AppConstants.Documents.historyListWidth)
+            .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.historyListWidth,
+                   maxWidth: AppConstants.Documents.historyListWidth)
+            .layoutPriority(1)
             Divider()
             reader
         }

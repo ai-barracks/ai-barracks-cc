@@ -9,10 +9,23 @@ struct BarrackView: View {
     var changes = 0
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            column("Info") { BarrackInfoPanel(workspace: workspace, changes: changes) }
-            Divider()
-            column("Status") { MaintenancePanel(workspace: workspace, store: workspace.maintenance) }
+        // Side by side when there is room, stacked when not: fixed column
+        // minimums would push the split view's minimum past a narrow
+        // window's center (the constraint-loop crash of 2026-11-06).
+        GeometryReader { proxy in
+            if proxy.size.width >= AppConstants.Layout.barrackColumnsMinWidth {
+                HStack(alignment: .top, spacing: 0) {
+                    column("Info") { BarrackInfoPanel(workspace: workspace, changes: changes) }
+                    Divider()
+                    column("Status") { MaintenancePanel(workspace: workspace, store: workspace.maintenance) }
+                }
+            } else {
+                VStack(spacing: 0) {
+                    column("Info") { BarrackInfoPanel(workspace: workspace, changes: changes) }
+                    Divider()
+                    column("Status") { MaintenancePanel(workspace: workspace, store: workspace.maintenance) }
+                }
+            }
         }
         .background(Tokens.work)
     }
@@ -26,6 +39,6 @@ struct BarrackView: View {
             Divider()
             content()
         }
-        .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }

@@ -59,7 +59,10 @@ struct SelfTestRunner {
         // Clicks and menu shortcuts are meaningless for an inactive app (the
         // display may be asleep or another app holds focus): refuse to report
         // results that would be false failures.
-        guard active else {
+        // Suites that send no input (window sizes, captures) are meaningful
+        // in the background too, e.g. while a system alert holds the front.
+        let needsActivation = !Self.requestedSuites().isSubset(of: Self.backgroundSuites)
+        guard active || !needsActivation else {
             FileHandle.standardError.write(Data("selftest: app could not become active; rerun while the display is awake\n".utf8))
             try? "setup=app-inactive\n".write(to: output.appendingPathComponent("summary.txt"), atomically: true, encoding: .utf8)
             return .setupError
@@ -89,6 +92,8 @@ struct SelfTestRunner {
     /// Run only when named (they need a daemon and two app launches).
     static let explicitSuites = ["persist1", "persist2", "repro10", "repro-r5", "rs06", "gallery", "showcase", "ux"]
     static let allSuites = Set(suiteOrder)
+    /// Need no keyboard or mouse: they run without the app in front.
+    static let backgroundSuites: Set = ["ux"]
     static let knownSuites = Set(suiteOrder + explicitSuites)
 
     private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {

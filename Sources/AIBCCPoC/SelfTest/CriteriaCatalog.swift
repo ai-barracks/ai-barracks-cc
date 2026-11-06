@@ -115,6 +115,7 @@ enum CriteriaCatalog {
         .init(id: "PS-04", title: "replay 입력 경계·종료 출력 보관", blocking: false, requires: ["PS-04a", "PS-04b"]),
         .init(id: "PS-05", title: "입력 거부는 종료 아님·분리 중 종료 세션 보관", blocking: false, requires: ["PS-05a", "PS-05b", "PS-05c"]),
         .init(id: "R6-01", title: "Codex r6 회귀", blocking: false, requires: ["R6-01a", "R6-01b", "R6-01c"]),
+        .init(id: "LY-01", title: "레이아웃 최소 크기(최소 창에서 충돌·겹침 없음)", blocking: false, requires: ["LY-01a"]),
         .init(id: "R7-01", title: "Codex r7 회귀", blocking: false, requires: ["R7-01a", "R7-01b", "R7-01c", "R7-01d"]),
         .init(id: "NV-01", title: "편집 중 이동 확인", blocking: false, requires: ["NV-01a", "NV-01b", "NV-01c"]),
         .init(id: "R5-01", title: "Codex r5 전역 상태 회귀", blocking: false, requires: ["R5-01a"]),

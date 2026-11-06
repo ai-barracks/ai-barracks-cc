@@ -10,10 +10,15 @@ struct AgentBar: View {
     @State private var closing: TerminalPane?
 
     var body: some View {
+        // Both rows scroll sideways instead of widening the column: a fixed
+        // row raised the split view's minimum past what a narrow window
+        // leaves it, and AppKit aborted in an endless constraint pass (crash
+        // 2026-11-06 10:15).
         VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
-            launchRow
+            ScrollView(.horizontal, showsIndicators: false) { launchRow }
             if !workspace.panes.isEmpty { chips }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Tokens.Spacing.m)
         .padding(.vertical, Tokens.Spacing.s)
         .background(.bar)
@@ -32,20 +37,19 @@ struct AgentBar: View {
             Text("New Agent")
                 .font(Tokens.Font.meta.weight(.semibold))
                 .foregroundStyle(Tokens.textSecondary)
-            ForEach([AgentClient.claude, .codex, .gemini]) { client in
-                Button(client.label) { _ = workspace.launchAgent(client, skipPermissions: skipPermissions) }
-                    .help("aib start \(client.rawValue)\(skipPermissions ? " --skip-permissions" : "")")
+            Group {
+                ForEach([AgentClient.claude, .codex, .gemini]) { client in
+                    Button(client.label) { _ = workspace.launchAgent(client, skipPermissions: skipPermissions) }
+                        .help(isFull ? fullHelp : "aib start \(client.rawValue)\(skipPermissions ? " --skip-permissions" : "")")
+                }
+                Divider().frame(height: 14)
+                Button("Terminal") { _ = workspace.launchAgent(.terminal, skipPermissions: false) }
+                    .help(isFull ? fullHelp : "로그인 셸")
+                Button("Council") { workspace.isCouncilSheetPresented = true }
+                    .help(isFull ? fullHelp : "aib council")
             }
+            .disabled(isFull)
             Divider().frame(height: 14)
-            Button("Terminal") { _ = workspace.launchAgent(.terminal, skipPermissions: false) }
-            Button("Council") { workspace.isCouncilSheetPresented = true }
-            Spacer(minLength: Tokens.Spacing.s)
-            if isFull {
-                Text("터미널 \(PaneLayout.quad.paneCount)개 사용 중 — 하나를 닫으면 새로 시작할 수 있습니다")
-                    .font(Tokens.Font.meta)
-                    .foregroundStyle(Tokens.orange)
-                    .lineLimit(1)
-            }
             Toggle("skip-permissions", isOn: $skipPermissions)
                 .toggleStyle(.checkbox)
                 .font(Tokens.Font.meta)
@@ -56,6 +60,7 @@ struct AgentBar: View {
     }
 
     private var isFull: Bool { workspace.panes.count >= PaneLayout.quad.paneCount }
+    private var fullHelp: String { "터미널 \(PaneLayout.quad.paneCount)개 사용 중 — 하나를 닫으면 새로 시작할 수 있습니다" }
 
     private var chips: some View {
         ScrollView(.horizontal, showsIndicators: false) {

@@ -59,15 +59,25 @@ struct OwnershipSeal: View {
     let ownership: Ownership
 
     var body: some View {
+        // One line, truncating: wrapped text grew the header as the reader
+        // narrowed, the window's minimum height followed, and the split view
+        // looped its constraint pass until AppKit aborted (UX-02).
         HStack(spacing: Tokens.Spacing.s) {
             Label(ownership.rawValue, systemImage: "seal.fill")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(ownership.color)
+                .fixedSize()
             Text(ownership.meaning)
                 .foregroundStyle(Tokens.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
             Text("· \(ownership.allowed)")
                 .foregroundStyle(Tokens.textTertiary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(-1)
         }
+        .help("\(ownership.rawValue) — \(ownership.meaning) · \(ownership.allowed)")
         .font(Tokens.Font.meta)
         .padding(.horizontal, Tokens.Spacing.s)
         .padding(.vertical, 3)
