@@ -39,7 +39,8 @@ struct InputSuite {
             await paneClickWhileComposing(primary, secondary, window),
             await syntheticKoreanPath(primary, window),
         ]
-        return measured + [await bracketedPaste(window), await controlC(window), await quadCore(window)]
+        return measured + [await bracketedPaste(window), await controlC(window),
+                           await controlCWithMenuClaimer(window), await quadCore(window)]
     }
 
     /// ST-01b: the core input checks (space byte, Hangul composition
@@ -365,13 +366,53 @@ struct InputSuite {
 
     private func controlC(_ window: NSWindow) async -> TestResult {
         let start = ContinuousClock.now
+        guard let press = await pressControlC(window) else { return setupFailure("sigint fixture missing", start) }
+        return .make("IN-09a", "Ctrl+C → foreground 프로세스 그룹 SIGINT (trap 실행)",
+                     status: press.hit ? .pass : .fail, evidence: press.evidence, startedAt: start)
+    }
+
+    /// IN-09b: a menu item claiming ⌃C must not take the key from a focused
+    /// terminal. The system Window menu's 중앙 정렬 claims it on this Mac and
+    /// IN-09a lost the key after the key-equivalent pass (Codex build-84
+    /// review); installing such an item keeps the guard tested on any macOS.
+    private func controlCWithMenuClaimer(_ window: NSWindow) async -> TestResult {
+        let start = ContinuousClock.now
+        let spy = MenuKeySpy()
+        let claimer = NSMenuItem(title: "selftest ⌃C", action: #selector(MenuKeySpy.fire(_:)), keyEquivalent: "c")
+        claimer.keyEquivalentModifierMask = .control
+        claimer.target = spy
+        let holder = NSMenuItem(title: "SelfTest", action: nil, keyEquivalent: "")
+        holder.submenu = NSMenu(title: "SelfTest")
+        holder.submenu?.addItem(claimer)
+        // Installed right before the press: SwiftUI rebuilds the main menu
+        // on scene updates, dropping earlier additions (and later this one).
+        let press = await pressControlC(window) { NSApp.mainMenu?.addItem(holder) }
+        holder.menu?.removeItem(holder)
+        guard let press else { return setupFailure("sigint fixture missing", start) }
+        // The press-time menu snapshot shows whether the claimer was there.
+        guard press.evidence["menu_ctrl_c"]?.contains(claimer.title) == true else {
+            return .make("IN-09b", "⌃C 단축키 메뉴 항목이 있어도 터미널이 Ctrl+C를 받음", status: .unverified,
+                         evidence: press.evidence.merging(["reason": "self-test menu item gone before press"]) { $1 },
+                         startedAt: start)
+        }
+        return .make("IN-09b", "⌃C 단축키 메뉴 항목이 있어도 터미널이 Ctrl+C를 받음",
+                     status: press.hit && !spy.fired ? .pass : .fail,
+                     evidence: press.evidence.merging(["menu_item_fired": "\(spy.fired)"]) { $1 }, startedAt: start)
+    }
+
+    private struct SigintPress {
+        let hit: Bool
+        let evidence: [String: String]
+    }
+
+    private func pressControlC(_ window: NSWindow, beforePress: () -> Void = {}) async -> SigintPress? {
         let temp = FileManager.default.temporaryDirectory
         let ready = temp.appendingPathComponent("aibcc-sigint-ready-\(UUID().uuidString)")
         let signalled = temp.appendingPathComponent("aibcc-sigint-hit-\(UUID().uuidString)")
         guard let pane = harness.makeScriptPane(
             name: "sigint", script: "sigint_probe.sh", readyFile: ready,
             environment: [AppConstants.Environment.signalFile: signalled.path]
-        ), let key = Synth.control("c") else { return setupFailure("sigint fixture missing", start) }
+        ), let key = Synth.control("c") else { return nil }
         await harness.install([pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) {
             FileManager.default.fileExists(atPath: ready.path)
@@ -381,18 +422,43 @@ struct InputSuite {
         // before pressing; record focus so a lost key can be attributed.
         await harness.drain()
         let focusedBeforePress = harness.isFirstResponder(pane.probeView)
+        // AppKit hands keyDown only to the key window of an active app; a
+        // key-equivalent pass runs regardless. Recorded so a lost Ctrl+C
+        // can be told apart from a terminal fault (Codex build-84 review).
+        let activeAtPress = NSApp.isActive
+        let keyWindowAtPress = NSApp.keyWindow === window
+        let frontmostAtPress = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
+        beforePress()
+        // A menu item claiming ⌃C takes the key before keyDown.
+        let claimers = Self.menuItems(in: NSApp.mainMenu) { item in
+            item.keyEquivalent.lowercased() == "c" && item.keyEquivalentModifierMask.contains(.control)
+        }
+        let frameAtPress = window.frame
         Synth.press(key, in: window)
         let hit = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
             FileManager.default.fileExists(atPath: signalled.path)
         }
+        // Window › 중앙 정렬 moves the window when it takes the key.
+        let moved = window.frame != frameAtPress
         let trace = pane.probeView?.callLog.suffix(8).map { "\($0.kind.rawValue):\($0.text ?? "")" } ?? []
-        return .make("IN-09a", "Ctrl+C → foreground 프로세스 그룹 SIGINT (trap 실행)",
-                     status: hit ? .pass : .fail,
-                     evidence: ["probe_trace": trace.joined(separator: " | "),
-                                "focused_before_press": "\(focusedBeforePress)"], startedAt: start)
+        return SigintPress(hit: hit, evidence: [
+            "probe_trace": trace.joined(separator: " | "),
+            "focused_before_press": "\(focusedBeforePress)", "app_active": "\(activeAtPress)",
+            "key_window": "\(keyWindowAtPress)", "frontmost": frontmostAtPress,
+            "menu_ctrl_c": claimers.joined(separator: ", "), "window_moved": "\(moved)",
+        ])
     }
 
     // MARK: - Helpers
+
+    static func menuItems(in menu: NSMenu?, where test: (NSMenuItem) -> Bool) -> [String] {
+        guard let menu else { return [] }
+        return menu.items.flatMap { item -> [String] in
+            let mask = item.keyEquivalentModifierMask.rawValue
+            let entry = "\(menu.title)>\(item.title) [mask 0x\(String(mask, radix: 16)) enabled=\(item.isEnabled)]"
+            return (test(item) ? [entry] : []) + menuItems(in: item.submenu, where: test)
+        }
+    }
 
     private func keys(_ letters: String, ime: [[ScriptedIMECall]]) -> [Step] {
         zip(letters, ime).compactMap { letter, calls in
@@ -410,5 +476,15 @@ struct InputSuite {
     private func setupFailure(_ reason: String, _ start: ContinuousClock.Instant) -> TestResult {
         .make("IN-setup", "입력 스위트 준비", status: .fail, cause: .app,
               evidence: ["reason": reason], startedAt: start)
+    }
+}
+
+/// Records whether a self-test menu item's action ran (IN-09b).
+@MainActor
+private final class MenuKeySpy: NSObject {
+    private(set) var fired = false
+
+    @objc func fire(_ sender: Any?) {
+        fired = true
     }
 }

@@ -27,7 +27,7 @@ enum CriteriaCatalog {
         .init(id: "IN-06", title: "빠른 연속 타이핑(영·한 혼합)", blocking: true, requires: ["IN-06a", "IN-06-phys"]),
         .init(id: "IN-07", title: "붙여넣기 중복 0·원문 보존", blocking: true, requires: ["IN-07a", "IN-07b", "IN-07-phys"]),
         .init(id: "IN-08", title: "bracketed paste 종료 구분자 정책", blocking: true, requires: ["IN-08a"]),
-        .init(id: "IN-09", title: "Ctrl+C → SIGINT", blocking: true, requires: ["IN-09a"]),
+        .init(id: "IN-09", title: "Ctrl+C → SIGINT", blocking: true, requires: ["IN-09a", "IN-09b", "IN-09c"]),
         .init(id: "IN-10", title: "Esc·Shift+Enter·Option·dead key·반복", blocking: true, requires: ["IN-10a", "IN-10-phys"]),
         .init(id: "IN-11", title: "앱 단축키가 PTY로 새지 않음", blocking: true, requires: ["IN-11a", "IN-11b", "IN-11c"]),
         .init(id: "IN-12", title: "후보창 위치", blocking: false, requires: ["IN-12-phys"]),

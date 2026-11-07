@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Pure checks that need no window: the liveness fold must match aib
 /// (`aib sessions state`, CC v1.6.1 `live::fold` test matrix), and the
@@ -8,7 +8,8 @@ struct UnitSuite {
     func run() -> [TestResult] {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
-         sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools()]
+         sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools(),
+         terminalOwnsControlKeys()]
     }
 
     private func terminalTools() -> TestResult {
@@ -275,6 +276,22 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["before": before?.rawValue ?? "nil", "after": after?.rawValue ?? "nil",
                                 "refused_bad_ids": "\(refused)"], startedAt: start)
+    }
+
+    /// IN-09c: which keys the focused terminal takes before the menus.
+    private func terminalOwnsControlKeys() -> TestResult {
+        let start = ContinuousClock.now
+        let cases: [(String, NSEvent.ModifierFlags, String, Bool)] = [
+            ("⌃C", [.control], "c", true), ("⌃⇧C", [.control, .shift], "C", true),
+            ("⌃C+capslock", [.control, .capsLock], "c", true), ("fn⌃C", [.control, .function], "c", false),
+            ("⌘C", [.command], "c", false), ("⌃⌘F", [.control, .command], "f", false),
+            ("⌃⌥C", [.control, .option], "c", false), ("⌃1", [.control], "1", false),
+            ("⌃/", [.control], "/", false), ("c", [], "c", false), ("⌃ㅊ", [.control], "ㅊ", false),
+        ]
+        let wrong = cases.filter { ProbeTerminalView.ownsControlKey(flags: $0.1, characters: $0.2) != $0.3 }.map(\.0)
+        return .make("IN-09c", "터미널이 메뉴보다 먼저 받는 키: ⌃·⌃⇧+영문자만 (fn·⌥·⌘ 조합은 메뉴로)",
+                     status: wrong.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["cases": "\(cases.count)", "wrong": wrong.joined(separator: ",")], startedAt: start)
     }
 
     private func processTree() -> TestResult {

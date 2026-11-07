@@ -98,9 +98,29 @@ final class ProbeTerminalView: AppTerminalView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // A focused terminal owns ⌃-letter keys. The key-equivalent pass
+        // otherwise falls through to the main menu, where the system Window
+        // menu's 중앙 정렬 (fn⌃C) took a ⌃C without fn and moved the window
+        // instead of interrupting the shell (IN-09, Codex build-84 review).
+        if event.type == .keyDown, window?.firstResponder === self,
+           Self.ownsControlKey(flags: event.modifierFlags, characters: event.charactersIgnoringModifiers) {
+            record(.keyEquivalent, text: "\(event.charactersIgnoringModifiers ?? "") claimed", keyCode: event.keyCode)
+            keyDown(with: event)
+            return true
+        }
         let handled = super.performKeyEquivalent(with: event)
         record(.keyEquivalent, text: "\(event.charactersIgnoringModifiers ?? "") handled=\(handled)", keyCode: event.keyCode)
         return handled
+    }
+
+    /// ⌃ or ⌃⇧ with one ASCII letter; fn, ⌥ or ⌘ leave the key to menus
+    /// (fn⌃C still centers the window, ⌘C still copies).
+    static func ownsControlKey(flags: NSEvent.ModifierFlags, characters: String?) -> Bool {
+        let modifiers = flags.intersection([.control, .shift, .option, .command, .function])
+        guard modifiers == .control || modifiers == [.control, .shift],
+              let characters, characters.unicodeScalars.count == 1, let scalar = characters.unicodeScalars.first
+        else { return false }
+        return scalar.isASCII && CharacterSet.letters.contains(scalar)
     }
 
     override func doCommand(by selector: Selector) {
