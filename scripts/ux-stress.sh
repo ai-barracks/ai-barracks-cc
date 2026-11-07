@@ -11,6 +11,51 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$ROOT/dist/AIBCC-PoC.app"
 DESTINATIONS="${*:-barrack sessions history rules wiki skills council git}"
+
+# verdict <destination> <status> <stdout file> <report dir>: PASS needs the
+# done marker (printed after the last round's resize), no exception, a
+# normal end (3 = incomplete run, the usual exit of a partial self-test;
+# 0 = every criterion passed) and the run's own report saying UX-02 pass
+# (Codex build-84 F4). Kept separate so --check-verdict can test it.
+verdict() {
+  local destination=$1 status=$2 out=$3 reports=$4 report
+  report=$(ls -t "$reports"/*/report.json 2>/dev/null | head -1)
+  grep -q "stress $destination done" "$out" || { echo "no done marker"; return 1; }
+  ! grep -q "Terminating app" "$out" || { echo "exception"; return 1; }
+  [ "$status" = "exit 3" ] || [ "$status" = "exit 0" ] || { echo "status $status"; return 1; }
+  [ -n "$report" ] || { echo "no report"; return 1; }
+  python3 - "$report" <<'PY2' || { echo "UX-02 not pass in report"; return 1; }
+import json, sys
+results = json.load(open(sys.argv[1]))["results"]
+sys.exit(0 if any(r["id"] == "UX-02" and r["status"] == "pass" for r in results) else 1)
+PY2
+}
+
+# --check-verdict: run the verdict on synthetic runs (no app launched).
+if [[ "${1:-}" == "--check-verdict" ]]; then
+  t=$(mktemp -d /tmp/aibcc-uxv.XXXXXX)
+  mkdir -p "$t/r/a" "$t/r0"
+  printf 'stress git round 9\nstress git done\n' > "$t/ok.txt"
+  printf 'stress git round 9\n' > "$t/hang.txt"
+  printf 'stress git done\n*** Terminating app\n' > "$t/crash.txt"
+  echo '{"results":[{"id":"UX-02","status":"pass"}]}' > "$t/r/a/report.json"
+  mkdir -p "$t/rf/a"; echo '{"results":[{"id":"UX-02","status":"fail"}]}' > "$t/rf/a/report.json"
+  bad=0
+  check() { local want=$1; shift; if verdict "$@" >/dev/null; then got=pass; else got=fail; fi
+            [ "$got" = "$want" ] && echo "ok   $want: $*" || { echo "BAD  want $want: $*"; bad=1; }; }
+  check pass git "exit 3" "$t/ok.txt" "$t/r"
+  check pass git "exit 0" "$t/ok.txt" "$t/r"
+  check fail git "exit 3" "$t/hang.txt" "$t/r"
+  check fail git "exit 3" "$t/crash.txt" "$t/r"
+  check fail git "timeout" "$t/ok.txt" "$t/r"
+  check fail git "exit 134" "$t/ok.txt" "$t/r"
+  check fail git "exit 3" "$t/ok.txt" "$t/r0"
+  check fail git "exit 3" "$t/ok.txt" "$t/rf"
+  check fail wiki "exit 3" "$t/ok.txt" "$t/r"
+  rm -rf "$t"
+  exit $bad
+fi
+
 [[ -x "$SRC/Contents/MacOS/AIBCCPoC" ]] || { echo "missing $SRC (run scripts/package-app.sh)" >&2; exit 2; }
 caffeinate -u -d -t 1800 &
 CAF=$!
@@ -23,7 +68,8 @@ for destination in $DESTINATIONS; do
   cp -R "$SRC" "$work/AIBCC-UX.app"
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $id" "$work/AIBCC-UX.app/Contents/Info.plist"
   codesign --force --deep --sign - "$work/AIBCC-UX.app" >/dev/null 2>&1
-  env AIBCC_UX_STRESS="$destination" "$work/AIBCC-UX.app/Contents/MacOS/AIBCCPoC" --selftest-only=ux > "$work/out.txt" 2>&1 &
+  env AIBCC_UX_STRESS="$destination" AIBCC_SELFTEST_OUT="$work/reports" \
+    "$work/AIBCC-UX.app/Contents/MacOS/AIBCCPoC" --selftest-only=ux > "$work/out.txt" 2>&1 &
   app=$!
   for _ in $(seq 1 90); do kill -0 "$app" 2>/dev/null || break; sleep 2; done
   if kill -0 "$app" 2>/dev/null; then
@@ -31,14 +77,10 @@ for destination in $DESTINATIONS; do
   else
     wait "$app"; status="exit $?"
   fi
-  # Done marker (printed after the last round's resize, Codex build-84 F4),
-  # no exception, and a normal end: 3 = incomplete run, the usual exit of a
-  # partial self-test; 0 would mean every criterion passed.
-  if grep -q "stress $destination done" "$work/out.txt" && ! grep -q "Terminating app" "$work/out.txt" \
-      && { [ "$status" = "exit 3" ] || [ "$status" = "exit 0" ]; }; then
+  if why=$(verdict "$destination" "$status" "$work/out.txt" "$work/reports"); then
     echo "PASS $destination ($status)"
   else
-    echo "FAIL $destination ($status) $(grep -m1 'reason:' "$work/out.txt" | cut -c1-140)"
+    echo "FAIL $destination ($status) $why $(grep -m1 'reason:' "$work/out.txt" | cut -c1-140)"
     failed=1
   fi
   defaults delete "$id" >/dev/null 2>&1
