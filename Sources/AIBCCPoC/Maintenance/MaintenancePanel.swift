@@ -7,17 +7,24 @@ struct MaintenancePanel: View {
     let store: MaintenanceStore
 
     var body: some View {
+        let barrack = workspace.selectedBarrack
+        let items = store.items(for: barrack)
+        let scanning = store.isScanning(barrack)
         VStack(spacing: 0) {
             HStack {
-                Text(store.isScanning ? "점검 중…" : store.items.isEmpty ? "판단할 항목 없음" : "판단 필요 \(store.items.count)")
+                Text(scanning ? "점검 중…" : items.isEmpty ? "판단할 항목 없음" : "판단 필요 \(items.count)")
                     .font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary)
                 Spacer()
-                Button { Task { await store.scan(workspace.selectedBarrack) } } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless).disabled(store.isScanning).help("다시 점검")
+                Button { Task { await store.scan(barrack) } } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless).disabled(scanning).help("다시 점검")
             }
             .padding(Tokens.Spacing.s)
-            List(store.items) { item in
-                MaintenanceRow(item: item) { workspace.runInPane(title: item.title, command: item.command) }
+            List(items) { item in
+                MaintenanceRow(item: item) {
+                    // Only items found in the barrack the command will run in.
+                    guard let barrack, store.items(for: barrack).contains(item) else { return }
+                    workspace.runInPane(title: item.title, command: item.command)
+                }
             }
         }
         .task(id: workspace.selectedBarrackID) { await store.scan(workspace.selectedBarrack) }
@@ -48,16 +55,49 @@ private struct MaintenanceRow: View {
     }
 }
 
+/// The latest scan's items, tied to the barrack they were found in. A scan
+/// started meanwhile — another barrack, or a refresh — supersedes an
+/// earlier one, whose late result is dropped; nothing is shown or run for
+/// a barrack other than the one it came from (Codex build-84 review F1: a
+/// switch during a scan left the old barrack's items, runnable, on the
+/// new one, and the new barrack's scan request was dropped).
 @MainActor
 @Observable
 final class MaintenanceStore {
-    private(set) var items: [MaintenanceItem] = []
-    private(set) var isScanning = false
+    typealias Scanner = @Sendable (Barrack) async -> [MaintenanceItem]
+
+    private var items: [MaintenanceItem] = []
+    /// Whose `items` these are.
+    private(set) var barrackID: Barrack.ID?
+    private var scanningID: Barrack.ID?
+    @ObservationIgnored private var generation = 0
+    @ObservationIgnored private let scanner: Scanner
+
+    init(scanner: @escaping Scanner = { await MaintenanceScanner.scan(barrack: $0) }) {
+        self.scanner = scanner
+    }
+
+    /// Items found in `barrack`; none while another barrack's are held.
+    func items(for barrack: Barrack?) -> [MaintenanceItem] {
+        barrack != nil && barrack?.id == barrackID ? items : []
+    }
+
+    func isScanning(_ barrack: Barrack?) -> Bool {
+        barrack != nil && barrack?.id == scanningID
+    }
 
     func scan(_ barrack: Barrack?) async {
-        guard let barrack, !isScanning else { return }
-        isScanning = true
-        items = await MaintenanceScanner.scan(barrack: barrack)
-        isScanning = false
+        guard let barrack else { return }
+        generation += 1
+        let request = generation
+        if barrackID != barrack.id {
+            items = []
+            barrackID = barrack.id
+        }
+        scanningID = barrack.id
+        let found = await scanner(barrack)
+        guard request == generation else { return }
+        items = found
+        scanningID = nil
     }
 }

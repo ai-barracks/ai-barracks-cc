@@ -9,7 +9,7 @@ struct AgentSuite {
 
     func run() async -> [TestResult] {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
-         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await destinationRoundTrip(),
+         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
          await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(),
          await settingsApply()]
@@ -81,12 +81,44 @@ struct AgentSuite {
     private func maintenanceScanCompletes() async -> TestResult {
         let start = ContinuousClock.now
         let store = harness.workspace.maintenance
-        await store.scan(harness.workspace.selectedBarrack)
+        let barrack = harness.workspace.selectedBarrack
+        await store.scan(barrack)
         let elapsed = (ContinuousClock.now - start).milliseconds
         return .make("MT-01c", "정비 점검(aib dry-run·verify·lint)이 끝나고 항목을 냄",
-                     status: !store.isScanning && elapsed < 30_000 ? .pass : .fail, cause: .app,
-                     evidence: ["items": store.items.map { "\($0.kind.rawValue)=\($0.count)" }.joined(separator: ","),
+                     status: !store.isScanning(barrack) && elapsed < 30_000 ? .pass : .fail, cause: .app,
+                     evidence: ["items": store.items(for: barrack).map { "\($0.kind.rawValue)=\($0.count)" }.joined(separator: ","),
                                 "ms": String(format: "%.0f", elapsed)], startedAt: start)
+    }
+
+    /// Codex build-84 review F1: switching barracks during a scan left the
+    /// old barrack's items, runnable, under the new one, and dropped the new
+    /// barrack's scan.
+    private func maintenanceFollowsBarrack() async -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let a = Barrack(name: "mt-a", path: "/tmp/aibcc-mt-a", description: nil)
+        let b = Barrack(name: "mt-b", path: "/tmp/aibcc-mt-b", description: nil)
+        let store = MaintenanceStore { barrack in
+            if barrack.name == "mt-a" { try? await Task.sleep(for: .milliseconds(400)) }
+            return [MaintenanceItem(kind: .clean, title: "from \(barrack.name)", count: 1, details: [barrack.path], command: "true")]
+        }
+        let slowA = Task { await store.scan(a) }
+        try? await Task.sleep(for: .milliseconds(50))
+        if !store.items(for: b).isEmpty { failures.append("b shows items before its scan") }
+        await store.scan(b)
+        await slowA.value
+        if store.items(for: b).map(\.title) != ["from mt-b"] { failures.append("b items \(store.items(for: b).map(\.title))") }
+        if !store.items(for: a).isEmpty { failures.append("a's late result kept") }
+        if store.isScanning(b) || store.isScanning(a) { failures.append("still scanning") }
+        // Back to a mid-scan of b: the later request wins again.
+        let slowAgain = Task { await store.scan(a) }
+        try? await Task.sleep(for: .milliseconds(50))
+        if !store.items(for: a).isEmpty { failures.append("a shows b's items") }
+        await slowAgain.value
+        if store.items(for: a).map(\.title) != ["from mt-a"] { failures.append("a items \(store.items(for: a).map(\.title))") }
+        return .make("MT-01d", "점검 중 배럭 전환: 결과·실행 대상이 그 배럭에만, 늦게 온 결과는 버림, 새 요청은 실행",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// P0 across destinations: Git/Skills replace the terminals on screen;

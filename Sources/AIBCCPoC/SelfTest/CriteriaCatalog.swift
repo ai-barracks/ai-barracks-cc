@@ -133,7 +133,7 @@ enum CriteriaCatalog {
         .init(id: "ED-01", title: "규칙 문서 편집(허용 범위·충돌 감지)", blocking: false, requires: ["ED-01a", "ED-01b"]),
         .init(id: "DS-01", title: "목적지 왕복 후 터미널 보존", blocking: false, requires: ["DS-01a"]),
         .init(id: "DB-01", title: "세션 유지 기본값(데몬)·테스트 격리", blocking: false, requires: ["DB-01a"]),
-        .init(id: "MT-01", title: "정비 큐(aib 점검 → 판단 → pane 실행)", blocking: false, requires: ["MT-01a", "MT-01b", "MT-01c"]),
+        .init(id: "MT-01", title: "정비 큐(aib 점검 → 판단 → pane 실행)", blocking: false, requires: ["MT-01a", "MT-01b", "MT-01c", "MT-01d"]),
     ]
 
     /// Reproduction suites for observations that never became bugs (run
