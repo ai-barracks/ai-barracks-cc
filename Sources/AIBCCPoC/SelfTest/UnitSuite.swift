@@ -9,7 +9,7 @@ struct UnitSuite {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
          sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools(),
-         terminalOwnsControlKeys()]
+         terminalOwnsControlKeys(), ruleCount()]
     }
 
     private func terminalTools() -> TestResult {
@@ -276,6 +276,33 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["before": before?.rawValue ?? "nil", "after": after?.rawValue ?? "nil",
                                 "refused_bad_ids": "\(refused)"], startedAt: start)
+    }
+
+    /// OV-02a: Info counts every rule bullet, sub-sections included, and no
+    /// bullet inside a code fence (Codex build-84 review: the form-managed
+    /// lists alone undercounted).
+    private func ruleCount() -> TestResult {
+        let start = ContinuousClock.now
+        let raw = """
+        # Rules
+        ## Always
+        - a
+        * b
+        ## Learned
+        ### Git
+        - c
+          - c.1
+        ```
+        - not a rule
+        ```
+        -not a bullet
+        ### Docs
+        + d
+        """
+        let count = BarrackOverview.countRules(raw)
+        return .make("OV-02a", "Info 규칙 수 = RULES.md 전체 항목(하위 섹션 포함, 코드 블록 제외)",
+                     status: count == 5 ? .pass : .fail, cause: .app,
+                     evidence: ["count": "\(count)", "expected": "5"], startedAt: start)
     }
 
     /// IN-09c: which keys the focused terminal takes before the menus.

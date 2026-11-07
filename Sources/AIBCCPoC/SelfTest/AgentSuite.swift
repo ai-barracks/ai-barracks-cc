@@ -9,7 +9,7 @@ struct AgentSuite {
 
     func run() async -> [TestResult] {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
-         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await destinationRoundTrip(),
+         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
          await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(),
          await settingsApply()]
@@ -88,6 +88,39 @@ struct AgentSuite {
                      status: !store.isScanning(barrack) && elapsed < 30_000 ? .pass : .fail, cause: .app,
                      evidence: ["items": store.items(for: barrack).map { "\($0.kind.rawValue)=\($0.count)" }.joined(separator: ","),
                                 "ms": String(format: "%.0f", elapsed)], startedAt: start)
+    }
+
+    /// Codex build-84 review: four empty shells blocked every new agent, and
+    /// a full grid of busy panes made maintenance and Council do nothing
+    /// without a word.
+    private func fullGridMakesRoom() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        var failures: [String] = []
+        workspace.editInProgress = false
+        workspace.destination = .sessions
+        let shells = (1 ... 4).map { workspace.makePane(title: "pn shell \($0)") }
+        await harness.install(shells, layout: .quad)
+        let idle = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { shells.allSatisfy(\.isIdleShell) }
+        if !idle { failures.append("shells not idle \(shells.map(\.isIdleShell))") }
+        let launched = workspace.runInPane(title: "pn-busy", command: "sleep 30")
+        let ids = Set(workspace.panes.map(\.id))
+        if launched == nil || !ids.contains(launched?.id ?? UUID()) || workspace.panes.count != 4 {
+            failures.append("no room taken (\(workspace.panes.count) panes)")
+        }
+        if shells.filter({ ids.contains($0.id) }).count != 3 { failures.append("not exactly one shell replaced") }
+        let busy = (1 ... 4).map { workspace.makePane(title: "pn busy \($0)", command: "sleep 30") }
+        await harness.install(busy, layout: .quad)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { busy.allSatisfy { $0.processID != nil } }
+        let before = workspace.notices.notices.filter { $0.kind == .panes }.count
+        let refused = workspace.runInPane(title: "pn-refused", command: "true")
+        let after = workspace.notices.notices.filter { $0.kind == .panes }.count
+        if refused != nil || workspace.panes.count != 4 { failures.append("busy grid accepted a pane") }
+        if after != before + 1 { failures.append("no notice for a full grid") }
+        workspace.notices.notices.filter { $0.kind == .panes }.forEach { workspace.notices.dismiss($0.id) }
+        return .make("PN-01a", "4칸이 빈 셸이면 그 자리에서 시작, 모두 바쁘면 거부하고 알림",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// Codex build-84 review F1: switching barracks during a scan left the

@@ -430,9 +430,27 @@ extension WorkspaceModel {
         }
         guard let barrack = selectedBarrack else { return nil }
         let current = grid
-        guard current.panes.count < PaneLayout.quad.paneCount else { return nil }
-        let pane = makePane(title: title, command: command, environment: [:], directory: barrack.path, attachingTo: nil)
-        let panes = current.panes + [pane]
+        let pane: TerminalPane
+        let panes: [TerminalPane]
+        if current.panes.count < PaneLayout.quad.paneCount {
+            pane = makePane(title: title, command: command, environment: [:], directory: barrack.path, attachingTo: nil)
+            panes = current.panes + [pane]
+        } else if let idle = current.panes.firstIndex(where: \.isIdleShell) {
+            // A full grid of empty shells used to block every new agent
+            // (Codex build-84 review): an empty shell gives up its place;
+            // its screen goes to the archive like any closed pane.
+            pane = makePane(title: title, command: command, environment: [:], directory: barrack.path, attachingTo: nil)
+            var replaced = current.panes
+            replaced[idle] = pane
+            panes = replaced
+        } else {
+            // Said, not swallowed: maintenance and Council started nothing
+            // without a word when the grid was full.
+            notices.post(AppNotice(kind: .panes, title: "터미널 \(PaneLayout.quad.paneCount)개가 모두 사용 중",
+                                   body: "하나를 닫으면 \(title)을(를) 시작할 수 있습니다.",
+                                   actionLabel: nil, barrackID: barrack.id, sessionID: nil))
+            return nil
+        }
         let needed = max(panes.count, current.layout.paneCount)
         let layout = PaneLayout.allCases.first { $0.paneCount >= needed } ?? .quad
         store(BarrackGrid(panes: panes, layout: layout, splitX: current.splitX, splitY: current.splitY))
@@ -584,7 +602,7 @@ extension WorkspaceModel {
             destination = .history
         case .sync:
             syncAll(paths: health?.outdatedBarracks ?? [])
-        case .registry, .daemon:
+        case .registry, .daemon, .panes:
             break
         case .export:
             if let path = notice.sessionID { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }

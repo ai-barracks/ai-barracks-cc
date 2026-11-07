@@ -59,7 +59,10 @@ struct AgentBar: View {
         .disabled(workspace.selectedBarrack == nil)
     }
 
-    private var isFull: Bool { workspace.panes.count >= PaneLayout.quad.paneCount }
+    /// Full means no room and no empty shell to take over.
+    private var isFull: Bool {
+        workspace.panes.count >= PaneLayout.quad.paneCount && !workspace.panes.contains(where: \.isIdleShell)
+    }
     private var fullHelp: String { "터미널 \(PaneLayout.quad.paneCount)개 사용 중 — 하나를 닫으면 새로 시작할 수 있습니다" }
 
     private var chips: some View {

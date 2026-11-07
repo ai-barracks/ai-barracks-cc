@@ -60,6 +60,11 @@ enum ProcessTree {
         return pid_t(info.pbi_ppid)
     }
 
+    static func hasChildren(_ pid: pid_t) -> Bool {
+        var children = [pid_t](repeating: 0, count: 16)
+        return proc_listchildpids(pid, &children, Int32(children.count * MemoryLayout<pid_t>.size)) > 0
+    }
+
     static func isDescendant(_ pid: pid_t, of root: pid_t) -> Bool {
         var current = pid
         for _ in 0..<64 {

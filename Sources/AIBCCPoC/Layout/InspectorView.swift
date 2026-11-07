@@ -61,7 +61,8 @@ struct BarrackInfoPanel: View {
         Section("개요") {
             LabeledContent("세션 기록", value: "\(overview.sessions)")
             LabeledContent("Wiki 토픽", value: "\(overview.wikiTopics)")
-            LabeledContent("규칙", value: "\(overview.ruleCount) (A \(overview.rules.mustAlways.count) · N \(overview.rules.mustNever.count) · L \(overview.rules.learned.count))")
+            LabeledContent("규칙", value: "\(overview.totalRules)")
+                .help("RULES.md의 규칙 항목 전체. 폼으로 편집하는 목록: Must Always \(overview.rules.mustAlways.count) · Must Never \(overview.rules.mustNever.count) · Learned \(overview.rules.learned.count)")
             LabeledContent("Skills", value: "\(overview.skills)")
         }
         Section("정체성 (SOUL)") {
