@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+사용자 실사용 피드백(2026-11-06) 반영.
+
+- **Agents**: "세션" → "Agents". 그리드 위 New Agent 막대(Claude·Codex·Gemini·Terminal·Council, skip-permissions)와 실행 중 에이전트 칩(상태 점·전환·닫기)
+- **Barrack**: 사이드바 맨 위 새 항목 — 배럭 정보(Info)와 상태(Status)를 나란히. 오른쪽 패널은 Outputs만
+- 메뉴 이름 통일: Barrack · Agents · History · Rules · Wiki · Skills · Council · Git
+- **창 크기 변경 충돌 수정**: Rules·Wiki·History·Skills에서 창을 최소 크기로 줄이면 앱이 종료되던 문제(SwiftUI inspector의 열 크기 협상 루프). Outputs 패널을 직접 만든 열로 바꿔 해결. 화면 전환 때 패널 폭이 바뀌던 것과 터미널 출력이 사라지던 것도 함께 해결
+- 좁은 창: Agents 막대는 가로 스크롤, Barrack은 위아래로 쌓임, 문서 목록은 좁아짐, 헤더 문구는 한 줄(전체는 마우스 오버)
+
 ## [2.0.0-beta.2] - 2026-11-05
 
 Codex 리뷰 r6·r7(수정분 리뷰) 지적 30건을 고친 베타.

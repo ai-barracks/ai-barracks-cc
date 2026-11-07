@@ -7,8 +7,8 @@
 | # | 관문 | 상태 |
 |---|---|---|
 | G1 | v1 기능 패리티 A~H | 완료(계획표 참조) |
-| G2 | 전체 self-test 0 fail (개발 빌드, 모든 스위트) | 2026-11-05 167 pass / 0 fail(r7 반영 후, 사용자 파일 무변경) + `run-persist-test.sh` PS-01·02·04·05 pass + `ptyd-smoke.py` 21/21. 출시 직전 재실행 |
-| G3 | 출시 빌드 self-test (`VARIANT=release`) unit·agents | 2026-11-05 unit·agents·integration 111 pass / 0 fail(beta.2 = r6+r7, 사용자 파일 무변경) |
+| G2 | 전체 self-test 0 fail (개발 빌드, 모든 스위트) | 2026-11-07 167 pass / 2 fail — IN-09(Ctrl+C) 환경 문제: beta.2도 같은 방식으로 실패(known-issues #10). `scripts/ux-stress.sh` 8/8, LY-01a pass. 출시 직전 재실행 |
+| G3 | 출시 빌드 self-test (`VARIANT=release`) unit·agents | 2026-11-07 unit·agents·integration 113 pass / 0 fail(build 84, 사용자 파일 무변경) |
 | G4 | 사람 검사 15건 (README "사람 검사 5분", 한국어 IME 등) | **미실시 — 사용자** |
 | G5 | Codex 리뷰 r4(87a558c..55c718c) + r5 + MD-05, 수정분 리뷰 r6·r7 | **충족(2026-11-05)** — r4 17건·r5 20건·r6 17건·r7 13건 처리(`docs/reviews/codex-r{4,5,6,7}-triage.md`), MD-05 pass. r7 수정분(004ca8b) 재리뷰는 GA 전에 |
 | G6 | 실사용 smoke: 출시 앱으로 배럭 1곳에서 세션·문서 편집·Skills·Git 한 바퀴 | 미실시 |

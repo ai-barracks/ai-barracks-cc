@@ -10,14 +10,17 @@
 
 - **터미널**: Ghostty 엔진 기반이다. 출력이 폭주하는 중에도 입력이 밀리지 않는다(입력 지연 p95: v1.6.1 240 ms, v2 16.7 ms). 리사이즈해도 줄·열이 잘리지 않고, 1·2·4 분할을 지원한다.
 - **세션 유지**: 터미널은 별도 PTY 데몬이 소유한다. 앱을 끄거나 다시 켜도 에이전트 세션이 살아 있고, 다시 붙으면 이전 화면을 재생한다.
-- **배럭 문서**: RULES·SOUL·GROWTH·agent.yaml을 폼으로 편집한다. 바깥에서 동시에 수정한 경우 섹션 단위로 병합한다. Wiki·세션 기록·Skills도 편집할 수 있다.
-- **운영**: 정비 큐(배럭별 할 일), ⌘K 팔레트, Git(배럭 경로만 커밋), Council, 새 에이전트(⌘N), 배럭 추가, 터미널 출력 보관, 모델 프로필, 예약 활성화(v1과 같은 파일·잠금을 써서 이중 실행 없음), v1 설정 가져오기.
+- **Agents**: 그리드 위 New Agent 막대에서 Claude·Codex·Gemini·Terminal·Council을 한 번에 시작하고, 칩 목록에서 실행 중인 에이전트의 상태(작업 중·입력 대기·완료)를 보며 전환한다.
+- **Barrack**: 배럭 정보(개요·SOUL·agent.yaml·실행 중 세션)와 상태(점검이 필요한 항목)를 한 화면에서 본다.
+- **배럭 문서**: Rules(RULES·SOUL·GROWTH·agent.yaml)를 폼으로 편집한다. 바깥에서 동시에 수정한 경우 섹션 단위로 병합한다. Wiki·History(세션 기록·터미널 출력)·Skills도 다룬다.
+- **Outputs**: 터미널 옆에 배럭의 최근 문서를 바로 렌더링해 보여 준다(폭 조절 가능).
+- **운영**: ⌘K 팔레트, Git(배럭 경로만 커밋), Council, 배럭 추가, 터미널 출력 보관, 모델 프로필, 예약 활성화(v1과 같은 파일·잠금을 써서 이중 실행 없음), v1 설정 가져오기.
 
 | | |
 |---|---|
-| ![배럭 문맥](docs/screenshots/02-context.png) | ![SOUL 폼](docs/screenshots/08-soul-form.png) |
+| ![Barrack](docs/screenshots/02-barrack.png) | ![SOUL 폼](docs/screenshots/08-soul-form.png) |
 | ![Skills](docs/screenshots/11-skills.png) | ![Git](docs/screenshots/13-git.png) |
-| ![정비 큐](docs/screenshots/03-maintenance.png) | ![다크 모드](docs/screenshots/16-workspace-dark.png) |
+| ![History](docs/screenshots/05-history.png) | ![다크 모드](docs/screenshots/16-workspace-dark.png) |
 
 전체 화면 목록은 [docs/screenshots/](docs/screenshots/)에 있다.
 
