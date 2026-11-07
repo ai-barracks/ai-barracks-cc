@@ -31,7 +31,11 @@ for destination in $DESTINATIONS; do
   else
     wait "$app"; status="exit $?"
   fi
-  if grep -q "stress $destination round 9" "$work/out.txt" && ! grep -q "Terminating app" "$work/out.txt"; then
+  # Done marker (printed after the last round's resize, Codex build-84 F4),
+  # no exception, and a normal end: 3 = incomplete run, the usual exit of a
+  # partial self-test; 0 would mean every criterion passed.
+  if grep -q "stress $destination done" "$work/out.txt" && ! grep -q "Terminating app" "$work/out.txt" \
+      && { [ "$status" = "exit 3" ] || [ "$status" = "exit 0" ]; }; then
     echo "PASS $destination ($status)"
   else
     echo "FAIL $destination ($status) $(grep -m1 'reason:' "$work/out.txt" | cut -c1-140)"

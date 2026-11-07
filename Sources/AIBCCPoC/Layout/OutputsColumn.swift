@@ -10,18 +10,35 @@ import SwiftUI
 struct OutputsColumn: View {
     @Bindable var workspace: WorkspaceModel
     let artifacts: ArtifactStore
+    /// The detail column's width: the panel never takes the center's share.
+    let available: CGFloat
     @AppStorage(AppConstants.Layout.outputsWidthKey) private var width = Double(AppConstants.Layout.inspectorIdealWidth)
     @State private var dragStart: Double?
 
     var body: some View {
-        HStack(spacing: 0) {
-            handle
-            InspectorView(workspace: workspace, artifacts: artifacts)
-                .frame(width: CGFloat(clamped(width)))
+        let shown = Self.width(stored: width, available: available)
+        if shown > 0 {
+            HStack(spacing: 0) {
+                handle(shown)
+                InspectorView(workspace: workspace, artifacts: artifacts)
+                    .frame(width: shown)
+            }
         }
     }
 
-    private var handle: some View {
+    /// What the panel may take: the user's width within its bounds, but
+    /// never more than leaves `centerReserveWidth` to the terminals and the
+    /// Agents bar; folded away (0) below `outputsFoldWidth` (Codex build-84
+    /// review F2: a widened panel left a minimum window's terminal 8
+    /// columns wide and hid the New Agent buttons).
+    static func width(stored: Double, available: CGFloat) -> CGFloat {
+        let preferred = CGFloat(min(max(stored, Double(AppConstants.Layout.inspectorMinWidth)), Double(AppConstants.Layout.outputsMaxWidth)))
+        let room = available - AppConstants.Layout.centerReserveWidth
+        let shown = min(preferred, room)
+        return shown >= AppConstants.Layout.outputsFoldWidth ? shown : 0
+    }
+
+    private func handle(_ shown: CGFloat) -> some View {
         Rectangle()
             .fill(Color(nsColor: .separatorColor))
             .frame(width: 1)
@@ -36,7 +53,7 @@ struct OutputsColumn: View {
                     .gesture(
                         DragGesture(minimumDistance: 1, coordinateSpace: .global)
                             .onChanged { drag in
-                                let start = dragStart ?? width
+                                let start = dragStart ?? Double(shown)
                                 dragStart = start
                                 width = clamped(start - Double(drag.translation.width))
                             }

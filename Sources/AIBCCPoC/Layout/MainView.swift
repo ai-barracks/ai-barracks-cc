@@ -14,11 +14,13 @@ struct MainView: View {
                     ideal: AppConstants.Layout.sidebarMinWidth + 40
                 )
         } detail: {
-            HStack(spacing: 0) {
-                center
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if workspace.isArtifactPanelVisible {
-                    OutputsColumn(workspace: workspace, artifacts: artifacts)
+            GeometryReader { proxy in
+                HStack(spacing: 0) {
+                    center
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if workspace.isArtifactPanelVisible {
+                        OutputsColumn(workspace: workspace, artifacts: artifacts, available: proxy.size.width)
+                    }
                 }
             }
         }

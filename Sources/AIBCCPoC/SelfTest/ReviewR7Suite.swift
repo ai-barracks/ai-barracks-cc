@@ -13,7 +13,7 @@ struct ReviewR7Suite {
     }
 
     func run() async -> [TestResult] {
-        [await daemonUpgrade(), documents(), backlogOrder(), lockPath(), layoutMinimums()]
+        [await daemonUpgrade(), documents(), backlogOrder(), lockPath(), layoutMinimums(), outputsWidth()]
     }
 
     private func result(_ id: String, _ title: String, _ failures: [String], _ start: ContinuousClock.Instant) -> TestResult {
@@ -161,6 +161,23 @@ struct ReviewR7Suite {
             failures.append("no executable")
         }
         return result("LY-01a", "화면별 최소 폭·높이가 최소 창에서 각 열에 남는 공간 안", failures, start)
+    }
+
+    /// LY-02a (Codex build-84 review F2): Outputs never takes the center's
+    /// reserve, and folds away rather than squeezing in.
+    private func outputsWidth() -> TestResult {
+        let start = ContinuousClock.now
+        let reserve = AppConstants.Layout.centerReserveWidth
+        let cases: [(Double, CGFloat, CGFloat)] = [
+            (640, 1400, 640), (640, 720, 720 - reserve), (360, 720, 300), (360, 1200, 360),
+            (100, 1200, AppConstants.Layout.inspectorMinWidth), (9000, 2000, AppConstants.Layout.outputsMaxWidth),
+            (640, reserve + AppConstants.Layout.outputsFoldWidth - 1, 0), (640, 300, 0),
+        ]
+        let failures = cases.compactMap { stored, available, expected -> String? in
+            let got = OutputsColumn.width(stored: stored, available: available)
+            return got == expected ? nil : "stored \(Int(stored)) in \(Int(available)) → \(Int(got)) (want \(Int(expected)))"
+        }
+        return result("LY-02a", "Outputs 폭은 가운데 작업면 몫(\(Int(reserve))pt)을 넘지 않고, 안 되면 접힘", failures, start)
     }
 
     /// R7-01d: the development and release apps lock the same file for

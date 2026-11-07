@@ -126,6 +126,11 @@ enum AppConstants {
         static let inspectorMinWidth: CGFloat = 300
         static let inspectorIdealWidth: CGFloat = 360
         static let outputsMaxWidth: CGFloat = 640
+        /// Kept for the terminals and the Agents bar however wide Outputs is
+        /// set (one pane ≈ 50 columns).
+        static let centerReserveWidth: CGFloat = 420
+        /// Narrower than this, Outputs folds away instead of squeezing in.
+        static let outputsFoldWidth: CGFloat = 200
         static let outputsWidthKey = "outputsColumnWidth"
         /// What a minimum-size window leaves the center column (window
         /// minimum − sidebar − inspector). Center content must need no more
