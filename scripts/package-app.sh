@@ -76,6 +76,10 @@ assemble_bundle() {
   local plist="$APP/Contents/Info.plist" buddy=/usr/libexec/PlistBuddy
   "$buddy" -c "Add :CFBundleIconFile string AppIcon" "$plist"
   "$buddy" -c "Set :CFBundleVersion $(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)" "$plist"
+  # Binds an installed app to its source (Codex build-84 review: no commit
+  # in the build record meant a release could not be tied to one).
+  "$buddy" -c "Add :AIBSourceCommit string $(source_commit)" "$plist"
+  "$buddy" -c "Add :AIBSourceDirty bool $(source_dirty)" "$plist"
   if [[ "$VARIANT" == release ]]; then
     "$buddy" -c "Set :CFBundleIdentifier $BUNDLE_ID" "$plist"
     "$buddy" -c "Set :CFBundleName $SHORT_NAME" "$plist"
@@ -102,6 +106,17 @@ sign_bundle() {
   codesign --verify --strict --verbose=1 "$APP"
 }
 
+source_commit() { git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown; }
+
+# Tracked changes other than Finder's .DS_Store make the build unreproducible.
+source_dirty() {
+  if git -C "$ROOT" status --porcelain --untracked-files=no 2>/dev/null | grep -qv '\.DS_Store$'; then
+    echo true
+  else
+    echo false
+  fi
+}
+
 write_build_info() {
   local ghostty_ref
   ghostty_ref="$(find "$ROOT/.build/checkouts" -maxdepth 2 -name Ghostty.ref -exec cat {} \; 2>/dev/null | head -1 || true)"
@@ -111,6 +126,10 @@ write_build_info() {
   "config": "$CONFIG",
   "variant": "$VARIANT",
   "version": "$VERSION",
+  "build": "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")",
+  "source_commit": "$(source_commit)",
+  "source_dirty": $(source_dirty),
+  "executable_sha256": "$(shasum -a 256 "$APP/Contents/MacOS/$EXEC_NAME" | awk '{print $1}')",
   "swift": "$(swift --version 2>&1 | head -1 | sed 's/"/\\"/g')",
   "libghostty_spm": "2.2.2026103001",
   "ghostty_upstream_ref": "${ghostty_ref:-unknown}",
