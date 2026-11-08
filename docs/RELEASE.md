@@ -18,6 +18,7 @@
 - 2026-11-05 `v2.0.0-beta.1` pre-release(`v2` 브랜치, DMG·.app.tar.gz·SHA256SUMS, arm64). v1 `main`·latest(v1.6.1)는 그대로다. **예약 활성화 교착(r6 blocker) 포함 → beta.2로 교체**
 - 2026-11-05 `v2.0.0-beta.2` pre-release: r6 17건·r7 13건 반영
 - 2026-11-08 `v2.0.0-beta.3` pre-release(사용자 "다른 mac에 설치해서 사용해보게 repo에 올려줘"): 태그 → `32a738afb036cf1aead5b8937d39a09e96d0ca6c`(원격 `v2`도 이 commit까지만), build 93, `AIBSourceDirty=false`, 실행 파일 SHA-256 `7f2ef54ca6735353e65f9dcc94e0c9c73ca273717951ee96b949ab5237c41c78`. 자산 SHA-256: DMG `fdc8b1ac148872df567d37ca4183e653fb0aa4b44a9e95c1e85d7b1a41166527`, app.tar.gz `74d77dfbcc403fff4eb239a6363aa78aa50bab52d97e71bb1d3b30f32395ae28`(내려받아 `shasum -c` 확인, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 177/0, G3 120/0, ux-stress 8/8, LY-02b, smoke 21/21. latest는 v1.6.1 유지. P11·P03(그 이후 commit)은 Codex 재리뷰·실행 검증 대기라 미포함
+- 2026-11-09 `v2.0.0-beta.4` pre-release(사용자 "내일 새 mac에서 테스트, 베타 릴리즈 해놔줘" → Codex 한도로 재리뷰 대기임을 묻고 "지금 게시" 선택): 태그·원격 `v2` → `d5e61833e1a1d4fba5d4382e3f63f36d31355270`, build 107, `AIBSourceDirty=false`, 실행 파일 SHA-256 `635d26f2799a6193f5640bce02550d4ef3e794fbcf6b9bdcc3f65fd043fc2578`. 자산 SHA-256: DMG `895dc393e360ab5859875bdc25881b364bc2b62798cd13b17e1acda924f3e41a`, app.tar.gz `271ccd2e323a97fe9dd2efa080478a3fc027c64a138fb52f40bfae07d27f8a7d`(내려받아 `shasum -c` 확인, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 185/0, G3 128/0, ux-stress 8/8, LY-02b, smoke 22/22. latest는 v1.6.1 유지. **Codex 재리뷰(ad7d172..d5e6183) 대기** — 11/11 19:46 이후 `docs/reviews/codex-p11p03-rereview-prompt.md`로 재실행, 지적은 beta.5로
 
 ## 미완 범위 (설계 대비, beta에 표기)
 
