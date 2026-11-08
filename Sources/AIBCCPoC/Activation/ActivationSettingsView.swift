@@ -40,6 +40,31 @@ final class ActivationSettingsModel {
         view = load()
     }
 
+    /// Re-reads while the section is shown (v1 polled every 5 s): another
+    /// app may hold the schedule, and runs add history.
+    func poll(every interval: Duration) async {
+        while !Task.isCancelled {
+            refresh()
+            try? await Task.sleep(for: interval)
+        }
+    }
+
+    /// ON is not OFF just because no slot is next: on while this app cannot
+    /// run the schedule (another app holds it, file error) says so (Codex
+    /// P11 review).
+    var statusText: String {
+        switch (isOn, view.nextSlot) {
+        case let (true, next?): "다음 실행: " + next.formatted(date: .abbreviated, time: .shortened)
+        case (true, nil) where !view.available: "켜져 있음 — 이 앱은 지금 예약을 실행하지 않습니다"
+        case (true, nil): "켜져 있음"
+        case (false, _): "꺼짐 — 예약된 요청 없음"
+        }
+    }
+
+    func confirmationText(next: Date) -> String {
+        "\(providers)에 매일 06·11·16·21시(KST)마다 사용자 개입 없이 \"OK\" 한 줄 요청을 보냅니다. CLI 한 번 실행에 제공자 내부 재시도가 포함될 수 있습니다. 요청은 사용량 한도를 소비하고 한도 초기화를 보장하지 않으며, 요금제에 따라 추가 사용량이 청구될 수 있습니다. OFF로 이후 요청은 멈추지만 이미 보낸 요청은 되돌릴 수 없습니다. 다음 실행 예정: \(next.formatted(date: .abbreviated, time: .shortened))."
+    }
+
     /// The switch: OFF saves at once, ON only opens the confirmation.
     func requestSwitch(on: Bool) {
         guard on != isOn else { return }
@@ -110,12 +135,7 @@ struct ActivationSettingsSection: View {
             guard let scheduler else { return }
             let model = self.model ?? ActivationSettingsModel(scheduler: scheduler)
             self.model = model
-            // Re-read while shown (v1 polled every 5 s): another app may hold
-            // the schedule, and runs add history.
-            while !Task.isCancelled {
-                model.refresh()
-                try? await Task.sleep(for: AppConstants.Activation.settingsRefresh)
-            }
+            await model.poll(every: AppConstants.Activation.settingsRefresh)
         }
     }
 }
@@ -127,20 +147,14 @@ private struct ActivationControls: View {
         Toggle("예약 활성화 켜기", isOn: Binding(get: { model.isOn }, set: { model.requestSwitch(on: $0) }))
             .disabled(!model.canSwitch)
             .help(model.canSwitch ? "" : "예약을 쓸 수 없는 상태에서는 켤 수 없습니다")
-            .confirmationDialog("실제 모델 요청을 예약할까요?",
-                                isPresented: Binding(get: { model.confirming }, set: { if !$0 { model.cancelEnable() } })) {
-                Button("자동 요청 활성화") { model.confirmEnable() }
-                Button("취소", role: .cancel) { model.cancelEnable() }
-            } message: {
-                Text(confirmationText)
-            }
+        if model.confirming { confirmation }
         HStack {
             Toggle("Claude Code", isOn: Binding(get: { model.view.config.claude }, set: { model.setProvider(\.claude, $0) }))
             Toggle("Codex", isOn: Binding(get: { model.view.config.codex }, set: { model.setProvider(\.codex, $0) }))
         }
         .toggleStyle(.checkbox)
         .disabled(!model.canPickProviders)
-        LabeledContent("다음 실행", value: model.view.nextSlot.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "꺼짐 — 예약된 요청 없음")
+        Text(model.statusText).font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary)
         if let error = model.view.error ?? model.message {
             Text(error).font(Tokens.Font.meta).foregroundStyle(Tokens.orange)
         }
@@ -154,8 +168,21 @@ private struct ActivationControls: View {
         }
     }
 
-    private var confirmationText: String {
-        let next = ActivationSchedule.nextSlot(after: Date()).formatted(date: .abbreviated, time: .shortened)
-        return "\(model.providers)에 매일 06·11·16·21시(KST)마다 사용자 개입 없이 \"OK\" 한 줄 요청을 보냅니다. CLI 한 번 실행에 제공자 내부 재시도가 포함될 수 있습니다. 요청은 사용량 한도를 소비하고 한도 초기화를 보장하지 않으며, 요금제에 따라 추가 사용량이 청구될 수 있습니다. OFF로 이후 요청은 멈추지만 이미 보낸 요청은 되돌릴 수 없습니다. 다음 실행 예정: \(next)."
+    /// v1's inline "Enable requests" box. Return takes 취소, the default;
+    /// turning on needs the explicit button (Codex P11 review: a dialog's
+    /// default button was not guaranteed to be the safe one).
+    private var confirmation: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+            Text("실제 모델 요청을 예약할까요?").font(Tokens.Font.body.weight(.semibold))
+            Text(model.confirmationText(next: ActivationSchedule.nextSlot(after: Date())))
+                .font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("취소") { model.cancelEnable() }.keyboardShortcut(.defaultAction)
+                Button("자동 요청 활성화") { model.confirmEnable() }
+            }
+        }
+        .padding(Tokens.Spacing.s)
+        .background(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.orange.opacity(0.5)))
     }
 }
