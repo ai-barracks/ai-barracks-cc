@@ -9,7 +9,7 @@ struct UnitSuite {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
          sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools(),
-         terminalOwnsControlKeys(), ruleCount()]
+         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions()]
     }
 
     private func terminalTools() -> TestResult {
@@ -276,6 +276,31 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["before": before?.rawValue ?? "nil", "after": after?.rawValue ?? "nil",
                                 "refused_bad_ids": "\(refused)"], startedAt: start)
+    }
+
+    /// HS-01a (Codex parity audit P09): v1's "empty 숨김" — not active and
+    /// no task or "(pending)" — on top of the status and client filters.
+    private func hideEmptySessions() -> TestResult {
+        let start = ContinuousClock.now
+        let make = { (id: String, client: String, status: String, task: String) in
+            SessionRecord(id: id, client: client, started: "", ended: "", status: status, task: task, continues: "")
+        }
+        let records = [
+            make("a", "Claude Code", "active", "(pending)"), make("b", "Claude Code", "completed", "(pending)"),
+            make("c", "Codex", "completed", "  "), make("d", "Codex", "interrupted", "fix login"),
+            make("e", "Claude Code", "completed", "write docs"),
+        ]
+        let ids = { (status: SessionHistoryView.StatusFilter, client: String, hide: Bool) in
+            SessionHistoryView.filter(records, status: status, client: client, hideEmpty: hide).map(\.id).joined()
+        }
+        let cases: [(String, String)] = [
+            (ids(.all, "all", true), "ade"), (ids(.all, "all", false), "abcde"),
+            (ids(.completed, "all", true), "e"), (ids(.all, "Codex", true), "d"), (ids(.active, "all", true), "a"),
+        ]
+        let wrong = cases.enumerated().filter { $0.element.0 != $0.element.1 }.map { "case\($0.offset)=\($0.element.0)" }
+        return .make("HS-01a", "빈 세션 숨기기 = v1(진행 중은 유지, 작업 없음·(pending) 숨김, 상태·클라이언트 필터와 함께)",
+                     status: wrong.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["wrong": wrong.joined(separator: ",")], startedAt: start)
     }
 
     /// OV-02a: Info counts every rule bullet, sub-sections included, and no

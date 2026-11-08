@@ -10,6 +10,8 @@ struct SessionHistoryView: View {
     @State private var records: [SessionRecord] = []
     @State private var status = StatusFilter.all
     @State private var client = "all"
+    /// v1 hid empty sessions by default (Codex parity audit P09).
+    @AppStorage(AppConstants.History.hideEmptyKey) private var hideEmpty = true
     @State private var selection: SessionRecord.ID?
     @State private var detail: SessionDetail?
 
@@ -65,17 +67,31 @@ struct SessionHistoryView: View {
         VStack(spacing: Tokens.Spacing.s) {
             Picker("", selection: $status) { ForEach(StatusFilter.allCases) { Text($0.label).tag($0) } }
                 .pickerStyle(.segmented).labelsHidden()
-            Picker("클라이언트", selection: $client) {
-                Text("모든 클라이언트").tag("all")
-                ForEach(Array(Set(records.map(\.client))).sorted(), id: \.self) { Text($0).tag($0) }
+            HStack {
+                Picker("클라이언트", selection: $client) {
+                    Text("모든 클라이언트").tag("all")
+                    ForEach(Array(Set(records.map(\.client))).sorted(), id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden()
+                Toggle("빈 세션 숨기기", isOn: $hideEmpty)
+                    .toggleStyle(.checkbox)
+                    .font(Tokens.Font.meta)
+                    .fixedSize()
+                    .help("진행 중이 아니고 작업 내용이 없거나 (pending)인 세션을 숨깁니다")
             }
-            .labelsHidden()
         }
         .padding(Tokens.Spacing.s)
     }
 
     private var filtered: [SessionRecord] {
-        records.filter { (status == .all || $0.status == status.rawValue) && (client == "all" || $0.client == client) }
+        Self.filter(records, status: status, client: client, hideEmpty: hideEmpty)
+    }
+
+    static func filter(_ records: [SessionRecord], status: StatusFilter, client: String, hideEmpty: Bool) -> [SessionRecord] {
+        records.filter {
+            (status == .all || $0.status == status.rawValue) && (client == "all" || $0.client == client)
+                && !(hideEmpty && $0.isEmpty)
+        }
     }
 
     private func live(for record: SessionRecord) -> LiveSession? {
@@ -87,6 +103,8 @@ struct SessionHistoryView: View {
         workspace.pendingSessionID = nil
         status = .all
         client = "all"
+        // A session asked for by name is shown even if it is empty.
+        if records.first(where: { $0.id == wanted })?.isEmpty == true { hideEmpty = false }
         selection = wanted
     }
 

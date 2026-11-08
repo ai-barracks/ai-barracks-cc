@@ -16,6 +16,11 @@ struct SessionRecord: Identifiable, Sendable, Equatable {
     var canContinue: Bool { status == "completed" || status == "interrupted" }
     /// "claude" / "codex" / "gemini" for `aib start`.
     var clientKey: String { client.lowercased().split(separator: " ").first.map(String.init) ?? "" }
+    /// v1 "empty": not running and never given a task (v1 SessionsTab).
+    var isEmpty: Bool {
+        let trimmed = task.trimmingCharacters(in: .whitespaces)
+        return status != "active" && (trimmed.isEmpty || trimmed == "(pending)")
+    }
 }
 
 struct SessionDetail: Sendable, Equatable {

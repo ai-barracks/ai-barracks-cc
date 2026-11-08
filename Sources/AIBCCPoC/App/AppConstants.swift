@@ -176,6 +176,10 @@ enum AppConstants {
         static let supportFolder = "CommandCenter2"
     }
 
+    enum History {
+        static let hideEmptyKey = "historyHideEmpty"
+    }
+
     enum Activation {
         /// Settings re-reads the schedule this often while shown (v1: 5 s).
         static let settingsRefresh: Duration = .seconds(5)
