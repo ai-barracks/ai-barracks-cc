@@ -121,6 +121,8 @@ enum PaletteCommands {
                   run: pane("aib status", "aib status")),
             .init(id: "aib-sync", title: "aib sync", detail: "dry-run 후 Enter로 적용", symbol: "arrow.triangle.2.circlepath", section: "aib",
                   run: pane("aib sync", MaintenanceScanner.confirmThenApply("aib sync --dry-run .", "aib sync ."))),
+            .init(id: "sync-pick", title: "배럭 골라서 Sync…", detail: "버전 표 · 여러 배럭 선택 · 미리보기 · 배럭별 결과",
+                  symbol: "checklist", section: "aib") { workspace.isSyncSheetPresented = true },
             .init(id: "sync-all", title: "모든 배럭 Sync", detail: "Sync All · dry-run 후 Enter로 적용",
                   symbol: "arrow.triangle.2.circlepath.circle", section: "aib") { workspace.syncAll(paths: []) },
             .init(id: "aib-lint", title: "aib wiki lint", detail: "위키 검증", symbol: "checkmark.seal", section: "aib",

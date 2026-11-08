@@ -27,6 +27,10 @@ struct MainView: View {
         .toolbar { toolbarContent }
         .sheet(isPresented: $workspace.isNewAgentSheetPresented) { NewAgentSheet(workspace: workspace) }
         .sheet(isPresented: $workspace.isCouncilSheetPresented) { CouncilSheet(workspace: workspace) }
+        .sheet(isPresented: $workspace.isSyncSheetPresented) {
+            BarrackSyncSheet(workspace: workspace,
+                             model: BarrackSyncModel(barracks: workspace.barracks, cliVersion: workspace.health?.cliVersion ?? ""))
+        }
         .alert("편집 중입니다", isPresented: Binding(get: { workspace.isConfirmingNavigation },
                                                 set: { if !$0 { workspace.cancelNavigation() } })) {
             Button("편집 버리고 이동", role: .destructive) { workspace.confirmNavigation() }

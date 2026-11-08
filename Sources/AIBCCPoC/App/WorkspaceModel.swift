@@ -81,6 +81,8 @@ final class WorkspaceModel {
     var destination: Destination = .sessions
     var isNewAgentSheetPresented = false
     var isCouncilSheetPresented = false
+    /// v1 System's batch sync (P05).
+    var isSyncSheetPresented = false
     var isAddBarrackPresented = false
     /// 기록 destination shows the terminal output archive tab.
     var historyShowsArchive = false

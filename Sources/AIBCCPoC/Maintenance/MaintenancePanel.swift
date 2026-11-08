@@ -15,6 +15,8 @@ struct MaintenancePanel: View {
                 Text(scanning ? "점검 중…" : items.isEmpty ? "판단할 항목 없음" : "판단 필요 \(items.count)")
                     .font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary)
                 Spacer()
+                Button { workspace.isSyncSheetPresented = true } label: { Image(systemName: "checklist") }
+                    .buttonStyle(.borderless).help("여러 배럭 골라서 Sync…")
                 Button { Task { await store.scan(barrack) } } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless).disabled(scanning).help("다시 점검")
             }
