@@ -304,7 +304,7 @@ final class PtySession: @unchecked Sendable {
 }
 
 /// Prepares every C string before fork so the child only makes
-/// async-signal-safe calls (sigprocmask, signal, chdir, execve, _exit).
+/// async-signal-safe calls (sigprocmask, signal, chdir, write, execve, _exit).
 private struct ChildLauncher {
     let request: CreateRequest
 
@@ -313,7 +313,12 @@ private struct ChildLauncher {
         let environment = request.environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
         let directory = strdup(request.workingDirectory)
         let path = strdup(request.executable)
-        defer { (argv + environment + [directory, path]).forEach { free($0) } }
+        // Said on the terminal when the folder cannot be entered: the child
+        // ends instead of running in the daemon's own folder (Codex P03
+        // review: a Quick Command whose folder vanished ran elsewhere).
+        let refusal = strdup("aibcc: cannot enter \(request.workingDirectory)\r\n")
+        let refusalLength = refusal.map { strlen($0) } ?? 0
+        defer { (argv + environment + [directory, path, refusal]).forEach { free($0) } }
         var size = winsize(ws_row: request.rows, ws_col: request.columns, ws_xpixel: 0, ws_ypixel: 0)
         var emptyMask = sigset_t()
         sigemptyset(&emptyMask)
@@ -335,7 +340,10 @@ private struct ChildLauncher {
                     signal(SIGTSTP, SIG_DFL)
                     signal(SIGTTIN, SIG_DFL)
                     signal(SIGTTOU, SIG_DFL)
-                    _ = chdir(directory)
+                    if chdir(directory) != 0 {
+                        if let refusal { _ = write(STDERR_FILENO, refusal, refusalLength) }
+                        _exit(126)
+                    }
                     execve(path, argvBuffer.baseAddress, envBuffer.baseAddress)
                     _exit(127)
                 }

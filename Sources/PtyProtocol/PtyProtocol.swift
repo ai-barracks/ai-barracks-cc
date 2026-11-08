@@ -163,7 +163,9 @@ public enum PtyProtocol {
     /// it holds no live session (r7: an update kept talking to the old
     /// daemon). 1 = before HELLO existed (2.0.0-beta.1); 2 = INPUT_REFUSED,
     /// leftover cleanup.
-    public static let revision = 2
+    /// 3: a child whose folder cannot be entered ends (126) instead of
+    /// running in the daemon's folder.
+    public static let revision = 3
 
     public static func json<T: Encodable>(_ value: T) -> Data {
         (try? JSONEncoder().encode(value)) ?? Data()

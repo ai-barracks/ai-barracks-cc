@@ -13,6 +13,8 @@ Checks, each printed as PASS/FAIL:
   paste       a 256 KiB paste is delivered completely (no EAGAIN loss)
   signals     the child has default SIGPIPE/SIGHUP dispositions
   exit        EXITED carries the exit status; ATTACH after exit replays + EXITED
+  cwd         a folder that cannot be entered ends the child with 126 and a
+              message instead of running in the daemon's folder (P03 review)
   kill        KILL hangs up a live child
   echo        keystroke round trip (cat in raw mode) p95 < 5 ms: coalescing
               must not delay interactive output
@@ -31,7 +33,7 @@ Checks, each printed as PASS/FAIL:
               (r4); the session lives on and I/O resumes once it reads (r6)
   leak        killed sessions are freed: daemon RSS stays flat over many
               create/output/kill cycles, each of which must succeed (r4, r6)
-  hello       HELLO is answered with the daemon's revision (2+), so an app
+  hello       HELLO is answered with the daemon's revision (3+), so an app
               can tell an older daemon left running by an earlier build (r7)
   leftovers   what an exited child left running is ended by KILL even if
               forked after the exit, by SHUTDOWN, and survives record
@@ -116,10 +118,10 @@ class Client:
         self.sock.close()
 
 
-def create(client, session, script, rows=24, cols=80):
+def create(client, session, script, rows=24, cols=80, cwd="/tmp"):
     env = {"PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8", "TERM": "xterm-256color"}
     client.send_json(CREATE, session, {
-        "executable": "/bin/sh", "argv": ["sh", "-c", script], "workingDirectory": "/tmp",
+        "executable": "/bin/sh", "argv": ["sh", "-c", script], "workingDirectory": cwd,
         "environment": env, "columns": cols, "rows": rows,
     })
 
@@ -221,6 +223,23 @@ def scenario_exit(path):
     info = json.loads(later.first(ATTACHED, job) or b"{}")
     check("exit", status == 7 and replayed and info.get("alive") is False, f"status={status}")
     later.close()
+
+
+def scenario_cwd(path):
+    """A folder that cannot be entered ends the child (126) with a message;
+    nothing runs in the daemon's own folder (Codex P03 review)."""
+    client = Client(path)
+    good, gone = uuid.uuid4(), uuid.uuid4()
+    folder = tempfile.mkdtemp(prefix="ptyd-cwd-")
+    create(client, good, "pwd -P; exit 0", cwd=folder)
+    create(client, gone, "echo RAN-ANYWAY; exit 0", cwd=folder + "-missing")
+    client.wait_for(lambda c: c.first(EXITED, good) is not None and c.first(EXITED, gone) is not None)
+    status = json.loads(client.first(EXITED, gone) or b"{}").get("status")
+    entered = os.path.realpath(folder).encode() in client.output(good)
+    refused = b"cannot enter" in client.output(gone) and b"RAN-ANYWAY" not in client.output(gone)
+    check("cwd", entered and refused and status == 126, f"entered={entered} refused={refused} status={status}")
+    client.close()
+    os.rmdir(folder)
 
 
 def scenario_echo(path):
@@ -431,7 +450,7 @@ def scenario_hello(path):
     client.send(HELLO, uuid.UUID(int=0))
     answered = client.wait_for(lambda c: c.first(WELCOME) is not None, timeout=2)
     revision = json.loads(client.first(WELCOME) or b"{}").get("revision")
-    check("hello", answered and isinstance(revision, int) and revision >= 2, f"revision={revision}")
+    check("hello", answered and isinstance(revision, int) and revision >= 3, f"revision={revision}")
     client.close()
 
 
@@ -504,6 +523,7 @@ def main():
             client, shell, pid = scenario_session(binary, path)
             scenario_signals(path)
             scenario_exit(path)
+            scenario_cwd(path)
             scenario_kill(client, shell, pid)
             scenario_echo(path)
             scenario_throughput(path)
