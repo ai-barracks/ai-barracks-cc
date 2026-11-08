@@ -9,7 +9,7 @@ struct UnitSuite {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
          sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools(),
-         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions()]
+         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions(), wikiIndex()]
     }
 
     private func terminalTools() -> TestResult {
@@ -276,6 +276,42 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["before": before?.rawValue ?? "nil", "after": after?.rawValue ?? "nil",
                                 "refused_bad_ids": "\(refused)"], startedAt: start)
+    }
+
+    /// WK-01a (Codex parity audit P10): Index.md's topic table and Log.md's
+    /// latest lines, as v1 get_wiki_index read them.
+    private func wikiIndex() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let index = """
+        # LLM Wiki Index
+
+        > note
+
+        | Topic | File | Updated | Summary |
+        |-------|------|---------|---------|
+        | Beta | [b.md](topics/b.md) | 2026-11-08 | **굵게** 요약 | 파이프 |
+        | Alpha | [a.md](topics/a.md) | 2026-10-01 |  |
+        | Plain | topics/p.md | 2026-09-09 | 링크 없음 |
+
+        ## Schema Rules
+        | Topic | File | Updated | Summary |
+        | Ignored | x.md | - | - |
+        """
+        let topics = WikiIndex.parse(index) ?? []
+        if topics.map(\.name) != ["Beta", "Alpha", "Plain"] { failures.append("names \(topics.map(\.name))") }
+        if topics.first?.file != "topics/b.md" || topics.last?.file != "topics/p.md" { failures.append("links") }
+        if topics.first?.summary != "**굵게** 요약 | 파이프" || topics.first?.updated != "2026-11-08" { failures.append("summary \(topics.first?.summary ?? "")") }
+        if WikiIndex.parse("# Index\n\nno table here\n") != nil { failures.append("no table read as table") }
+        let log = "# Log\n\n> keep\n\n- [11-08] c\n\n- [11-07] b\n- [11-06] a\n- [11-05] z\n- [11-04] y\n- [11-03] x\n"
+        if WikiIndex.recentChanges(log) != ["[11-08] c", "[11-07] b", "[11-06] a", "[11-05] z", "[11-04] y"] { failures.append("recent") }
+        let wiki = WikiIndex(topics: topics, recentChanges: [])
+        let files = ["z.md", "a.md", "b.md", "c.md"].map { URL(fileURLWithPath: "/w/topics/\($0)") }
+        if wiki.ordered(files).map(\.lastPathComponent) != ["b.md", "a.md", "c.md", "z.md"] { failures.append("order") }
+        if wiki.entry(for: files[1])?.name != "Alpha" || wiki.entry(for: files[0]) != nil { failures.append("entry") }
+        return .make("WK-01a", "Wiki 목록 = Index.md 토픽 표(이름·요약·갱신일, Index 순서) + Log.md 최근 변경, 표가 없으면 파일 이름",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// HS-01a (Codex parity audit P09): v1's "empty 숨김" — not active and

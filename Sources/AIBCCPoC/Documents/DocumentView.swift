@@ -35,6 +35,8 @@ struct DocumentView: View {
     /// `aib sync --dry-run` after a save, when it objected (v1 FilesTab).
     @State private var validation: String?
     var validate: AibSync.Runner = AibSync.check
+    /// Index.md's topic table and Log.md's latest lines (Wiki only, P10).
+    @State private var wiki = WikiIndex(topics: nil, recentChanges: [])
 
     var body: some View {
         if documents.isEmpty {
@@ -63,13 +65,9 @@ struct DocumentView: View {
 
     private var browser: some View {
         HStack(spacing: 0) {
-            List(documents, id: \.self, selection: guardedSelection) { file in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title(of: file)).font(Tokens.Font.body).lineLimit(1)
-                    if destination == .rules, let role = BarrackDocuments.role(of: file.lastPathComponent) {
-                        Text(role).font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(2)
-                    }
-                }
+            List(selection: guardedSelection) {
+                ForEach(documents, id: \.self) { file in row(file).tag(file) }
+                if destination == .wiki { WikiListExtras(wiki: wiki) }
             }
             .listStyle(.sidebar)
             .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.listWidth,
@@ -85,6 +83,9 @@ struct DocumentView: View {
         .onChange(of: pending) { if let next = takePending() { selection = next } }
         .onChange(of: selection, initial: true) { load() }
         .onChange(of: changes) { if !isEditing && !isListEditing { load() } }
+        .task(id: WikiReload(destination: destination, barrack: barrack.id, changes: changes)) {
+            wiki = destination == .wiki ? WikiIndex.load(barrack: barrack.url) : WikiIndex(topics: nil, recentChanges: [])
+        }
         .onChange(of: pendingEdit) { takePendingEdit() }
         .onChange(of: isDirty, initial: true) { editInProgress.wrappedValue = isDirty }
         .onChange(of: discardRevision) {
@@ -256,7 +257,7 @@ struct DocumentView: View {
                 at: root.appendingPathComponent("wiki/topics"), includingPropertiesForKeys: nil)) ?? []
             let index = root.appendingPathComponent("wiki/Index.md")
             return [index].filter { FileManager.default.fileExists(atPath: $0.path) }
-                + topics.filter { $0.pathExtension == "md" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+                + wiki.ordered(topics.filter { $0.pathExtension == "md" })
         case .council:
             return BarrackDocuments.councilMinutes(in: root)
         case .barrack, .sessions, .history, .git, .skills:
@@ -282,6 +283,27 @@ struct DocumentView: View {
         file.deletingPathExtension().lastPathComponent
     }
 
+    /// Rules show what each file is for; Wiki topics show Index.md's name,
+    /// summary and date (v1 WikiTab), or the file name when not listed.
+    private func row(_ file: URL) -> some View {
+        let entry = destination == .wiki ? wiki.entry(for: file) : nil
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(entry?.name ?? title(of: file)).font(Tokens.Font.body).lineLimit(1)
+            if destination == .rules, let role = BarrackDocuments.role(of: file.lastPathComponent) {
+                Text(role).font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(2)
+            }
+            if let entry {
+                if !entry.summary.isEmpty {
+                    Text(WikiListExtras.inline(entry.summary)).font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary).lineLimit(2)
+                }
+                if !entry.updated.isEmpty {
+                    Text(entry.updated).font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary)
+                }
+            }
+        }
+        .help(entry.map { "\($0.name) — \($0.file)" } ?? file.lastPathComponent)
+    }
+
     private func load() {
         failure = nil
         if loadedFile != selection { validation = nil }
@@ -300,5 +322,39 @@ struct DocumentView: View {
         // A SKILL.md's frontmatter becomes a short header instead of raw YAML.
         source = file.pathExtension == "md" ? BarrackDocuments.frontmatterAsHeader(text) : "```yaml\n" + text + "\n```"
         takePendingEdit()
+    }
+}
+
+/// Reloads the Wiki index when the destination, barrack or files change.
+private struct WikiReload: Equatable {
+    let destination: Destination
+    let barrack: Barrack.ID
+    let changes: Int
+}
+
+/// Below the Wiki topics: a note when Index.md's table could not be read
+/// (the file names stand in, the raw Index stays readable), and Log.md's
+/// latest changes (v1 "Recent Changes").
+private struct WikiListExtras: View {
+    let wiki: WikiIndex
+
+    var body: some View {
+        if wiki.topics == nil {
+            Text("Index.md의 토픽 표를 읽지 못해 파일 이름으로 보여 줍니다. 원문은 Index에서 볼 수 있습니다.")
+                .font(Tokens.Font.meta).foregroundStyle(Tokens.orange)
+        }
+        if !wiki.recentChanges.isEmpty {
+            Section("최근 변경") {
+                ForEach(Array(wiki.recentChanges.enumerated()), id: \.offset) { _, change in
+                    Text(Self.inline(change)).font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary).lineLimit(3)
+                }
+            }
+        }
+    }
+
+    /// Bold and code spans as in the Index; plain text if it is not Markdown.
+    static func inline(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
     }
 }

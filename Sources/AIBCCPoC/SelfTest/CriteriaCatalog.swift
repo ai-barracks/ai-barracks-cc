@@ -129,6 +129,7 @@ enum CriteriaCatalog {
         .init(id: "PR-01", title: "Provider/Model 프로필(v1 providers)", blocking: false, requires: ["PR-01a", "PR-01b"]),
         .init(id: "SB-01", title: "터미널 출력 보관(v1 scrollback archive)", blocking: false, requires: ["SB-01a", "SB-01b"]),
         .init(id: "OV-01", title: "배럭 개요(v1 Overview)", blocking: false, requires: ["OV-01a"]),
+        .init(id: "WK-01", title: "Wiki 목록 메타데이터(v1 Index·Recent Changes)", blocking: false, requires: ["WK-01a"]),
         .init(id: "HS-01", title: "기록: 빈 세션 숨기기(v1)", blocking: false, requires: ["HS-01a"]),
         .init(id: "OV-02", title: "Info 규칙 수가 RULES.md 전체와 일치", blocking: false, requires: ["OV-02a"]),
         .init(id: "BA-01", title: "배럭 추가·제거·새로 고침 = v1(aib init / barracks remove / refresh)", blocking: false, requires: ["BA-01a"]),
