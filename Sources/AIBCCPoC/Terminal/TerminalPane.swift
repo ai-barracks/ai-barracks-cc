@@ -24,11 +24,13 @@ final class TerminalPane: Identifiable {
     /// Started as a plain login shell (no command, not a reattach).
     let isPlainShell: Bool
     /// Where it started, and the command as the user gave it (not the
-    /// shell wrapper): what "Quick Command로 저장" fills in (v1 Save).
+    /// shell wrapper): what "Quick Command로 저장" fills in (v1 Save). A
+    /// reattached pane whose launch was not recorded has no folder.
     let workingDirectory: String?
     let userCommand: String?
     /// Started as this agent: nothing is typed into it on the user's behalf.
-    let agent: AgentClient?
+    /// Settable so a self-test can turn a fixture into an agent mid-flow.
+    var agent: AgentClient?
     let state: TerminalViewState
     /// Daemon link (daemon backend only).
     let remote: DaemonSession?

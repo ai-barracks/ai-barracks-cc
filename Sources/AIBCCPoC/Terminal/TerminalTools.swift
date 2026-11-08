@@ -34,9 +34,11 @@ final class QuickCommandStore {
     func upsert(_ quick: QuickCommand) {
         let trimmed = quick.command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let folder = quick.cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Blank means the barrack's folder; any other path is kept as given
+        // (a folder name may end in a space).
+        let blank = quick.cwd?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
         let cleaned = QuickCommand(id: quick.id, label: quick.label.isEmpty ? trimmed : quick.label, command: trimmed,
-                                   cwd: folder?.isEmpty == false ? folder : nil)
+                                   cwd: blank ? nil : quick.cwd)
         commands = commands.contains { $0.id == quick.id }
             ? commands.map { $0.id == quick.id ? cleaned : $0 }
             : commands + [cleaned]

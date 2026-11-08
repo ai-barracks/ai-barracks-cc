@@ -10,6 +10,8 @@ struct PaneMenu: View {
         Menu {
             Button("출력 내보내기") { workspace.exportOutput(of: pane) }
             Button("Quick Command로 저장…") { workspace.saveDraft(from: pane) }
+                .disabled(!workspace.canSaveDraft(from: pane))
+                .help(workspace.canSaveDraft(from: pane) ? "이 터미널의 이름·시작 명령·폴더로 채웁니다" : "다시 연결된 터미널이라 시작 명령·폴더를 알 수 없습니다")
             if !workspace.quickCommands.commands.isEmpty {
                 Menu("Quick Command 실행 (새 터미널)") {
                     ForEach(workspace.quickCommands.commands) { quick in
@@ -22,7 +24,7 @@ struct PaneMenu: View {
                     }
                 }
                 .disabled(workspace.isAgent(pane))
-                .help(workspace.isAgent(pane) ? "에이전트 터미널에는 입력하지 않습니다" : "이 터미널에 명령을 입력하고 Enter")
+                .help(workspace.isAgent(pane) ? "에이전트 터미널에는 입력하지 않습니다" : "실행 중인 프로그램을 확인한 뒤 명령을 입력하고 Enter")
             }
             Button("Quick Commands 관리…") { workspace.quickCommandDraft = QuickCommand(label: "", command: "") }
             Divider()
@@ -124,23 +126,18 @@ struct QuickCommandPrompts: ViewModifier {
                 switch prompt {
                 case let .missingFolder(quick):
                     Button("배럭 폴더에서 이번만 실행") { workspace.runInBarrackFolder(quick) }
-                    // A sheet asked for while the alert is still closing is dropped.
-                    Button("경로 수정") {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.Layout.presentAfterAlert) {
-                            workspace.quickCommandDraft = quick
-                        }
-                    }
+                    Button("경로 수정") { workspace.editAfterAlert(quick) }
                     Button("취소", role: .cancel) {}
-                case let .confirmSend(quick, pane):
-                    Button("입력") { _ = workspace.type(quick, into: pane) }
+                case let .confirmSend(quick, pane, program):
+                    Button("입력") { workspace.confirmSend(quick, to: pane, program: program) }
                     Button("취소", role: .cancel) {}
                 }
             } message: { prompt in
                 switch prompt {
                 case let .missingFolder(quick):
                     Text("\(quick.cwd ?? "")\n폴더가 없습니다. 다른 위치에서 조용히 실행하지 않습니다.")
-                case let .confirmSend(quick, pane):
-                    Text("\(pane.title)에서 실행 중인 프로그램이 다음을 입력으로 받습니다:\n\(quick.command)")
+                case let .confirmSend(quick, pane, program):
+                    Text("\(pane.title)에서 실행 중인 \(program?.name ?? "프로그램(확인 불가)")이(가) 다음을 입력으로 받습니다:\n\(quick.command)")
                 }
             }
     }
@@ -148,7 +145,7 @@ struct QuickCommandPrompts: ViewModifier {
     private var title: String {
         switch workspace.quickCommandPrompt {
         case let .missingFolder(quick)?: "\(quick.label): 폴더 없음"
-        case let .confirmSend(_, pane)?: "\(pane.title)에 입력할까요?"
+        case let .confirmSend(_, pane, _)?: "\(pane.title)에 입력할까요?"
         case nil: ""
         }
     }

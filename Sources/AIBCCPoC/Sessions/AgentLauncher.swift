@@ -64,6 +64,20 @@ enum ProcessTree {
         return pid_t(info.pbi_ppid)
     }
 
+    /// The program in the foreground of `pid`'s terminal: its process
+    /// group and leader name. nil when it cannot be read.
+    static func foreground(of pid: pid_t?) -> ForegroundProgram? {
+        guard let pid, pid > 0 else { return nil }
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        let group = pid_t(info.e_tpgid)
+        guard group > 0 else { return nil }
+        var name = [CChar](repeating: 0, count: 256)
+        guard proc_name(group, &name, UInt32(name.count)) > 0 else { return nil }
+        return ForegroundProgram(group: group, name: String(cString: name))
+    }
+
     static func hasChildren(_ pid: pid_t) -> Bool {
         var children = [pid_t](repeating: 0, count: 16)
         return proc_listchildpids(pid, &children, Int32(children.count * MemoryLayout<pid_t>.size)) > 0
@@ -78,4 +92,10 @@ enum ProcessTree {
         }
         return false
     }
+}
+
+/// What a terminal was running in the foreground when the user said yes.
+struct ForegroundProgram: Equatable, Sendable {
+    let group: pid_t
+    let name: String
 }

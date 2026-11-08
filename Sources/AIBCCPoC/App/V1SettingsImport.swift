@@ -81,14 +81,41 @@ enum V1SettingsImport {
         storeFiles().map { parse(items(in: $0)) }.first { !$0.isEmpty } ?? Found()
     }
 
+    /// v1 commands are told apart by command and folder. An entry an earlier
+    /// import brought in without its folder (same name and command, no
+    /// folder) gets v1's folder; anything else that differs is added, so a
+    /// folder the user set is never overwritten (Codex review of P03).
+    static func mergeQuickCommands(
+        _ incoming: [(label: String, command: String, cwd: String?)], into existing: [QuickCommand]
+    ) -> (updates: [QuickCommand], additions: [(label: String, command: String, cwd: String?)]) {
+        var current = existing
+        var updates: [QuickCommand] = []
+        var additions: [(label: String, command: String, cwd: String?)] = []
+        for item in incoming {
+            if current.contains(where: { $0.command == item.command && $0.cwd == item.cwd }) { continue }
+            if let folder = item.cwd,
+               let index = current.firstIndex(where: { $0.command == item.command && $0.label == item.label && $0.cwd == nil }) {
+                var filled = current[index]
+                filled.cwd = folder
+                current[index] = filled
+                updates.append(filled)
+                continue
+            }
+            additions.append(item)
+            current.append(QuickCommand(label: item.label, command: item.command, cwd: item.cwd))
+        }
+        return (updates, additions)
+    }
+
     /// Adds Quick Commands not already present and sets the rest.
     @MainActor
     static func apply(_ found: Found, quickCommands: QuickCommandStore, defaults: UserDefaults = .standard) -> [String] {
         var applied: [String] = []
-        let existing = Set(quickCommands.commands.map(\.command))
-        let new = found.quickCommands.filter { !existing.contains($0.command) }
-        new.forEach { quickCommands.add(label: $0.label, command: $0.command, cwd: $0.cwd) }
-        if !new.isEmpty { applied.append("Quick Commands \(new.count)개") }
+        let merge = mergeQuickCommands(found.quickCommands, into: quickCommands.commands)
+        merge.updates.forEach { quickCommands.upsert($0) }
+        merge.additions.forEach { quickCommands.add(label: $0.label, command: $0.command, cwd: $0.cwd) }
+        if !merge.additions.isEmpty { applied.append("Quick Commands \(merge.additions.count)개") }
+        if !merge.updates.isEmpty { applied.append("Quick Command 폴더 \(merge.updates.count)개 보완") }
         if let size = found.fontSize {
             defaults.set(size, forKey: AppSettings.fontSizeKey)
             applied.append("글꼴 \(Int(size))pt")

@@ -6,6 +6,10 @@ struct SavedWorkspace: Codable, Sendable {
     struct Pane: Codable, Sendable {
         let session: UUID
         let title: String
+        /// How it was started (absent in records written before them).
+        var command: String?
+        var directory: String?
+        var agent: String?
     }
 
     struct Grid: Codable, Sendable {

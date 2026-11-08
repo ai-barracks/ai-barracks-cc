@@ -221,6 +221,8 @@ enum AppConstants {
         static let captureTimeout: Duration = .seconds(4)
         static let captureRenderGrace: Duration = .milliseconds(250)
         static let changeGrace: Duration = .milliseconds(500)
+        /// A sheet's show or hide animation (see SelfTestHarness.settleSheet).
+        static let sheetAnimation: Duration = .milliseconds(450)
         /// A probe child (SelfTestProbe) gets this long before it counts as hung.
         static let probeTimeout: TimeInterval = 40
         /// Longer than Ghostty's multi-click interval so consecutive click

@@ -295,7 +295,7 @@ struct AgentSuite {
         await harness.install([a.pane, b.pane, c.pane], layout: .double)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { a.log.isReady && b.log.isReady }
         let mark = a.log.mark()
-        _ = workspace.type(QuickCommand(label: "t", command: "abc"), into: a.pane)
+        workspace.confirmSend(QuickCommand(label: "t", command: "abc"), to: a.pane, program: ProcessTree.foreground(of: a.pane.processID))
         let typed = await harness.settledBytes(a.log, since: mark, expectingAtLeast: 4)
         let text = a.pane.probeView?.readScreenText() ?? ""
         workspace.bringToFront(id: c.pane.id)
@@ -406,18 +406,19 @@ struct AgentSuite {
         workspace.destination = .rules
         workspace.editInProgress = true
         let mark = recorder.log.mark()
-        _ = workspace.type(quick, into: recorder.pane)
+        workspace.confirmSend(quick, to: recorder.pane, program: ProcessTree.foreground(of: recorder.pane.processID))
         let paneCount = workspace.panes.count
         _ = workspace.runInPane(title: "nv-new", command: "true")
         await harness.pause(AppConstants.SelfTest.changeGrace)
         if !recorder.log.bytes(since: mark).isEmpty { failures.append("typed before confirm") }
         if workspace.panes.count != paneCount { failures.append("pane made before confirm") }
+        await harness.settleSheet(shown: true)
         workspace.cancelNavigation()
-        await harness.pause(AppConstants.SelfTest.changeGrace)
+        await harness.settleSheet(shown: false)
         if !recorder.log.bytes(since: mark).isEmpty || workspace.panes.count != paneCount { failures.append("cancel left effects") }
         // Confirmed, the command runs.
         workspace.editInProgress = true
-        _ = workspace.type(quick, into: recorder.pane)
+        workspace.confirmSend(quick, to: recorder.pane, program: ProcessTree.foreground(of: recorder.pane.processID))
         workspace.confirmNavigation()
         let typed = await harness.settledBytes(recorder.log, since: mark, expectingAtLeast: 3)
         if !String(decoding: typed, as: UTF8.self).contains("nvq") { failures.append("confirmed run missing \(Hex.string(typed))") }

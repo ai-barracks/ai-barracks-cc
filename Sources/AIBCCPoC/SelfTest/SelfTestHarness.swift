@@ -75,6 +75,17 @@ struct SelfTestHarness {
         return condition()
     }
 
+    /// Waits until the window's sheet (alert or sheet) is shown or gone and
+    /// its animation has run. AppKit animates a sheet in a nested run loop;
+    /// closing one from code while it still animated in crashed macOS 27's
+    /// UpdateCycle (SIGSEGV in UC::DriverCore::continueProcessing under
+    /// NSSheetMoveHelper, 2026-11-08). Tests that open a dialog, wait, and
+    /// close it in code settle it on both sides.
+    func settleSheet(shown: Bool) async {
+        _ = await waitUntil(AppConstants.SelfTest.settleTimeout) { (window?.attachedSheet != nil) == shown }
+        await pause(AppConstants.SelfTest.sheetAnimation)
+    }
+
     func pause(_ duration: Duration) async {
         try? await Task.sleep(for: duration)
     }

@@ -319,8 +319,11 @@ final class WorkspaceModel {
         daemon.killSessions(Array(orphans))
         let restored: [String: BarrackGrid] = barracks.reduce(into: [:]) { result, barrack in
             guard let grid = saved.grids[barrack.id] else { return }
+            // The launch is known only if it was recorded: an unknown folder
+            // stays unknown rather than posing as the barrack's.
             let attached = grid.panes.filter { known.contains($0.session) }.map {
-                makePane(title: $0.title, command: nil, environment: [:], directory: barrack.path, attachingTo: $0.session)
+                makePane(title: $0.title, command: nil, environment: [:], directory: $0.directory, attachingTo: $0.session,
+                         userCommand: $0.command, agent: $0.agent.flatMap(AgentClient.init(rawValue:)))
             }
             guard !attached.isEmpty else { return }
             let layout = PaneLayout(rawValue: grid.layout) ?? .single
@@ -354,7 +357,10 @@ final class WorkspaceModel {
             SavedWorkspace.Grid(
                 layout: grid.layout.rawValue, splitX: Double(grid.splitX), splitY: Double(grid.splitY),
                 panes: grid.panes.compactMap { pane in
-                    pane.remote.map { SavedWorkspace.Pane(session: $0.id, title: pane.title) }
+                    pane.remote.map {
+                        SavedWorkspace.Pane(session: $0.id, title: pane.title, command: pane.userCommand,
+                                            directory: pane.workingDirectory, agent: pane.agent?.rawValue)
+                    }
                 }
             )
         })
@@ -696,20 +702,6 @@ extension WorkspaceModel {
                           splitX: current.splitX, splitY: current.splitY))
         destination = .sessions
         focusWhenAttached(pane)
-    }
-
-    /// Types the command into the pane and presses Enter, unguarded: the
-    /// guarded entry is `send(_:to:)` (WorkspaceModel+QuickCommands).
-    func type(_ quick: QuickCommand, into target: TerminalPane) -> Bool {
-        // Nothing is typed until the user agreed to leave an open edit (r7:
-        // the command ran while the question was still on screen).
-        guard !editInProgress else {
-            navigate { [weak self] in _ = self?.type(quick, into: target) }
-            return false
-        }
-        destination = .sessions
-        focusWhenAttached(target)
-        return target.state.performBindingAction(GhosttyText.action(typing: quick.command, pressEnter: true))
     }
 
     func exportOutput(of pane: TerminalPane) {
