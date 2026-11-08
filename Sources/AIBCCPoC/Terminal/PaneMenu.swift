@@ -124,7 +124,12 @@ struct QuickCommandPrompts: ViewModifier {
                 switch prompt {
                 case let .missingFolder(quick):
                     Button("배럭 폴더에서 이번만 실행") { workspace.runInBarrackFolder(quick) }
-                    Button("경로 수정") { workspace.quickCommandDraft = quick }
+                    // A sheet asked for while the alert is still closing is dropped.
+                    Button("경로 수정") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.Layout.presentAfterAlert) {
+                            workspace.quickCommandDraft = quick
+                        }
+                    }
                     Button("취소", role: .cancel) {}
                 case let .confirmSend(quick, pane):
                     Button("입력") { _ = workspace.type(quick, into: pane) }

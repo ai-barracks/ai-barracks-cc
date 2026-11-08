@@ -129,6 +129,8 @@ enum AppConstants {
         /// Kept for the terminals and the Agents bar however wide Outputs is
         /// set (one pane ≈ 50 columns).
         static let centerReserveWidth: CGFloat = 420
+        /// A sheet opened from an alert button waits for the alert to close.
+        static let presentAfterAlert: TimeInterval = 0.35
         /// Narrower than this, Outputs folds away instead of squeezing in.
         static let outputsFoldWidth: CGFloat = 200
         static let outputsWidthKey = "outputsColumnWidth"
