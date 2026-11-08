@@ -33,6 +33,7 @@ struct TestResult: Codable, Sendable {
         startedAt: ContinuousClock.Instant
     ) -> TestResult {
         let millis = (ContinuousClock.now - startedAt).milliseconds
+        CrashTrace.note(after: id)
         return TestResult(
             id: id,
             title: title,

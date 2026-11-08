@@ -21,6 +21,9 @@ enum CrashTrace {
     nonisolated(unsafe) private static var exitInstead = false
     nonisolated(unsafe) private static let frames = UnsafeMutablePointer<UnsafeMutableRawPointer?>.allocate(capacity: capacity)
     nonisolated(unsafe) private static let text = UnsafeMutablePointer<UInt8>.allocate(capacity: digits)
+    /// The last test that finished, so a crash names where the run was.
+    nonisolated(unsafe) private static let last = UnsafeMutablePointer<UInt8>.allocate(capacity: digits)
+    nonisolated(unsafe) private static var lastLength = 0
 
     /// `exitInsteadOfRaise`: end with 128+signal instead of dying by it, so
     /// the CT-01a probe leaves no system crash report.
@@ -31,6 +34,7 @@ enum CrashTrace {
         // Initialised here, so no lazy initialisation runs in the handler.
         frames.initialize(repeating: nil, count: capacity)
         text.initialize(repeating: 0, count: digits)
+        last.initialize(repeating: 0, count: digits)
         let load = UInt(bitPattern: _dyld_get_image_header(0))
         let header = "image \(Bundle.main.executablePath ?? "?") load 0x\(String(load, radix: 16))\n"
         _ = header.withCString { Darwin.write(fd, $0, strlen($0)) }
@@ -45,9 +49,20 @@ enum CrashTrace {
         }
     }
 
+    /// Outside the handler: copies the id into the preallocated buffer.
+    static func note(after id: String) {
+        guard fd >= 0 else { return }
+        let bytes = Array(id.utf8.prefix(digits))
+        lastLength = 0
+        for (index, byte) in bytes.enumerated() { last[index] = byte }
+        lastLength = bytes.count
+    }
+
     private static func handle(_ number: Int32) {
         put("fatal signal ")
         putNumber(UInt(number), radix: 10)
+        put(" after ")
+        _ = Darwin.write(fd, last, lastLength)
         put("\n")
         let count = Int(backtrace(frames, Int32(capacity)))
         for index in 0 ..< count {
