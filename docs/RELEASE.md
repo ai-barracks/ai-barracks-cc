@@ -6,7 +6,7 @@
 
 | # | 관문 | 상태 |
 |---|---|---|
-| G1 | v1 기능 패리티 A~H | 완료(계획표 참조) |
+| G1 | v1 기능 패리티 A~H | **재검토 중(2026-11-08)** — 계획표 기준 완료였으나 Codex 세부 감사(v1.6.1 `6e53aaa` 대 `d6adb91`)가 누락·부분 이식을 지적: 상하 2분할, 배럭당 4개 초과 터미널, 줄 간격(lineHeight), Quick Command의 cwd·새 터미널 의미, System 다중 배럭 선택·버전 표·Sync 결과, 빈 세션 숨기기, Wiki 목록 요약·갱신일, 보관 터미널 cwd 재시작, v1 설정 가져오기(cwd·글꼴·lineHeight·테마·옛 보관), 실행 중 출력 디스크 보존, 예약 활성화 고지·재확인. 사용자 원칙: v1 기능은 가능한 한 모두 포함, 제외를 임의로 완료 처리하지 않음 |
 | G2 | 전체 self-test 0 fail (개발 빌드, 모든 스위트) | 2026-11-08 177 pass / 0 fail(build 90 = 3d0909e, IN-09 원인 확정·수정 — known-issues #10). 출시 직전 후보 commit으로 재실행 |
 | G3 | 출시 빌드 self-test (`VARIANT=release`) unit·agents | 2026-11-07 unit·agents·integration 113 pass / 0 fail(build 84, 사용자 파일 무변경) |
 | G4 | 사람 검사 15건 (README "사람 검사 5분", 한국어 IME 등) | **미실시 — 사용자** |

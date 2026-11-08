@@ -116,9 +116,12 @@ struct UxSuite {
         let visible = workspace.panes.prefix(workspace.layout.paneCount).compactMap { $0.probeView }
         let span = visible.map { $0.convert($0.bounds, to: nil) }.reduce(CGRect.null) { $0.union($1) }
         let columns = workspace.panes.first?.state.surfaceSize.map { Int($0.columns) } ?? 0
-        let ok = span.width >= AppConstants.Layout.centerReserveWidth - 20
+        // Terminals keep their share, and Outputs is still there: a panel
+        // that always folded would leave the whole detail to the panes.
+        let reserve = AppConstants.Layout.centerReserveWidth
+        let ok = span.width >= reserve - 20 && span.width < reserve + AppConstants.Layout.outputsFoldWidth
         if let url = await harness.requestCapture(label: "ux-outputs-wide-min") { _ = url }
-        return .make("LY-02b", "최소 창 + Outputs 최대: 터미널 영역 ≥ \(Int(AppConstants.Layout.centerReserveWidth))pt",
+        return .make("LY-02b", "최소 창 + Outputs 최대: 터미널 영역 ≥ \(Int(reserve))pt, Outputs는 접히지 않음",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["window": "\(Int(minimum.width))x\(Int(minimum.height))", "terminal_span": "\(Int(span.width))",
                                 "first_pane_columns": "\(columns)"], startedAt: start)
