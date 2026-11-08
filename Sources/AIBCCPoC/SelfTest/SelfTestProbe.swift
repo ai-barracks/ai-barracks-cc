@@ -7,6 +7,7 @@ enum SelfTestProbe {
     static let argumentPrefix = "--selftest-probe="
     static let activationGate = "activation-gate"
     static let layoutMinimums = "layout-minimums"
+    static let crashTrace = "crash-trace"
 
     /// Runs the requested probe and exits; returns when none was requested.
     static func runIfRequested(_ arguments: [String] = CommandLine.arguments) {
@@ -16,6 +17,7 @@ enum SelfTestProbe {
             switch name {
             case activationGate: ActivationSuite().endToEndFailures()
             case layoutMinimums: LayoutProbe.failures()
+            case crashTrace: CrashTraceProbe.crash()
             default: ["unknown probe \(name)"]
             }
         }

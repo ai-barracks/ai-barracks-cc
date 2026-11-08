@@ -124,6 +124,7 @@ enum CriteriaCatalog {
         .init(id: "V1-01", title: "v1 설정 가져오기", blocking: false, requires: ["V1-01a"]),
         .init(id: "AC-01", title: "예약 활성화(v1 activation)", blocking: false, requires: ["AC-01a", "AC-01b", "AC-01c"]),
         .init(id: "QC-01", title: "Quick Command = v1(저장 폴더의 새 터미널, 입력 보호, 터미널에서 저장)", blocking: false, requires: ["QC-01a", "QC-01b", "QC-01c"]),
+        .init(id: "CT-01", title: "self-test 크래시 기록(치명 신호 → crash.txt)", blocking: false, requires: ["CT-01a"]),
         .init(id: "AC-02", title: "예약 활성화 안전 UX(켜기 전 확인·OFF 경로·상태 갱신)", blocking: false, requires: ["AC-02a"]),
         .init(id: "PR-01", title: "Provider/Model 프로필(v1 providers)", blocking: false, requires: ["PR-01a", "PR-01b"]),
         .init(id: "SB-01", title: "터미널 출력 보관(v1 scrollback archive)", blocking: false, requires: ["SB-01a", "SB-01b"]),
