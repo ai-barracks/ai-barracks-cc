@@ -10,11 +10,11 @@
 | 4 | major | `"; exec"`가 `printf ok;` 등을 깨뜨림 | **수정** — 개행으로 분리 | QC-01a(`;`·따옴표·here-doc), 변이체 fail |
 | 5 | major | 이미 가져온 v1 항목 cwd 미보완 | **수정** — 명령+폴더로 구분, 같은 이름·명령·폴더 없음 항목만 보완, 사용자 폴더는 덮어쓰지 않음 | QC-01c(parse→apply→reload), 변이체 fail |
 | 6 | major | 재부착 후 시작 명령·cwd·agent 유실 | **수정** — 세션 기록에 command·directory·agent, 기록 없는 옛 세션은 저장 비활성(배럭 폴더 가장 안 함) | QC-01a(세션 기록), QC-01c(옛 기록 읽기) |
-| 7 | major | CrashTrace handler가 async-signal-safe 아님 | **대기** — 사전 할당 버퍼·원시 주소만 쓰는 handler + 자식 프로세스 검증(CT-01a)으로 교체 예정. 진단 전용(self-test)이라 제품 경로 영향 없음 | — |
-| 8 | major | 테스트 거짓 통과 | **부분 수정** — QC: fixture 실패 즉시 FAIL, 양성 대조, 확인 후 우회·편집 이동·바뀐 프로그램·재가져오기·경로 수정 편집기. **AC-02a 보강(ON→OFF→ON, 고지 문구, 5초 갱신)은 대기** | QC-01a/b/c |
+| 7 | major | CrashTrace handler가 async-signal-safe 아님 | **수정**(1d8de0b) — handler는 사전 할당 버퍼에 신호 번호·원시 주소만 write, 별도 신호 스택, 이미지 경로·로드 주소는 설치 시 기록(기호는 밖에서 atos) | CT-01a(자식이 실제 잘못된 쓰기 → 139, crash.txt 신호·이미지·주소) |
+| 8 | major | 테스트 거짓 통과 | **수정** — QC: fixture 실패 즉시 FAIL, 양성 대조, 확인 후 우회·편집 이동·바뀐 프로그램·재가져오기·경로 수정 편집기(3089a8a). AC-02a: ON→OFF→ON 재확인, 고지 문구, 켜짐+사용 불가 표시, 갱신 횟수(시간이 아니라 횟수)·취소 후 정지(51b8b06) | QC-01a/b/c, AC-02a |
 | 9 | minor | cwd 공백 제거 | **수정** — 공백뿐일 때만 nil | QC-01c |
-| 10 | minor | ON+사용 불가를 "꺼짐"으로 표시 | **대기** | — |
-| 11 | minor | 기본 취소 미보장(확인 필요) | **대기** — 취소를 기본 동작으로 명시하는 확인 UI로 교체 예정, Return/Escape 사람 검사 | — |
+| 10 | minor | ON+사용 불가를 "꺼짐"으로 표시 | **수정**(51b8b06) — "켜져 있음 — 이 앱은 지금 예약을 실행하지 않습니다" | AC-02a |
+| 11 | minor | 기본 취소 미보장(확인 필요) | **수정**(51b8b06) — v1식 인라인 확인 상자, 취소에 `.defaultAction`(Return), 켜기는 명시 버튼만 | 사람 검사(Return·Escape) |
 
 ## 실행 중 발견: 시트를 닫는 순간의 크래시
 
@@ -22,4 +22,4 @@ CrashTrace가 잡은 백트레이스(agents 2회 연속): SwiftUI `AppKitDialogB
 
 ## 남은 일
 
-- 디스크 확보 후: agents·unit·전체 self-test 재실행(settleSheet 포함), #7·#8(AC)·#10·#11 수정, Codex 재리뷰
+- 2026-11-08 밤: 11건 모두 수정, unit·agents 실행 통과(settleSheet 포함, 크래시 없음), Codex 재리뷰(ad7d172..HEAD) 진행
