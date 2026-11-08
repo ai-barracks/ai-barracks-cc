@@ -12,7 +12,7 @@ struct AgentSuite {
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
          await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(),
-         await settingsApply()]
+         await settingsApply()] + (await QuickCommandTests(harness: harness).run())
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -295,7 +295,7 @@ struct AgentSuite {
         await harness.install([a.pane, b.pane, c.pane], layout: .double)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { a.log.isReady && b.log.isReady }
         let mark = a.log.mark()
-        workspace.run(QuickCommand(label: "t", command: "abc"), in: a.pane)
+        _ = workspace.type(QuickCommand(label: "t", command: "abc"), into: a.pane)
         let typed = await harness.settledBytes(a.log, since: mark, expectingAtLeast: 4)
         let text = a.pane.probeView?.readScreenText() ?? ""
         workspace.bringToFront(id: c.pane.id)
@@ -406,7 +406,7 @@ struct AgentSuite {
         workspace.destination = .rules
         workspace.editInProgress = true
         let mark = recorder.log.mark()
-        _ = workspace.run(quick, in: recorder.pane)
+        _ = workspace.type(quick, into: recorder.pane)
         let paneCount = workspace.panes.count
         _ = workspace.runInPane(title: "nv-new", command: "true")
         await harness.pause(AppConstants.SelfTest.changeGrace)
@@ -417,7 +417,7 @@ struct AgentSuite {
         if !recorder.log.bytes(since: mark).isEmpty || workspace.panes.count != paneCount { failures.append("cancel left effects") }
         // Confirmed, the command runs.
         workspace.editInProgress = true
-        _ = workspace.run(quick, in: recorder.pane)
+        _ = workspace.type(quick, into: recorder.pane)
         workspace.confirmNavigation()
         let typed = await harness.settledBytes(recorder.log, since: mark, expectingAtLeast: 3)
         if !String(decoding: typed, as: UTF8.self).contains("nvq") { failures.append("confirmed run missing \(Hex.string(typed))") }

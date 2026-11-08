@@ -7,7 +7,7 @@ import SQLite3
 /// The activation schedule needs no import — v2 uses v1's file itself.
 enum V1SettingsImport {
     struct Found: Equatable {
-        var quickCommands: [(label: String, command: String)] = []
+        var quickCommands: [(label: String, command: String, cwd: String?)] = []
         var fontSize: Double?
         var cursor: String?
         var profiles: [AgentClient: ProviderProfile] = [:]
@@ -15,7 +15,8 @@ enum V1SettingsImport {
         var isEmpty: Bool { quickCommands.isEmpty && fontSize == nil && cursor == nil && profiles.isEmpty }
 
         static func == (lhs: Found, rhs: Found) -> Bool {
-            lhs.quickCommands.map { "\($0.label)\u{0}\($0.command)" } == rhs.quickCommands.map { "\($0.label)\u{0}\($0.command)" }
+            lhs.quickCommands.map { "\($0.label)\u{0}\($0.command)\u{0}\($0.cwd ?? "")" }
+                == rhs.quickCommands.map { "\($0.label)\u{0}\($0.command)\u{0}\($0.cwd ?? "")" }
                 && lhs.fontSize == rhs.fontSize && lhs.cursor == rhs.cursor && lhs.profiles == rhs.profiles
         }
     }
@@ -59,7 +60,8 @@ enum V1SettingsImport {
         if let commands = json("cc-quick-commands") as? [[String: Any]] {
             found.quickCommands = commands.compactMap { item in
                 guard let command = (item["command"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty else { return nil }
-                return ((item["label"] as? String) ?? command, command)
+                let folder = (item["cwd"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                return ((item["label"] as? String) ?? command, command, folder)
             }
         }
         if let settings = json("cc-terminal-settings") as? [String: Any] {
@@ -85,7 +87,7 @@ enum V1SettingsImport {
         var applied: [String] = []
         let existing = Set(quickCommands.commands.map(\.command))
         let new = found.quickCommands.filter { !existing.contains($0.command) }
-        new.forEach { quickCommands.add(label: $0.label, command: $0.command) }
+        new.forEach { quickCommands.add(label: $0.label, command: $0.command, cwd: $0.cwd) }
         if !new.isEmpty { applied.append("Quick Commands \(new.count)개") }
         if let size = found.fontSize {
             defaults.set(size, forKey: AppSettings.fontSizeKey)

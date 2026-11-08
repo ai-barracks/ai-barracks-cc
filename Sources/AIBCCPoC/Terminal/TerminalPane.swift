@@ -23,6 +23,12 @@ final class TerminalPane: Identifiable {
     let title: String
     /// Started as a plain login shell (no command, not a reattach).
     let isPlainShell: Bool
+    /// Where it started, and the command as the user gave it (not the
+    /// shell wrapper): what "Quick Command로 저장" fills in (v1 Save).
+    let workingDirectory: String?
+    let userCommand: String?
+    /// Started as this agent: nothing is typed into it on the user's behalf.
+    let agent: AgentClient?
     let state: TerminalViewState
     /// Daemon link (daemon backend only).
     let remote: DaemonSession?
@@ -68,7 +74,9 @@ final class TerminalPane: Identifiable {
         workingDirectory: String?,
         command: String? = nil,
         extraEnvironment: [String: String] = [:],
-        backend: PaneBackend = .exec
+        backend: PaneBackend = .exec,
+        userCommand: String? = nil,
+        agent: AgentClient? = nil
     ) {
         let paneID = UUID()
         let environment = Self.environment(paneID: paneID, extra: extraEnvironment)
@@ -101,6 +109,9 @@ final class TerminalPane: Identifiable {
         id = paneID
         self.title = title
         isPlainShell = command == nil && !attaching
+        self.workingDirectory = workingDirectory
+        self.userCommand = userCommand
+        self.agent = agent
         state = viewState
         viewState.makePlatformView = { [weak self] in
             self?.platformView() ?? ProbeTerminalView(frame: .zero)

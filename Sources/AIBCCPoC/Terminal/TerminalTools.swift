@@ -1,12 +1,17 @@
 import Foundation
 import Observation
 
-/// Quick Commands (CC v1.6.1 parity): saved commands run in the focused
-/// terminal as if typed. Stored per user, like v1's local storage.
+/// Quick Commands (CC v1.6.1 parity): a saved command and the folder it
+/// runs in. Running one opens a new terminal there (v1 addTerminal with
+/// cwd || barrack, Codex parity audit P03); typing it into an existing
+/// terminal is a separate, guarded action. Stored per user, like v1's
+/// local storage; records saved before `cwd` existed read as nil.
 struct QuickCommand: Identifiable, Codable, Sendable, Equatable {
     var id = UUID()
     var label: String
     var command: String
+    /// nil: the selected barrack's folder.
+    var cwd: String?
 }
 
 @MainActor
@@ -21,10 +26,20 @@ final class QuickCommandStore {
         commands = defaults.data(forKey: "quickCommands").flatMap { try? JSONDecoder().decode([QuickCommand].self, from: $0) } ?? []
     }
 
-    func add(label: String, command: String) {
-        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+    func add(label: String, command: String, cwd: String? = nil) {
+        upsert(QuickCommand(label: label, command: command, cwd: cwd))
+    }
+
+    /// Adds, or replaces the command with the same id (editing).
+    func upsert(_ quick: QuickCommand) {
+        let trimmed = quick.command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        commands = commands + [QuickCommand(label: label.isEmpty ? trimmed : label, command: trimmed)]
+        let folder = quick.cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = QuickCommand(id: quick.id, label: quick.label.isEmpty ? trimmed : quick.label, command: trimmed,
+                                   cwd: folder?.isEmpty == false ? folder : nil)
+        commands = commands.contains { $0.id == quick.id }
+            ? commands.map { $0.id == quick.id ? cleaned : $0 }
+            : commands + [cleaned]
         save()
     }
 

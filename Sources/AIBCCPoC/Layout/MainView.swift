@@ -37,6 +37,7 @@ struct MainView: View {
         .sheet(isPresented: $workspace.isPalettePresented) { CommandPalette(workspace: workspace) }
         .overlay(alignment: .topTrailing) { ToastStack(workspace: workspace) }
         .sheet(item: $workspace.quickCommandDraft) { draft in QuickCommandSheet(workspace: workspace, draft: draft) }
+        .modifier(QuickCommandPrompts(workspace: workspace))
         .navigationTitle(workspace.selectedBarrack?.name ?? "AIBCC")
         .navigationSubtitle(workspace.destination.label)
         .onChange(of: workspace.selectedBarrackID, initial: true) {

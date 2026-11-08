@@ -109,6 +109,9 @@ final class WorkspaceModel {
     var archiveRevision = 0
     /// Non-nil while the Quick Command sheet is open.
     var quickCommandDraft: QuickCommand?
+    /// A Quick Command waiting for the user's choice (missing folder, or
+    /// typing into a terminal whose program is unknown).
+    var quickCommandPrompt: QuickCommandPrompt?
     @ObservationIgnored private(set) var health: HealthMonitor?
     /// Scheduled activation (not in self-tests).
     @ObservationIgnored private(set) var activation: ActivationScheduler?
@@ -178,10 +181,11 @@ final class WorkspaceModel {
     func makePane(
         title: String,
         command: String? = nil,
-        environment: [String: String] = [:]
+        environment: [String: String] = [:],
+        agent: AgentClient? = nil
     ) -> TerminalPane {
         makePane(title: title, command: command, environment: environment,
-                 directory: selectedBarrack?.path, attachingTo: nil)
+                 directory: selectedBarrack?.path, attachingTo: nil, agent: agent)
     }
 
     /// A pane on a daemon session that already exists.
@@ -194,7 +198,9 @@ final class WorkspaceModel {
         command: String?,
         environment: [String: String],
         directory: String?,
-        attachingTo session: UUID?
+        attachingTo session: UUID?,
+        userCommand: String? = nil,
+        agent: AgentClient? = nil
     ) -> TerminalPane {
         let backend: PaneBackend = daemon.map {
             .daemon($0, sessionID: session ?? UUID(), attach: session != nil)
@@ -205,7 +211,9 @@ final class WorkspaceModel {
             workingDirectory: directory,
             command: command,
             extraEnvironment: environment,
-            backend: backend
+            backend: backend,
+            userCommand: userCommand,
+            agent: agent
         )
         let paneID = pane.id
         pane.onExit = { [weak self] pane in self?.archive(pane, barrackPath: directory) }
@@ -410,36 +418,46 @@ extension WorkspaceModel {
     /// The preset grows to make room (1 → 2 → 4); nil when four are full.
     @discardableResult
     func launchAgent(_ client: AgentClient, skipPermissions: Bool) -> TerminalPane? {
-        openPane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions,
-                                                                     profile: ProviderProfiles.load(client)))
+        let profile = ProviderProfiles.load(client)
+        return openPane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions, profile: profile),
+                        userCommand: AgentLauncher.start(client, skipPermissions: skipPermissions, profile: profile),
+                        agent: client == .terminal ? nil : client)
     }
 
     /// 정비 actions run where the user sees them: a new pane in the
     /// barrack, through a login shell that stays afterwards.
     @discardableResult
-    func runInPane(title: String, command: String) -> TerminalPane? {
-        openPane(title: title, command: "/bin/zsh -lc " + AgentLauncher.shellQuote(command + "; exec /bin/zsh -l"))
+    func runInPane(title: String, command: String, directory: String? = nil) -> TerminalPane? {
+        openPane(title: title, command: "/bin/zsh -lc " + AgentLauncher.shellQuote(command + "; exec /bin/zsh -l"),
+                 directory: directory, userCommand: command)
     }
 
     /// With an edit open, nothing is created until the user agreed to leave
     /// it (r7: the pane was made and saved first, and stayed on "cancel").
-    private func openPane(title: String, command: String?) -> TerminalPane? {
+    /// `directory` nil: the barrack's folder.
+    func openPane(title: String, command: String?, directory: String? = nil,
+                          userCommand: String? = nil, agent: AgentClient? = nil) -> TerminalPane? {
         guard !editInProgress else {
-            navigate { [weak self] in _ = self?.openPane(title: title, command: command) }
+            navigate { [weak self] in
+                _ = self?.openPane(title: title, command: command, directory: directory, userCommand: userCommand, agent: agent)
+            }
             return nil
         }
         guard let barrack = selectedBarrack else { return nil }
+        let folder = directory ?? barrack.path
         let current = grid
         let pane: TerminalPane
         let panes: [TerminalPane]
         if current.panes.count < PaneLayout.quad.paneCount {
-            pane = makePane(title: title, command: command, environment: [:], directory: barrack.path, attachingTo: nil)
+            pane = makePane(title: title, command: command, environment: [:], directory: folder, attachingTo: nil,
+                            userCommand: userCommand, agent: agent)
             panes = current.panes + [pane]
         } else if let idle = current.panes.firstIndex(where: \.isIdleShell) {
             // A full grid of empty shells used to block every new agent
             // (Codex build-84 review): an empty shell gives up its place;
             // its screen goes to the archive like any closed pane.
-            pane = makePane(title: title, command: command, environment: [:], directory: barrack.path, attachingTo: nil)
+            pane = makePane(title: title, command: command, environment: [:], directory: folder, attachingTo: nil,
+                            userCommand: userCommand, agent: agent)
             var replaced = current.panes
             replaced[idle] = pane
             panes = replaced
@@ -680,14 +698,13 @@ extension WorkspaceModel {
         focusWhenAttached(pane)
     }
 
-    /// Types the command into the pane and presses Enter.
-    @discardableResult
-    func run(_ quick: QuickCommand, in pane: TerminalPane? = nil) -> Bool {
-        guard let target = pane ?? focusedPane else { return false }
+    /// Types the command into the pane and presses Enter, unguarded: the
+    /// guarded entry is `send(_:to:)` (WorkspaceModel+QuickCommands).
+    func type(_ quick: QuickCommand, into target: TerminalPane) -> Bool {
         // Nothing is typed until the user agreed to leave an open edit (r7:
         // the command ran while the question was still on screen).
         guard !editInProgress else {
-            navigate { [weak self] in _ = self?.run(quick, in: target) }
+            navigate { [weak self] in _ = self?.type(quick, into: target) }
             return false
         }
         destination = .sessions
