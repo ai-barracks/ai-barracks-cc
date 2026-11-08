@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 struct ActivationSuite {
     func run() -> [TestResult] {
-        [schedule(), runner(), endToEnd()]
+        [schedule(), runner(), endToEnd(), ActivationSettingsTests.run()]
     }
 
     private func check(_ id: String, _ title: String, _ failures: [String], _ start: ContinuousClock.Instant) -> TestResult {

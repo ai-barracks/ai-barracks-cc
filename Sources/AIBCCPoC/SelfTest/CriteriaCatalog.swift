@@ -123,6 +123,7 @@ enum CriteriaCatalog {
         .init(id: "R5-01", title: "Codex r5 전역 상태 회귀", blocking: false, requires: ["R5-01a"]),
         .init(id: "V1-01", title: "v1 설정 가져오기", blocking: false, requires: ["V1-01a"]),
         .init(id: "AC-01", title: "예약 활성화(v1 activation)", blocking: false, requires: ["AC-01a", "AC-01b", "AC-01c"]),
+        .init(id: "AC-02", title: "예약 활성화 안전 UX(켜기 전 확인·OFF 경로·상태 갱신)", blocking: false, requires: ["AC-02a"]),
         .init(id: "PR-01", title: "Provider/Model 프로필(v1 providers)", blocking: false, requires: ["PR-01a", "PR-01b"]),
         .init(id: "SB-01", title: "터미널 출력 보관(v1 scrollback archive)", blocking: false, requires: ["SB-01a", "SB-01b"]),
         .init(id: "OV-01", title: "배럭 개요(v1 Overview)", blocking: false, requires: ["OV-01a"]),

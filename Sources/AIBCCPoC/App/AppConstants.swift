@@ -175,6 +175,8 @@ enum AppConstants {
     }
 
     enum Activation {
+        /// Settings re-reads the schedule this often while shown (v1: 5 s).
+        static let settingsRefresh: Duration = .seconds(5)
         /// v1's support directory: v1 and v2 share activation.json and its lock.
         static var directory: URL {
             URL(fileURLWithPath: ("~/Library/Application Support/com.aibarracks.commandcenter" as NSString).expandingTildeInPath)
