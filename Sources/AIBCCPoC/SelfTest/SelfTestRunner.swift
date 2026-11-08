@@ -40,6 +40,7 @@ struct SelfTestRunner {
 
     func run() async -> SelfTestExit {
         guard let output = makeOutputDirectory() else { return .setupError }
+        CrashTrace.install(in: output)
         // The self-test's own output archive starts empty each run (never the user's).
         let archive = workspace.scrollback.directory
         if archive.lastPathComponent == AppConstants.Scrollback.selfTestDirectory { try? FileManager.default.removeItem(at: archive) }
