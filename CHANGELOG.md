@@ -10,6 +10,16 @@
 - **창 크기 변경 충돌 수정**: Rules·Wiki·History·Skills에서 창을 최소 크기로 줄이면 앱이 종료되던 문제(SwiftUI inspector의 열 크기 협상 루프). Outputs 패널을 직접 만든 열로 바꿔 해결. 화면 전환 때 패널 폭이 바뀌던 것과 터미널 출력이 사라지던 것도 함께 해결
 - 좁은 창: Agents 막대는 가로 스크롤, Barrack은 위아래로 쌓임, 문서 목록은 좁아짐, 헤더 문구는 한 줄(전체는 마우스 오버)
 
+Codex build-84 재검증 반영(2026-11-08, `docs/reviews/codex-build84-triage.md`).
+
+- **Barrack Status 결과가 다른 배럭에 보이던 문제**: 점검 중 배럭을 바꾸면 이전 배럭의 빈 세션·Wiki 경고(파일 목록 포함)가 새 배럭 화면에 남고, 새 배럭 점검은 빠지던 것. 결과를 배럭별로 묶고 늦게 끝난 이전 점검은 버림
+- **Outputs가 터미널을 밀어내던 문제**: 작은 창에서 Outputs를 넓혀 두면 터미널이 8열까지 좁아지던 것. 가운데 작업면 420pt를 먼저 남기고, 자리가 모자라면 Outputs를 접음
+- **Ctrl+C**: 터미널에 포커스가 있으면 ⌃+영문자(⌃C·⌃D·⌃Z 등)는 메뉴보다 먼저 터미널로. macOS Window 메뉴의 "중앙 정렬"(fn⌃C)이 Ctrl+C를 가져가 창만 움직일 수 있던 경로를 막음. fn⌃C 가운데 정렬·⌘C 복사는 그대로
+- 4분할이 빈 셸로 차 있으면 새 Agent·정비·Council이 빈 셸 하나를 대신 씀. 모두 사용 중이면 "터미널 4개가 모두 사용 중" 알림(전에는 아무 반응 없음)
+- Barrack Info의 규칙 수가 RULES.md 전체(하위 섹션 포함)를 셈
+- 빌드 기록에 source commit·dirty 여부·실행 파일 해시, Info.plist에 `AIBSourceCommit`
+- **미완(설계 대비)**: Council 의사록 전용 화면(라운드 접기·결론·합의도·검증 상태), `archive prune`·`hooks codex install` 전용 경로
+
 ## [2.0.0-beta.2] - 2026-11-05
 
 Codex 리뷰 r6·r7(수정분 리뷰) 지적 30건을 고친 베타.
