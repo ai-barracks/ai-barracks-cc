@@ -57,7 +57,7 @@ struct MainView: View {
         ToolbarItem(placement: .principal) {
             Picker("레이아웃", selection: layoutBinding) {
                 ForEach(PaneLayout.allCases) { preset in
-                    Image(systemName: preset.symbol).tag(preset)
+                    Image(systemName: preset.symbol).help(preset.title).tag(preset)
                 }
             }
             .pickerStyle(.segmented)

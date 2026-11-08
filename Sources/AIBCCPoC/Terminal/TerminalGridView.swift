@@ -1,21 +1,66 @@
 import AppKit
 import SwiftUI
 
-/// Pane presets agreed in Council 20261031_144814: Focus, split, 2x2.
-/// Free docking is intentionally out of scope.
-enum PaneLayout: Int, CaseIterable, Identifiable, Sendable {
-    case single = 1
-    case double = 2
-    case quad = 4
+/// Pane presets agreed in Council 20261031_144814 (Focus, split, 2x2) plus
+/// v1's top/bottom split (Codex parity audit P02). Free docking is out of
+/// scope. Saved by name; `paneCount` is how many slots it shows.
+enum PaneLayout: String, CaseIterable, Identifiable, Sendable {
+    case single
+    /// Left and right.
+    case double
+    /// Top and bottom.
+    case twoRows
+    case quad
 
-    var id: Int { rawValue }
-    var paneCount: Int { rawValue }
+    var id: String { rawValue }
+
+    var paneCount: Int {
+        switch self {
+        case .single: 1
+        case .double, .twoRows: 2
+        case .quad: 4
+        }
+    }
+
+    /// What a grid grows or shrinks through by itself; the top/bottom split
+    /// is only ever the user's choice, and kept while it fits.
+    static let growth: [PaneLayout] = [.single, .double, .quad]
+
+    /// Layouts saved before names were (1, 2, 4).
+    init?(slots: Int) {
+        guard let layout = Self.growth.first(where: { $0.paneCount == slots }) else { return nil }
+        self = layout
+    }
+
+    /// A saved grid's layout: by name; a record from before names, or a
+    /// name this build does not know, by slot count; else one pane. Every
+    /// attached session is kept either way (extra ones are parked).
+    static func restored(name: String?, slots: Int) -> PaneLayout {
+        name.flatMap(PaneLayout.init(rawValue:)) ?? PaneLayout(slots: slots) ?? .single
+    }
+
+    /// The layout that shows `count` slots: `current` when it already shows
+    /// exactly that many (a top/bottom split stays one), else the smallest
+    /// growth preset that does.
+    static func fitting(_ count: Int, keeping current: PaneLayout) -> PaneLayout {
+        current.paneCount == count ? current : growth.first { $0.paneCount >= count } ?? .quad
+    }
 
     var label: String {
         switch self {
         case .single: "1"
         case .double: "2"
+        case .twoRows: "3"
         case .quad: "4"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .single: "터미널 1개"
+        case .double: "좌우 2분할"
+        case .twoRows: "상하 2분할"
+        case .quad: "터미널 4개"
         }
     }
 
@@ -23,6 +68,7 @@ enum PaneLayout: Int, CaseIterable, Identifiable, Sendable {
         switch self {
         case .single: "rectangle"
         case .double: "rectangle.split.2x1"
+        case .twoRows: "rectangle.split.1x2"
         case .quad: "rectangle.split.2x2"
         }
     }
@@ -60,13 +106,13 @@ struct TerminalGridView: View {
 
     @ViewBuilder
     private func dividers(in size: CGSize) -> some View {
-        if workspace.layout != .single, size.width > 0 {
+        if workspace.layout == .double || workspace.layout == .quad, size.width > 0 {
             DividerHandle(cursor: .resizeLeftRight)
                 .frame(width: AppConstants.Layout.dividerHitWidth, height: size.height)
                 .position(x: size.width * workspace.splitX, y: size.height / 2)
                 .gesture(drag { workspace.setSplit(x: $0.x / size.width) })
         }
-        if workspace.layout == .quad, size.height > 0 {
+        if workspace.layout == .quad || workspace.layout == .twoRows, size.height > 0 {
             DividerHandle(cursor: .resizeUpDown)
                 .frame(width: size.width, height: AppConstants.Layout.dividerHitWidth)
                 .position(x: size.width / 2, y: size.height * workspace.splitY)
@@ -133,6 +179,11 @@ struct PaneGridLayout: Layout {
             return [
                 CGRect(x: bounds.minX, y: bounds.minY, width: leftWidth, height: bounds.height),
                 CGRect(x: rightX, y: bounds.minY, width: rightWidth, height: bounds.height),
+            ]
+        case .twoRows:
+            return [
+                CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: topHeight),
+                CGRect(x: bounds.minX, y: lowerY, width: bounds.width, height: bottomHeight),
             ]
         case .quad:
             return [

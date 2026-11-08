@@ -326,7 +326,7 @@ final class WorkspaceModel {
                          userCommand: $0.command, agent: $0.agent.flatMap(AgentClient.init(rawValue:)))
             }
             guard !attached.isEmpty else { return }
-            let layout = PaneLayout(rawValue: grid.layout) ?? .single
+            let layout = PaneLayout.restored(name: grid.layoutName, slots: grid.layout)
             let fresh = (attached.count..<max(layout.paneCount, attached.count)).map {
                 makePane(title: "shell \($0 + 1)", command: nil, environment: [:], directory: barrack.path, attachingTo: nil)
             }
@@ -355,7 +355,8 @@ final class WorkspaceModel {
         guard let daemon else { return }
         let current = SavedWorkspace(selectedBarrackID: selectedBarrackID, grids: grids.mapValues { grid in
             SavedWorkspace.Grid(
-                layout: grid.layout.rawValue, splitX: Double(grid.splitX), splitY: Double(grid.splitY),
+                layout: grid.layout.paneCount, layoutName: grid.layout.rawValue,
+                splitX: Double(grid.splitX), splitY: Double(grid.splitY),
                 panes: grid.panes.compactMap { pane in
                     pane.remote.map {
                         SavedWorkspace.Pane(session: $0.id, title: pane.title, command: pane.userCommand,
@@ -475,8 +476,7 @@ extension WorkspaceModel {
                                    actionLabel: nil, barrackID: barrack.id, sessionID: nil))
             return nil
         }
-        let needed = max(panes.count, current.layout.paneCount)
-        let layout = PaneLayout.allCases.first { $0.paneCount >= needed } ?? .quad
+        let layout = PaneLayout.fitting(max(panes.count, current.layout.paneCount), keeping: current.layout)
         store(BarrackGrid(panes: panes, layout: layout, splitX: current.splitX, splitY: current.splitY))
         destination = .sessions
         focusWhenAttached(pane)
@@ -675,7 +675,7 @@ extension WorkspaceModel {
         let current = grid
         let remaining = current.panes.filter { $0.id != paneID }
         let panes = remaining.isEmpty ? [makePane(title: "shell 1")] : remaining
-        let fitting = PaneLayout.allCases.first { $0.paneCount >= min(panes.count, current.layout.paneCount) } ?? .single
+        let fitting = PaneLayout.fitting(min(panes.count, current.layout.paneCount), keeping: current.layout)
         store(BarrackGrid(panes: panes, layout: fitting, splitX: current.splitX, splitY: current.splitY))
     }
 

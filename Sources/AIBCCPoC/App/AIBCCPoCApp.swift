@@ -57,7 +57,7 @@ struct AIBCCPoCApp: App {
             }
             CommandMenu("레이아웃") {
                 ForEach(PaneLayout.allCases) { preset in
-                    Button("터미널 \(preset.label)개") { workspace.setLayout(preset) }
+                    Button(preset.title) { workspace.setLayout(preset) }
                         .keyboardShortcut(KeyEquivalent(Character(preset.label)), modifiers: [.command, .option])
                 }
                 Divider()

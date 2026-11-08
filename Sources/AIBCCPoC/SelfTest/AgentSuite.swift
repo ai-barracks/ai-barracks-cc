@@ -12,7 +12,7 @@ struct AgentSuite {
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
          await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(),
-         await settingsApply(), await lineHeightApplies()] + (await QuickCommandTests(harness: harness).run())
+         await settingsApply(), await lineHeightApplies(), await twoRowsLayout()] + (await QuickCommandTests(harness: harness).run())
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -327,7 +327,7 @@ struct AgentSuite {
         let backend = DaemonBackend(socketPath: directory.appendingPathComponent("absent.sock").path, executable: executable)
         let live = UUID()
         let saved = SavedWorkspace(selectedBarrackID: barrack.id, grids: [barrack.id: .init(
-            layout: PaneLayout.single.rawValue, splitX: 0.5, splitY: 0.5, panes: [.init(session: live, title: "agent")])])
+            layout: PaneLayout.single.paneCount, splitX: 0.5, splitY: 0.5, panes: [.init(session: live, title: "agent")])])
         SessionStore.save(saved, to: backend.sessionStoreURL)
         let model = WorkspaceModel(barracks: [barrack], daemon: backend)
         let after = SessionStore.load(from: backend.sessionStoreURL)?.grids[barrack.id]?.panes.map(\.session) ?? []
@@ -471,6 +471,35 @@ struct AgentSuite {
                      status: grew && restored ? .pass : .fail, cause: .app,
                      evidence: ["columns": "\(before) → \(larger) → \(recorder.pane.state.surfaceSize?.columns ?? 0)"],
                      startedAt: start)
+    }
+
+    /// SP-01b (Codex parity audit P02): the top/bottom split gives each of
+    /// two terminals the full width and half the height, and is saved by name.
+    private func twoRowsLayout() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let a = harness.makeRecorderPane(name: "rows-a"), let b = harness.makeRecorderPane(name: "rows-b") else {
+            return .make("SP-01b", "상하 2분할", status: .fail, cause: .app, evidence: ["reason": "setup"], startedAt: start)
+        }
+        await harness.install([a.pane, b.pane], layout: .double)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { a.log.isReady && b.log.isReady }
+        let size = { (pane: TerminalPane) in (Int(pane.state.surfaceSize?.columns ?? 0), Int(pane.state.surfaceSize?.rows ?? 0)) }
+        let columns = size(a.pane)
+        workspace.setLayout(.twoRows)
+        let changed = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            size(a.pane).0 > columns.0 * 3 / 2 && size(a.pane).1 < columns.1 * 3 / 4 && size(b.pane).0 == size(a.pane).0
+        }
+        let rows = (size(a.pane), size(b.pane))
+        var saved = "no daemon"
+        if let daemon = workspace.daemon, let barrack = workspace.selectedBarrackID {
+            let grid = SessionStore.load(from: daemon.sessionStoreURL)?.grids[barrack]
+            saved = "\(grid?.layoutName ?? "nil")/\(grid?.layout ?? 0)"
+        }
+        workspace.setLayout(.double)
+        let ok = changed && (saved == "twoRows/2" || saved == "no daemon")
+        return .make("SP-01b", "상하 2분할: 두 터미널이 전체 폭·절반 높이, 세션 기록에 이름으로 저장",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["left_right": "\(columns)", "top_bottom": "\(rows)", "saved": saved], startedAt: start)
     }
 
     /// SE-01b (Codex parity audit P04): line height 2.0 about halves the

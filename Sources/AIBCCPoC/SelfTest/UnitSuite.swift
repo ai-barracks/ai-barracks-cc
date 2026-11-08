@@ -9,7 +9,7 @@ struct UnitSuite {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
          sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools(),
-         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions(), wikiIndex()]
+         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions(), wikiIndex(), paneLayouts()]
     }
 
     private func terminalTools() -> TestResult {
@@ -276,6 +276,39 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["before": before?.rawValue ?? "nil", "after": after?.rawValue ?? "nil",
                                 "refused_bad_ids": "\(refused)"], startedAt: start)
+    }
+
+    /// SP-01a (Codex parity audit P02): the top/bottom split, saved by name
+    /// and read back from older records; grids grow and shrink through the
+    /// presets but keep a top/bottom split while it fits.
+    private func paneLayouts() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        if [1, 2, 3, 4].map({ PaneLayout(slots: $0) }) != [.single, .double, nil, .quad] { failures.append("slots") }
+        if PaneLayout.restored(name: "twoRows", slots: 2) != .twoRows || PaneLayout.restored(name: nil, slots: 2) != .double
+            || PaneLayout.restored(name: "future", slots: 4) != .quad || PaneLayout.restored(name: "future", slots: 9) != .single {
+            failures.append("restored")
+        }
+        let fits: [(Int, PaneLayout, PaneLayout)] = [
+            (2, .twoRows, .twoRows), (3, .twoRows, .quad), (1, .twoRows, .single), (2, .single, .double),
+            (2, .quad, .double), (4, .quad, .quad), (2, .double, .double),
+        ]
+        for (count, current, expected) in fits where PaneLayout.fitting(count, keeping: current) != expected {
+            failures.append("fitting \(count) from \(current)")
+        }
+        let frames = PaneGridLayout(layout: .twoRows, splitX: 0.5, splitY: 0.5, spacing: 1)
+            .paneFrames(in: CGRect(x: 0, y: 0, width: 100, height: 101))
+        if frames != [CGRect(x: 0, y: 0, width: 100, height: 50), CGRect(x: 0, y: 51, width: 100, height: 50)] {
+            failures.append("frames \(frames)")
+        }
+        let old = #"{"layout":2,"splitX":0.5,"splitY":0.5,"panes":[]}"#
+        let grid = try? JSONDecoder().decode(SavedWorkspace.Grid.self, from: Data(old.utf8))
+        if grid?.layoutName != nil || grid.map({ PaneLayout.restored(name: $0.layoutName, slots: $0.layout) }) != .double {
+            failures.append("old record")
+        }
+        return .make("SP-01a", "상하 2분할(v1 Split V): 이름으로 저장, 옛 기록(1·2·4)·모르는 이름은 칸 수로, 자동 확대·축소는 맞으면 유지",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// WK-01a (Codex parity audit P10): Index.md's topic table and Log.md's

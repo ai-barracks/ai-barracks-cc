@@ -13,7 +13,10 @@ struct SavedWorkspace: Codable, Sendable {
     }
 
     struct Grid: Codable, Sendable {
+        /// How many slots show; what builds before layout names read.
         let layout: Int
+        /// `PaneLayout` by name (absent in older records).
+        var layoutName: String?
         let splitX: Double
         let splitY: Double
         let panes: [Pane]
@@ -34,7 +37,7 @@ extension SavedWorkspace {
                 continue
             }
             let named = Set(now.panes.map(\.session))
-            grids[barrack] = Grid(layout: now.layout, splitX: now.splitX, splitY: now.splitY,
+            grids[barrack] = Grid(layout: now.layout, layoutName: now.layoutName, splitX: now.splitX, splitY: now.splitY,
                                   panes: now.panes + old.panes.filter { !named.contains($0.session) })
         }
         return SavedWorkspace(selectedBarrackID: current.selectedBarrackID, grids: grids)
