@@ -9,15 +9,17 @@ enum V1SettingsImport {
     struct Found: Equatable {
         var quickCommands: [(label: String, command: String, cwd: String?)] = []
         var fontSize: Double?
+        var lineHeight: Double?
         var cursor: String?
         var profiles: [AgentClient: ProviderProfile] = [:]
 
-        var isEmpty: Bool { quickCommands.isEmpty && fontSize == nil && cursor == nil && profiles.isEmpty }
+        var isEmpty: Bool { quickCommands.isEmpty && fontSize == nil && lineHeight == nil && cursor == nil && profiles.isEmpty }
 
         static func == (lhs: Found, rhs: Found) -> Bool {
             lhs.quickCommands.map { "\($0.label)\u{0}\($0.command)\u{0}\($0.cwd ?? "")" }
                 == rhs.quickCommands.map { "\($0.label)\u{0}\($0.command)\u{0}\($0.cwd ?? "")" }
-                && lhs.fontSize == rhs.fontSize && lhs.cursor == rhs.cursor && lhs.profiles == rhs.profiles
+                && lhs.fontSize == rhs.fontSize && lhs.lineHeight == rhs.lineHeight && lhs.cursor == rhs.cursor
+                && lhs.profiles == rhs.profiles
         }
     }
 
@@ -66,6 +68,7 @@ enum V1SettingsImport {
         }
         if let settings = json("cc-terminal-settings") as? [String: Any] {
             found.fontSize = (settings["fontSize"] as? Double).map { min(max($0, AppSettings.fontSizeRange.lowerBound), AppSettings.fontSizeRange.upperBound) }
+            found.lineHeight = (settings["lineHeight"] as? Double).map(AppSettings.clampedLineHeight)
             found.cursor = (settings["cursorStyle"] as? String).flatMap { ["block", "bar", "underline"].contains($0) ? $0 : nil }
         }
         for client in ProviderProfiles.clients {
@@ -119,6 +122,10 @@ enum V1SettingsImport {
         if let size = found.fontSize {
             defaults.set(size, forKey: AppSettings.fontSizeKey)
             applied.append("글꼴 \(Int(size))pt")
+        }
+        if let height = found.lineHeight {
+            defaults.set(height, forKey: AppSettings.lineHeightKey)
+            applied.append("줄 간격 \(String(format: "%.1f", height))")
         }
         if let cursor = found.cursor {
             defaults.set(cursor, forKey: AppSettings.cursorKey)

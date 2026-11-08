@@ -10,11 +10,21 @@ enum AppSettings {
     static let fontFamilyKey = "terminalFontFamily"
     static let appearanceKey = "appearance"
     static let fontSizeRange: ClosedRange<Double> = 10...24
+    /// v1 TerminalSettings lineHeight: 1.0–2.0 in steps of 0.1 (P04).
+    static let lineHeightKey = "terminalLineHeight"
+    static let lineHeightRange: ClosedRange<Double> = 1.0...2.0
+    static let lineHeightStep = 0.1
 
     struct Terminal: Equatable {
         var fontSize = Double(AppConstants.Terminal.fontSize)
         var cursor = TerminalCursorStyle.block
         var fontFamily = ""
+        var lineHeight = 1.0
+    }
+
+    static func clampedLineHeight(_ value: Double) -> Double {
+        let stepped = (value / lineHeightStep).rounded() * lineHeightStep
+        return min(max(stepped, lineHeightRange.lowerBound), lineHeightRange.upperBound)
     }
 
     static var isSelfTest: Bool { CommandLine.arguments.contains { $0.hasPrefix("--selftest") } }
@@ -24,7 +34,8 @@ enum AppSettings {
         let size = defaults.object(forKey: fontSizeKey) as? Double ?? Double(AppConstants.Terminal.fontSize)
         return Terminal(fontSize: min(max(size, fontSizeRange.lowerBound), fontSizeRange.upperBound),
                         cursor: TerminalCursorStyle(rawValue: defaults.string(forKey: cursorKey) ?? "") ?? .block,
-                        fontFamily: defaults.string(forKey: fontFamilyKey) ?? "")
+                        fontFamily: defaults.string(forKey: fontFamilyKey) ?? "",
+                        lineHeight: clampedLineHeight(defaults.object(forKey: lineHeightKey) as? Double ?? 1.0))
     }
 
     /// "system" follows macOS; "light"/"dark" force the window appearance.
@@ -49,6 +60,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.fontSizeKey) private var fontSize = Double(AppConstants.Terminal.fontSize)
     @AppStorage(AppSettings.cursorKey) private var cursor = TerminalCursorStyle.block.rawValue
     @AppStorage(AppSettings.fontFamilyKey) private var fontFamily = ""
+    @AppStorage(AppSettings.lineHeightKey) private var lineHeight = 1.0
     @AppStorage(AppSettings.appearanceKey) private var appearance = "system"
     @AppStorage(AppConstants.Daemon.keepSessionsOnQuitKey) private var keepSessions = true
     @State private var aibVersion = "확인 중…"
@@ -57,6 +69,8 @@ struct SettingsView: View {
         Form {
             Section("터미널") {
                 Stepper("글꼴 크기 \(Int(fontSize))pt", value: $fontSize, in: AppSettings.fontSizeRange)
+                Stepper("줄 간격 \(String(format: "%.1f", lineHeight))", value: $lineHeight,
+                        in: AppSettings.lineHeightRange, step: AppSettings.lineHeightStep)
                 Picker("커서", selection: $cursor) {
                     Text("블록").tag("block"); Text("막대").tag("bar"); Text("밑줄").tag("underline")
                 }
@@ -96,6 +110,7 @@ struct SettingsView: View {
         .onChange(of: fontSize) { workspace.applySettings() }
         .onChange(of: cursor) { workspace.applySettings() }
         .onChange(of: fontFamily) { workspace.applySettings() }
+        .onChange(of: lineHeight) { workspace.applySettings() }
         .onChange(of: appearance) { AppSettings.applyAppearance() }
         .task {
             let path = workspace.selectedBarrack?.path ?? NSHomeDirectory()

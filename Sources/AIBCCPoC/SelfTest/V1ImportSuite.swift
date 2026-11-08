@@ -23,7 +23,8 @@ struct V1ImportSuite {
         if files.map(\.lastPathComponent) != ["localstorage.sqlite3"] { failures.append("store file") }
         let found = V1SettingsImport.parse(files.first.map(V1SettingsImport.items) ?? [:])
         if found.quickCommands.map(\.command) != ["npm run build", "git status"] { failures.append("quick \(found.quickCommands.map(\.command))") }
-        if found.fontSize != AppSettings.fontSizeRange.upperBound || found.cursor != "underline" { failures.append("terminal") }
+        if found.fontSize != AppSettings.fontSizeRange.upperBound || found.cursor != "underline"
+            || abs((found.lineHeight ?? 0) - 1.2) > 0.001 { failures.append("terminal") }
         if found.profiles != [.codex: ProviderProfile(model: "gpt-6-sol", effort: "high")] { failures.append("profiles") }
         let defaults = UserDefaults(suiteName: "aibcc-v1import-\(UUID().uuidString)")!
         let store = QuickCommandStore(defaults: defaults)
@@ -31,13 +32,14 @@ struct V1ImportSuite {
         let applied = V1SettingsImport.apply(found, quickCommands: store, defaults: defaults)
         if store.commands.map(\.command) != ["git status", "npm run build"] { failures.append("dedupe \(store.commands.map(\.command))") }
         if defaults.double(forKey: AppSettings.fontSizeKey) != AppSettings.fontSizeRange.upperBound
-            || defaults.string(forKey: AppSettings.cursorKey) != "underline" { failures.append("applied terminal") }
+            || defaults.string(forKey: AppSettings.cursorKey) != "underline"
+            || abs(defaults.double(forKey: AppSettings.lineHeightKey) - 1.2) > 0.001 { failures.append("applied terminal") }
         if ProviderProfiles.load(.codex, defaults: defaults) != found.profiles[.codex] { failures.append("profile") }
-        if applied.count != 4 { failures.append("applied \(applied)") }
+        if applied.count != 5 { failures.append("applied \(applied)") }
         if !V1SettingsImport.parse(["cc-quick-commands": "not json", "aib-profile-codex": #"{"model":"m","effort":"bogus"}"#]).isEmpty {
             failures.append("malformed accepted")
         }
-        return .make("V1-01a", "v1 설정 가져오기(WebKit localStorage 읽기 전용: Quick Commands·터미널·모델 프로필, 중복·잘못된 값 제외)",
+        return .make("V1-01a", "v1 설정 가져오기(WebKit localStorage 읽기 전용: Quick Commands·터미널(글꼴 크기·줄 간격·커서)·모델 프로필, 중복·잘못된 값 제외)",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }

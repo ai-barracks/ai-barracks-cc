@@ -22,10 +22,18 @@ enum TerminalAppearance {
             .windowPaddingY(AppConstants.Terminal.paddingY)
             .cursorStyle(settings.cursor)
         if !settings.fontFamily.isEmpty { base = base.fontFamily(settings.fontFamily) }
+        if let extra = cellHeight(settings.lineHeight) { base = base.custom("adjust-cell-height", extra) }
         // Unbind Ghostty defaults that collide with app menu shortcuts so the
         // menu, not the terminal, receives them.
         return AppConstants.Terminal.appReservedChords.reduce(base) { config, chord in
             config.custom("keybind", "\(chord)=unbind")
         }
+    }
+
+    /// v1's xterm lineHeight (a multiple of the font's line) as Ghostty's
+    /// cell-height adjustment: 1.2 → "20%" taller cells; 1.0 → none.
+    static func cellHeight(_ lineHeight: Double) -> String? {
+        let percent = Int(((AppSettings.clampedLineHeight(lineHeight) - 1) * 100).rounded())
+        return percent > 0 ? "\(percent)%" : nil
     }
 }

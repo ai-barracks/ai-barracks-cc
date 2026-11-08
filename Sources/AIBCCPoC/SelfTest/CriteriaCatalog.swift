@@ -110,7 +110,7 @@ enum CriteriaCatalog {
         .init(id: "HM-01", title: "Health 감시·알림·자동 새로고침(v1 패리티 A3·A5·H4·C8)", blocking: false,
               requires: ["HM-01a", "HM-01b", "NC-01a", "AR-01a", "RG-02a"]),
         .init(id: "TT-01", title: "터미널 관리·Quick Commands·내보내기·설정(v1 패리티 C2~C6·B4·H3)", blocking: false,
-              requires: ["TT-01a", "TT-01b", "SE-01a"]),
+              requires: ["TT-01a", "TT-01b", "SE-01a", "SE-01b"]),
         .init(id: "PS-03", title: "복원 실패 시 세션 보존", blocking: false, requires: ["PS-03a"]),
         .init(id: "PS-04", title: "replay 입력 경계·종료 출력 보관", blocking: false, requires: ["PS-04a", "PS-04b"]),
         .init(id: "PS-05", title: "입력 거부는 종료 아님·분리 중 종료 세션 보관", blocking: false, requires: ["PS-05a", "PS-05b", "PS-05c"]),

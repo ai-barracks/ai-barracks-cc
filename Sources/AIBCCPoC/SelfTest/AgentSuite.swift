@@ -12,7 +12,7 @@ struct AgentSuite {
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
          await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(),
-         await settingsApply()] + (await QuickCommandTests(harness: harness).run())
+         await settingsApply(), await lineHeightApplies()] + (await QuickCommandTests(harness: harness).run())
     }
 
     private func launchGrowsAndFocuses() async -> TestResult {
@@ -471,6 +471,31 @@ struct AgentSuite {
                      status: grew && restored ? .pass : .fail, cause: .app,
                      evidence: ["columns": "\(before) → \(larger) → \(recorder.pane.state.surfaceSize?.columns ?? 0)"],
                      startedAt: start)
+    }
+
+    /// SE-01b (Codex parity audit P04): line height 2.0 about halves the
+    /// rows of an open terminal (cells twice as tall), and 1.0 restores them.
+    private func lineHeightApplies() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        guard let recorder = harness.makeRecorderPane(name: "line-height") else {
+            return .make("SE-01b", "줄 간격", status: .fail, cause: .app, evidence: ["reason": "setup"], startedAt: start)
+        }
+        await harness.install([recorder.pane], layout: .single)
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
+        let rows = { Int(recorder.pane.state.surfaceSize?.rows ?? 0) }
+        let before = rows()
+        workspace.applySettings(AppSettings.Terminal(lineHeight: 2.0))
+        let shrank = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { rows() > 0 && rows() < before }
+        let doubled = rows()
+        workspace.applySettings(AppSettings.Terminal())
+        let restored = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { rows() == before }
+        let halved = before > 0 && abs(Double(doubled) - Double(before) / 2) <= 1.5
+        let mapped = TerminalAppearance.cellHeight(1.2) == "20%" && TerminalAppearance.cellHeight(1.0) == nil
+            && TerminalAppearance.cellHeight(2.6) == "100%" && TerminalAppearance.cellHeight(1.04) == nil
+        return .make("SE-01b", "줄 간격(v1 1.0~2.0)이 열린 터미널에 바로 적용: 2.0이면 행 수 약 절반, 1.0으로 복귀",
+                     status: shrank && halved && restored && mapped ? .pass : .fail, cause: .app,
+                     evidence: ["rows": "\(before) → \(doubled) → \(rows())", "mapping": "\(mapped)"], startedAt: start)
     }
 
     private func matchesPaneByProcess() async -> TestResult {
