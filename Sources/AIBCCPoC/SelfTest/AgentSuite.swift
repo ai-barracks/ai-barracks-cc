@@ -11,7 +11,7 @@ struct AgentSuite {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
-         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(),
+         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(), agentsStartEmpty(),
          await settingsApply(), await lineHeightApplies(), await twoRowsLayout()] + (await QuickCommandTests(harness: harness).run())
     }
 
@@ -317,6 +317,31 @@ struct AgentSuite {
     /// Codex r4: one failed session list at launch let the fresh grid be
     /// saved over the layout, and the next launch killed the still-running
     /// sessions as orphans. A model on an unreachable daemon must keep them.
+    /// AG-02a (2026-11-10 feedback: a shell started by default got in the
+    /// way): a barrack's Agents start empty, a wider layout adds empty slots
+    /// rather than shells, a started terminal fills a slot, and closing the
+    /// last one leaves the grid empty instead of a new shell.
+    private func agentsStartEmpty() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-empty-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let barrack = Barrack(name: "empty", path: directory.path, description: nil)
+        let model = WorkspaceModel(barracks: [barrack], daemon: nil)
+        model.selectedBarrackID = barrack.id
+        if !model.panes.isEmpty { failures.append("opened with \(model.panes.count) panes") }
+        model.setLayout(.quad)
+        if !model.panes.isEmpty || model.layout != .quad { failures.append("layout added shells (\(model.panes.count))") }
+        let pane = model.launchAgent(.terminal, skipPermissions: false)
+        if pane == nil || model.panes.count != 1 || model.layout != .quad { failures.append("start did not fill a slot") }
+        if let pane { model.closePane(id: pane.id) }
+        if !model.panes.isEmpty { failures.append("closing the last left \(model.panes.count) panes") }
+        return .make("AG-02a", "Agents는 빈 화면으로 시작(기본 셸 없음): 분할은 빈 칸만, 시작하면 칸을 채우고, 마지막을 닫으면 다시 빈 화면",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
+    }
+
     private func restoreFailureKeepsSessions() -> TestResult {
         let start = ContinuousClock.now
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-restore-\(UUID().uuidString)")
@@ -366,6 +391,9 @@ struct AgentSuite {
         let start = ContinuousClock.now
         let workspace = harness.workspace
         var failures: [String] = []
+        workspace.editInProgress = false
+        workspace.destination = .sessions
+        if workspace.panes.isEmpty { await harness.install([workspace.makePane(title: "nv-shell")], layout: .single) }
         workspace.destination = .rules
         workspace.editInProgress = true
         let asks = { (label: String, action: () -> Void) in
@@ -400,6 +428,8 @@ struct AgentSuite {
         guard let recorder = harness.makeRecorderPane(name: "nv-quick") else {
             return .make("NV-01c", "확인 전 부작용 없음", status: .fail, cause: .app, evidence: ["reason": "no recorder"], startedAt: start)
         }
+        workspace.editInProgress = false
+        workspace.destination = .sessions
         await harness.install([recorder.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
         let quick = QuickCommand(label: "nv", command: "nvq")

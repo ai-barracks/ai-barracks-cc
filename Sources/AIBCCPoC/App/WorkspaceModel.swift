@@ -153,15 +153,13 @@ final class WorkspaceModel {
     var splitX: CGFloat { grid.splitX }
     var splitY: CGFloat { grid.splitY }
 
-    /// Switching presets keeps existing panes (and their shells) alive, only
-    /// appends missing ones, and stops drawing panes that are parked.
+    /// Switching presets keeps existing panes (and their shells) alive and
+    /// stops drawing panes that are parked. Slots without a pane stay empty
+    /// with start buttons — no shell is started on the user's behalf
+    /// (2026-11-10 feedback: a default shell got in the way).
     func setLayout(_ newLayout: PaneLayout) {
         let current = grid
-        let missing = newLayout.paneCount - current.panes.count
-        let panes = missing > 0
-            ? current.panes + makeShellPanes(count: missing, startingAt: current.panes.count)
-            : current.panes
-        store(BarrackGrid(panes: panes, layout: newLayout, splitX: current.splitX, splitY: current.splitY))
+        store(BarrackGrid(panes: current.panes, layout: newLayout, splitX: current.splitX, splitY: current.splitY))
     }
 
     func setSplit(x: CGFloat? = nil, y: CGFloat? = nil) {
@@ -264,12 +262,9 @@ final class WorkspaceModel {
 
     // MARK: - Private
 
+    /// A barrack's Agents start empty; the user starts what they need.
     private func activateSelectedGrid() {
-        if grids[gridKey] == nil {
-            store(BarrackGrid(panes: makeShellPanes(count: 1, startingAt: 0), layout: .single, splitX: 0.5, splitY: 0.5))
-        } else {
-            updateSurfaceVisibility()
-        }
+        updateSurfaceVisibility()
     }
 
     private enum Persisting { case now, debounced }
@@ -329,10 +324,7 @@ final class WorkspaceModel {
             }
             guard !attached.isEmpty else { return }
             let layout = PaneLayout.restored(name: grid.layoutName, slots: grid.layout)
-            let fresh = (attached.count..<max(layout.paneCount, attached.count)).map {
-                makePane(title: "shell \($0 + 1)", command: nil, environment: [:], directory: barrack.path, attachingTo: nil)
-            }
-            result[barrack.id] = BarrackGrid(panes: attached + fresh, layout: layout,
+            result[barrack.id] = BarrackGrid(panes: attached, layout: layout,
                                              splitX: CGFloat(grid.splitX), splitY: CGFloat(grid.splitY))
         }
         grids = restored
@@ -370,11 +362,12 @@ final class WorkspaceModel {
         SessionStore.save(unconfirmed.map { SavedWorkspace.keeping($0, in: current) } ?? current, to: daemon.sessionStoreURL)
     }
 
-    /// Ghostty asked to close the surface after its process ended. Close
-    /// requests for live processes are ignored in the PoC.
+    /// Ghostty asked to close the surface after its process ended: the
+    /// pane goes (its screen is archived) rather than turning into a new
+    /// shell. Close requests for live processes are ignored.
     private func handleClose(paneID: UUID, processAlive: Bool) {
         guard !processAlive else { return }
-        restartPane(id: paneID)
+        closePane(id: paneID)
     }
 
     /// Only the selected barrack's visible panes draw; keyboard focus never
@@ -410,12 +403,6 @@ final class WorkspaceModel {
                 }
                 try? await Task.sleep(for: AppConstants.SelfTest.pollInterval)
             }
-        }
-    }
-
-    private func makeShellPanes(count: Int, startingAt offset: Int) -> [TerminalPane] {
-        (0..<max(count, 0)).map { index in
-            makePane(title: "shell \(offset + index + 1)")
         }
     }
 }
@@ -671,14 +658,13 @@ extension WorkspaceModel {
         } ?? visible.first
     }
 
-    /// Ends the pane's shell; the preset shrinks to fit what is left, and
-    /// a barrack never ends up without a terminal.
+    /// Ends the pane's shell; the preset shrinks to fit what is left. The
+    /// last one leaves the empty Agents screen, not a new shell.
     func closePane(id paneID: UUID) {
         let current = grid
         let remaining = current.panes.filter { $0.id != paneID }
-        let panes = remaining.isEmpty ? [makePane(title: "shell 1")] : remaining
-        let fitting = PaneLayout.fitting(min(panes.count, current.layout.paneCount), keeping: current.layout)
-        store(BarrackGrid(panes: panes, layout: fitting, splitX: current.splitX, splitY: current.splitY))
+        let fitting = PaneLayout.fitting(min(remaining.count, current.layout.paneCount), keeping: current.layout)
+        store(BarrackGrid(panes: remaining, layout: fitting, splitX: current.splitX, splitY: current.splitY))
     }
 
     /// An Agents bar chip: focus a pane that is on screen where it is; bring

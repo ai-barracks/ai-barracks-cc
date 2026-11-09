@@ -129,6 +129,7 @@ enum CriteriaCatalog {
         .init(id: "PR-01", title: "Provider/Model 프로필(v1 providers)", blocking: false, requires: ["PR-01a", "PR-01b"]),
         .init(id: "SB-01", title: "터미널 출력 보관(v1 scrollback archive)", blocking: false, requires: ["SB-01a", "SB-01b"]),
         .init(id: "OV-01", title: "배럭 개요(v1 Overview)", blocking: false, requires: ["OV-01a"]),
+        .init(id: "AG-02", title: "Agents는 빈 화면으로 시작(기본 셸 없음)", blocking: false, requires: ["AG-02a"]),
         .init(id: "RS-11", title: "다른 화면에 있는 동안 창 크기 변경 후 터미널 크기 일치", blocking: false, requires: ["RS-11a"]),
         .init(id: "SY-01", title: "배럭 골라서 Sync(v1 System)", blocking: false, requires: ["SY-01a"]),
         .init(id: "SP-01", title: "상하 2분할(v1 Split V)", blocking: false, requires: ["SP-01a", "SP-01b"]),

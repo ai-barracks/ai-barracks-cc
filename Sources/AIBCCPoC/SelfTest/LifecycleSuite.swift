@@ -26,6 +26,11 @@ struct LifecycleSuite {
             return .make("WS-01a", "배럭 선택 = 터미널 cwd = 산출물 맥락", status: .unverified,
                          evidence: ["reason": "needs two registered barracks"], startedAt: start)
         }
+        // B needs a terminal to hand focus to: Agents start empty, so open
+        // one there first, as the user would.
+        workspace.selectedBarrackID = other.id
+        if workspace.panes.isEmpty { _ = workspace.launchAgent(.terminal, skipPermissions: false) }
+        workspace.selectedBarrackID = original.id
         await harness.install([live.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { live.log.isReady }
         await harness.pause(AppConstants.SelfTest.minimumChildRuntime)

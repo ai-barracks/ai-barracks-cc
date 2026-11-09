@@ -96,6 +96,11 @@ struct TerminalGridView: View {
                             workspace.restartPane(id: pane.id)
                         }
                     }
+                    // Slots no terminal fills offer the start buttons instead
+                    // of a shell started on the user's behalf.
+                    ForEach(0 ..< max(0, workspace.layout.paneCount - workspace.panes.count), id: \.self) { _ in
+                        EmptySlotView(workspace: workspace, isOnly: workspace.panes.isEmpty)
+                    }
                 }
                 dividers(in: proxy.size)
             }

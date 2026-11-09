@@ -10,11 +10,15 @@ struct PackagingSuite {
     let harness: SelfTestHarness
 
     func run() async -> [TestResult] {
-        [resourcesInsideApp(), await standaloneRun()]
+        [await resourcesInsideApp(), await standaloneRun()]
     }
 
-    private func resourcesInsideApp() -> TestResult {
+    private func resourcesInsideApp() async -> TestResult {
         let start = ContinuousClock.now
+        // Agents start empty (no default shell): open one to read its menu.
+        if harness.workspace.panes.isEmpty {
+            await harness.install([harness.workspace.makePane(title: "pk-shell")], layout: .single)
+        }
         let resources = Bundle.main.resourceURL?.standardizedFileURL.path ?? "/nonexistent"
         let bundlePath = GhosttyRuntimeResources.bundleURL.standardizedFileURL.path
         let ghosttyDir = GhosttyRuntimeResources.directoryURL?.path ?? ""

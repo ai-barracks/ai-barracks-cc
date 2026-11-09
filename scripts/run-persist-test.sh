@@ -71,7 +71,8 @@ sys.exit(0 if results.get("PS-01-setup") == "pass" else 1)
 PY
   local pid
   pid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pid"])' "$STATE")"
-  if pgrep -f "$APP/Contents/MacOS/AIBCCPoC" >/dev/null; then
+  # Only phase 1's own run counts: another copy of the app may be open.
+  if pgrep -f "$APP/Contents/MacOS/AIBCCPoC --selftest-only=persist1" >/dev/null; then
     echo "between: app still running" >&2
     exit 2
   fi
