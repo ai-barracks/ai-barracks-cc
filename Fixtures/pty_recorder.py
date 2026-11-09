@@ -43,11 +43,21 @@ def enabled(name):
     return os.environ.get(name) == "1"
 
 
+FOCUS_ON = "\x1b[?1004h"
+FOCUS_OFF = "\x1b[?1004l"
+
+
 def set_modes(on):
     if enabled("AIBCC_MOUSE_REPORT"):
         sys.stdout.write(MOUSE_ON if on else MOUSE_OFF)
     if enabled("AIBCC_BRACKETED_PASTE"):
         sys.stdout.write(BRACKETED_ON if on else BRACKETED_OFF)
+    if enabled("AIBCC_FOCUS_REPORT"):
+        sys.stdout.write(FOCUS_ON if on else FOCUS_OFF)
+    # Kitty keyboard protocol, as agent TUIs push it (Codex: flags 7).
+    kitty = os.environ.get("AIBCC_KITTY_KEYS")
+    if kitty:
+        sys.stdout.write(f"\x1b[>{kitty}u" if on else "\x1b[<u")
     sys.stdout.flush()
 
 

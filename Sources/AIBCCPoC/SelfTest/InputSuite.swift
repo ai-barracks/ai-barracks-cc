@@ -39,7 +39,7 @@ struct InputSuite {
             await paneClickWhileComposing(primary, secondary, window),
             await syntheticKoreanPath(primary, window),
         ]
-        return measured + [await bracketedPaste(window), await controlC(window),
+        return measured + [await bracketedPaste(window), await pasteFromOtherApp(window), await controlC(window),
                            await controlCWithMenuClaimer(window), await quadCore(window)]
     }
 
@@ -447,6 +447,47 @@ struct InputSuite {
             "key_window": "\(keyWindowAtPress)", "frontmost": frontmostAtPress,
             "menu_ctrl_c": claimers.joined(separator: ", "), "window_moved": "\(moved)",
         ])
+    }
+
+    /// IN-07c (beta.4 report: nothing pasted that was copied in another
+    /// app): text another process put on the pasteboard pastes with Cmd+V,
+    /// through the menu's Paste. The other tests write the pasteboard from
+    /// this app, which macOS never gates.
+    private func pasteFromOtherApp(_ window: NSWindow) async -> TestResult {
+        let start = ContinuousClock.now
+        guard let rec = harness.makeRecorderPane(name: "paste-other") else { return setupFailure("recorder missing", start) }
+        await harness.install([rec.pane], layout: .single)
+        guard await harness.waitUntil(AppConstants.SelfTest.readyTimeout, { rec.log.isReady }) else {
+            return setupFailure("recorder not ready", start)
+        }
+        harness.focus(rec.pane)
+        await harness.drain()
+        let text = "from-other-app-\(Int.random(in: 1000 ... 9999))"
+        let copier = Process()
+        copier.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
+        let input = Pipe()
+        copier.standardInput = input
+        try? copier.run()
+        input.fileHandleForWriting.write(Data(text.utf8))
+        try? input.fileHandleForWriting.close()
+        copier.waitUntilExit()
+        let behaviorBefore = Self.pasteboardAccess()
+        let mark = rec.log.mark()
+        if let paste = Synth.command("v") { Synth.press(paste, in: window) }
+        let pasted = await harness.settledBytes(rec.log, since: mark, expectingAtLeast: text.utf8.count)
+        let trace = rec.pane.probeView?.callLog.suffix(6).map { "\($0.kind.rawValue):\($0.text ?? "")" } ?? []
+        return .make("IN-07c", "다른 앱(pbcopy)이 복사한 글 ⌘V → 메뉴 붙여넣기로 PTY에 그대로",
+                     status: pasted == Array(text.utf8) ? .pass : .fail, cause: .app,
+                     evidence: ["hex": Hex.string(pasted), "access_before": behaviorBefore,
+                                "access_after": Self.pasteboardAccess(),
+                                "trace": trace.joined(separator: " | ")], startedAt: start)
+    }
+
+    /// macOS 15.4+ pasteboard privacy state for this app (0 default,
+    /// 1 ask, 2 allow, 3 deny).
+    static func pasteboardAccess() -> String {
+        if #available(macOS 15.4, *) { return "\(NSPasteboard.general.accessBehavior.rawValue)" }
+        return "n/a"
     }
 
     // MARK: - Helpers

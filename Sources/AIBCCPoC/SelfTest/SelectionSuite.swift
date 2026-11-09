@@ -58,6 +58,7 @@ struct SelectionSuite {
                               expected: wrapExpected(pane), pane, window),
         ]
         return fixtureResults + (await mouseCapturedTUI(window)) + [await quadSelection(window)]
+            + (await agentModes(window, kitty: "1")) + (await agentModes(window, kitty: "7"))
     }
 
     /// ST-01c: selection & copy in the bottom-right pane of a 2x2 grid, with
@@ -179,6 +180,49 @@ struct SelectionSuite {
                   status: stillFocused && typed == [0x78] ? .pass : .fail,
                   evidence: ["first_responder_kept": "\(stillFocused)", "hex": Hex.string(typed)],
                   startedAt: start),
+        ]
+    }
+
+    /// SC-09 (2026-11-09: copy and paste failed in Claude and Codex): a
+    /// program in the modes agent TUIs turn on — mouse reporting, bracketed
+    /// paste, focus reporting and the kitty keyboard protocol — must still
+    /// let Shift+drag select and ⌘C copy, and ⌘V paste the clipboard as one
+    /// bracketed paste.
+    private func agentModes(_ window: NSWindow, kitty: String) async -> [TestResult] {
+        let start = ContinuousClock.now
+        let environment = ["AIBCC_MOUSE_REPORT": "1", "AIBCC_BRACKETED_PASTE": "1", "AIBCC_FOCUS_REPORT": "1",
+                           "AIBCC_KITTY_KEYS": kitty]
+        guard let rec = harness.makeRecorderPane(name: "agent-modes-\(kitty)", environment: environment) else {
+            return [setupFailure("recorder missing", start)]
+        }
+        await harness.install([rec.pane], layout: .single)
+        guard await harness.waitUntil(AppConstants.SelfTest.readyTimeout, { rec.log.isReady }) else {
+            return [setupFailure("recorder not ready", start)]
+        }
+        _ = await harness.waitUntil(.seconds(2)) { rec.pane.state.isMouseCaptured }
+        harness.focus(rec.pane)
+        await harness.drain()
+        guard let from = harness.windowPoint(row: 1, column: 0, in: rec.pane, fraction: 0.1),
+              let to = harness.windowPoint(row: 1, column: 4, in: rec.pane, fraction: 0.9)
+        else { return [setupFailure("geometry unavailable", start)] }
+        Synth.drag(from: from, to: to, steps: 8, in: window, modifiers: .shift)
+        let copied = await copySelection(window)
+        let text = "agent-paste-\(kitty)"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        let mark = rec.log.mark()
+        if let paste = Synth.command("v") { Synth.press(paste, in: window) }
+        let pasted = await harness.settledBytes(rec.log, since: mark, expectingAtLeast: text.utf8.count)
+        let expected = Array("\u{1b}[200~\(text)\u{1b}[201~".utf8)
+        let pasteOK = pasted == expected
+        return [
+            .make("SC-09a-k\(kitty)", "에이전트 모드(마우스·bracketed paste·포커스·kitty \(kitty)): Shift+드래그 → ⌘C 복사",
+                  status: copied == "rows=" ? .pass : .fail, cause: .app,
+                  evidence: ["copied": copied ?? "nil", "mouse_captured": "\(rec.pane.state.isMouseCaptured)"], startedAt: start),
+            .make("SC-09b-k\(kitty)", "에이전트 모드(kitty \(kitty)): ⌘V → 클립보드를 bracketed paste 한 번으로",
+                  status: pasteOK ? .pass : .fail, cause: .app,
+                  evidence: ["hex": Hex.string(pasted), "trace": rec.pane.probeView?.callLog.suffix(6)
+                      .map { "\($0.kind.rawValue):\($0.text ?? "")" }.joined(separator: " | ") ?? ""], startedAt: start),
         ]
     }
 

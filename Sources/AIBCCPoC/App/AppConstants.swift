@@ -35,9 +35,13 @@ enum AppConstants {
         static let paddingY = 6
         /// App shortcuts that must win over Ghostty's default keybinds
         /// (Cmd+Opt+I is Ghostty's inspector toggle; found by IN-11b).
+        /// Cmd+V goes to the menu's Paste: macOS 15.4+ lets an app read what
+        /// another app copied only for a user-started paste, which Ghostty's
+        /// own Cmd+V binding is not taken for — pasting from a browser did
+        /// nothing (beta.4 report, 2026-11-09).
         static let appReservedChords = [
             "super+alt+i", "super+alt+1", "super+alt+2", "super+alt+3", "super+alt+4", "super+alt+shift+l",
-            "super+n", "super+shift+a", "super+shift+c", "super+k",
+            "super+n", "super+shift+a", "super+shift+c", "super+k", "super+v",
         ]
         /// The Agents bar's skip-permissions checkbox (kept across launches).
         static let skipPermissionsKey = "agentSkipPermissions"
