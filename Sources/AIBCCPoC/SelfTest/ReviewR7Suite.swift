@@ -170,7 +170,8 @@ struct ReviewR7Suite {
         let reserve = AppConstants.Layout.centerReserveWidth
         let cases: [(Double, CGFloat, CGFloat)] = [
             (640, 1400, 640), (640, 720, 720 - reserve), (360, 720, 300), (360, 1200, 360),
-            (100, 1200, AppConstants.Layout.inspectorMinWidth), (9000, 2000, AppConstants.Layout.outputsMaxWidth),
+            (100, 1200, AppConstants.Layout.inspectorMinWidth), (9000, 2000, 2000 - reserve), (1200, 2400, 1200),
+            (9000, 9000, AppConstants.Layout.outputsMaxWidth),
             (640, reserve + AppConstants.Layout.outputsFoldWidth - 1, 0), (640, 300, 0),
         ]
         let failures = cases.compactMap { stored, available, expected -> String? in

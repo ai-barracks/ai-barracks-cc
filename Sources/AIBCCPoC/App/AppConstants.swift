@@ -102,8 +102,14 @@ enum AppConstants {
 
     enum Documents {
         static let ruleFiles = ["RULES.md", "SOUL.md", "GROWTH.md", "agent.yaml"]
-        static let listWidth: CGFloat = 220
-        static let historyListWidth: CGFloat = 300
+        static let listWidth: CGFloat = 240
+        static let historyListWidth: CGFloat = 340
+        /// A dragged list keeps at most this share of its screen's width.
+        static let listMaxShare: CGFloat = 0.6
+        static let historyListKey = "historyListWidth"
+        static let archiveListKey = "archiveListWidth"
+        static let documentListKey = "documentListWidth"
+        static let skillListKey = "skillListWidth"
         /// How narrow a list beside a reader may get when the window is
         /// small. Fixed-width lists kept the center's minimum near the
         /// space a minimum-size window leaves it, and the split view then
@@ -125,7 +131,9 @@ enum AppConstants {
         static let defaultWindowHeight: CGFloat = 900
         static let inspectorMinWidth: CGFloat = 300
         static let inspectorIdealWidth: CGFloat = 360
-        static let outputsMaxWidth: CGFloat = 640
+        /// Outputs may grow until only `centerReserveWidth` is left
+        /// (2026-11-09 feedback: 640 pt was too narrow on a wide display).
+        static let outputsMaxWidth: CGFloat = 4000
         /// Kept for the terminals and the Agents bar however wide Outputs is
         /// set (one pane ≈ 50 columns).
         static let centerReserveWidth: CGFloat = 420

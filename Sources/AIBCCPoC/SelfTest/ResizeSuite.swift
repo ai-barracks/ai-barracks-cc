@@ -36,6 +36,7 @@ struct ResizeSuite {
             await fontSizeActions(rec),
             await fontSizeShortcuts(rec, window),
             await fullScreen(rec, window),
+            await resizeWhileAway(rec, window),
         ]
         window.setFrame(original, display: true)
         harness.workspace.isArtifactPanelVisible = true
@@ -233,6 +234,34 @@ struct ResizeSuite {
     /// confirms the request was a no-op after the grace period) and the SAME
     /// geometry, with the triad agreeing, holds for a full `stableWindow`.
     /// Time is measured from the request.
+    /// RS-11a (2026-11-09 feedback: an agent's screen stayed narrow in a
+    /// widened window): the window is widened while another destination is
+    /// shown (terminals detached); back on Agents, the grid, the PTY and
+    /// the view agree on the new size, then again after narrowing.
+    private func resizeWhileAway(_ rec: SelfTestHarness.RecorderPane, _ window: NSWindow) async -> [TestResult] {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        let original = window.frame
+        let wide = (window.screen ?? NSScreen.main)?.visibleFrame ?? original.insetBy(dx: -200, dy: 0)
+        var details: [String] = []
+        var ok = true
+        for (label, frame) in [("wide", wide), ("back", original)] {
+            let before = geometry(rec)
+            workspace.destination = .rules
+            await harness.pause(.milliseconds(600))
+            window.setFrame(frame, display: true)
+            await harness.pause(.milliseconds(600))
+            let requested = ContinuousClock.now
+            workspace.destination = .sessions
+            let result = await converge(rec, before: before, requested: requested, allowNoOp: { frame == original && before == geometry(rec) })
+            ok = ok && result.converged
+            details.append("\(label): \(result.converged ? "ok" : "FAIL") \(result.detail)")
+        }
+        return [.make("RS-11a", "다른 화면에 있는 동안 창 크기 변경 → Agents로 돌아오면 grid·PTY·view 일치",
+                      status: ok ? .pass : .fail, cause: .app,
+                      evidence: ["steps": details.joined(separator: " | ")], startedAt: start)]
+    }
+
     private func converge(
         _ rec: SelfTestHarness.RecorderPane,
         before: Geometry?,

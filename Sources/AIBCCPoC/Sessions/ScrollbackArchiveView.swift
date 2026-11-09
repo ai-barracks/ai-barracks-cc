@@ -18,7 +18,7 @@ struct ScrollbackArchiveView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        ListDetailSplit(widthKey: AppConstants.Documents.archiveListKey, defaultWidth: AppConstants.Documents.historyListWidth) {
             VStack(spacing: 0) {
                 HStack {
                     TextField("제목 검색", text: $query).textFieldStyle(.roundedBorder)
@@ -41,10 +41,7 @@ struct ScrollbackArchiveView: View {
                 }
                 .padding(6)
             }
-            .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.historyListWidth,
-                   maxWidth: AppConstants.Documents.historyListWidth)
-            .layoutPriority(1)
-            Divider()
+        } detail: {
             reader
         }
         .background(Tokens.work)

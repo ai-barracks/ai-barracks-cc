@@ -24,12 +24,9 @@ struct SkillsView: View {
     enum SyncState: Equatable { case idle, running, done, failed(String) }
 
     var body: some View {
-        HStack(spacing: 0) {
+        ListDetailSplit(widthKey: AppConstants.Documents.skillListKey, defaultWidth: AppConstants.Documents.historyListWidth) {
             catalog
-                .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.historyListWidth,
-                       maxWidth: AppConstants.Documents.historyListWidth)
-                .layoutPriority(1)
-            Divider()
+        } detail: {
             reader
         }
         .background(Tokens.work)

@@ -64,16 +64,14 @@ struct DocumentView: View {
     }
 
     private var browser: some View {
-        HStack(spacing: 0) {
+        ListDetailSplit(widthKey: AppConstants.Documents.documentListKey + "." + destination.rawValue,
+                        defaultWidth: AppConstants.Documents.listWidth) {
             List(selection: guardedSelection) {
                 ForEach(documents, id: \.self) { file in row(file).tag(file) }
                 if destination == .wiki { WikiListExtras(wiki: wiki) }
             }
             .listStyle(.sidebar)
-            .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.listWidth,
-                   maxWidth: AppConstants.Documents.listWidth)
-            .layoutPriority(1)
-            Divider()
+        } detail: {
             reader
         }
         .background(Tokens.work)

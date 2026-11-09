@@ -11,6 +11,13 @@ struct GallerySuite {
         let start = ContinuousClock.now
         let workspace = harness.workspace
         var captures: [String] = []
+        // AIBCC_GALLERY_FRAME=full: the screen's whole visible frame (how a
+        // wide window uses its width, 2026-11-09 feedback).
+        if ProcessInfo.processInfo.environment["AIBCC_GALLERY_FRAME"] == "full",
+           let window = harness.window, let screen = window.screen ?? NSScreen.main {
+            window.setFrame(screen.visibleFrame, display: true)
+            await harness.pause(.seconds(1))
+        }
         workspace.isArtifactPanelVisible = true
         for destination in Destination.allCases {
             workspace.destination = destination

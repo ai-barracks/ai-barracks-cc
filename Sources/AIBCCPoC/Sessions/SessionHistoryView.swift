@@ -14,6 +14,8 @@ struct SessionHistoryView: View {
     @AppStorage(AppConstants.History.hideEmptyKey) private var hideEmpty = true
     @State private var selection: SessionRecord.ID?
     @State private var detail: SessionDetail?
+    /// Shown because nothing was picked (newest first); not "opened".
+    @State private var autoSelected: SessionRecord.ID?
 
     enum StatusFilter: String, CaseIterable, Identifiable {
         case all, active, completed, interrupted
@@ -29,7 +31,7 @@ struct SessionHistoryView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        ListDetailSplit(widthKey: AppConstants.Documents.historyListKey, defaultWidth: AppConstants.Documents.historyListWidth) {
             VStack(spacing: 0) {
                 filters
                 List(filtered, selection: $selection) { record in
@@ -38,19 +40,17 @@ struct SessionHistoryView: View {
                 Text("\(filtered.count) / \(records.count)").font(Tokens.Font.meta)
                     .foregroundStyle(Tokens.textTertiary).padding(6)
             }
-            .frame(minWidth: AppConstants.Documents.listMinWidth, idealWidth: AppConstants.Documents.historyListWidth,
-                   maxWidth: AppConstants.Documents.historyListWidth)
-            .layoutPriority(1)
-            Divider()
+        } detail: {
             if let detail {
                 SessionDetailView(detail: detail, workspace: workspace)
                     .id(detail.record.id)
             } else {
-                ContentUnavailableView("세션을 선택하세요", systemImage: "clock.arrow.circlepath")
+                ContentUnavailableView(filtered.isEmpty ? "표시할 세션이 없습니다" : "세션을 선택하세요", systemImage: "clock.arrow.circlepath")
             }
         }
         .background(Tokens.work)
-        .task(id: barrack.id) { reload(); takePending() }
+        .task(id: barrack.id) { reload(); takePending(); selectNewestIfNone() }
+        .onChange(of: filtered.map(\.id)) { selectNewestIfNone() }
         .onChange(of: workspace.pendingSessionID) { takePending() }
         .onChange(of: workspace.liveness.sessions) { reload() }
         .onChange(of: changes) {
@@ -59,7 +59,8 @@ struct SessionHistoryView: View {
         }
         .onChange(of: selection) {
             detail = selection.flatMap { SessionRecords.detail(barrackPath: barrack.path, id: $0) }
-            acknowledgeIfDone()
+            // Only a session the user opened counts as seen.
+            if selection != autoSelected { acknowledgeIfDone() }
         }
     }
 
@@ -96,6 +97,15 @@ struct SessionHistoryView: View {
 
     private func live(for record: SessionRecord) -> LiveSession? {
         workspace.liveness.sessions(of: barrack.id).first { $0.id == record.id }
+    }
+
+    /// With nothing picked (or the pick filtered out), the newest session
+    /// fills the detail instead of an empty, narrow screen (2026-11-09
+    /// feedback); it is not acknowledged as seen.
+    private func selectNewestIfNone() {
+        guard selection == nil || !filtered.contains(where: { $0.id == selection }) else { return }
+        autoSelected = filtered.first?.id
+        selection = autoSelected
     }
 
     private func takePending() {
