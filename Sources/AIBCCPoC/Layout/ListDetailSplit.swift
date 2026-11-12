@@ -16,36 +16,47 @@ struct ListDetailSplit<ListContent: View, Detail: View>: View {
     /// Hiding the list keeps the detail's place in the view tree, so a
     /// terminal grid is not rebuilt (and does not lose keyboard focus).
     private let showsList: Bool
-    /// Width the detail always keeps; the list folds away when it cannot
-    /// fit beside it (terminals at a minimum window, LY-02b).
+    /// Width the detail keeps while the list can still give way: the list
+    /// narrows to its minimum for it (a minimum window with Outputs open
+    /// left a reader about 150pt and its toolbar ran under the next panel,
+    /// 2026-11-12 walk-through).
     private let detailMinWidth: CGFloat
+    /// The list goes away rather than squeeze the detail below its minimum
+    /// (the agent list beside the terminals, LY-02b).
+    private let foldsList: Bool
 
-    init(widthKey: String, defaultWidth: CGFloat, showsList: Bool = true, detailMinWidth: CGFloat = 0,
+    init(widthKey: String, defaultWidth: CGFloat, showsList: Bool = true,
+         detailMinWidth: CGFloat = AppConstants.Documents.detailMinWidth, foldsList: Bool = false,
          @ViewBuilder list: () -> ListContent, @ViewBuilder detail: () -> Detail) {
         _stored = AppStorage(wrappedValue: Double(defaultWidth), widthKey)
         self.showsList = showsList
         self.detailMinWidth = detailMinWidth
+        self.foldsList = foldsList
         self.list = list()
         self.detail = detail()
     }
 
     var body: some View {
         GeometryReader { proxy in
-            let room = proxy.size.width - detailMinWidth
-            let shown = min(Self.width(stored: stored, available: proxy.size.width), room)
+            let shown = Self.width(stored: stored, available: proxy.size.width, detailMin: detailMinWidth)
+            let fits = proxy.size.width - detailMinWidth >= AppConstants.Documents.listMinWidth
             HStack(spacing: 0) {
-                if showsList, room >= AppConstants.Documents.listMinWidth {
-                    list.frame(width: shown)
+                if showsList, fits || !foldsList {
+                    list.frame(width: shown).clipped()
                     handle(shown, available: proxy.size.width)
                 }
-                detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Clipped: content with a fixed width must not draw over
+                // the panel beside this one.
+                detail.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
             }
         }
     }
 
-    /// At least the list minimum; at most what leaves the detail its share.
-    static func width(stored: Double, available: CGFloat) -> CGFloat {
-        let most = max(AppConstants.Documents.listMinWidth, available * AppConstants.Documents.listMaxShare)
+    /// At least the list minimum; at most its share of the width and what
+    /// leaves the detail its minimum.
+    static func width(stored: Double, available: CGFloat, detailMin: CGFloat = 0) -> CGFloat {
+        let most = max(AppConstants.Documents.listMinWidth,
+                       min(available * AppConstants.Documents.listMaxShare, available - detailMin))
         return min(max(CGFloat(stored), AppConstants.Documents.listMinWidth), most)
     }
 
@@ -66,7 +77,7 @@ struct ListDetailSplit<ListContent: View, Detail: View>: View {
                             .onChanged { drag in
                                 let start = dragStart ?? Double(shown)
                                 dragStart = start
-                                stored = Double(Self.width(stored: start + Double(drag.translation.width), available: available))
+                                stored = Double(Self.width(stored: start + Double(drag.translation.width), available: available, detailMin: detailMinWidth))
                             }
                             .onEnded { _ in dragStart = nil }
                     )

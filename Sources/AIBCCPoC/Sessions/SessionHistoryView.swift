@@ -64,24 +64,43 @@ struct SessionHistoryView: View {
         }
     }
 
+    /// The segmented bar when the list is wide enough for it; menus when
+    /// the list is at its narrowest (a minimum window with Outputs open:
+    /// the bar ran over the detail, 2026-11-12 walk-through).
     private var filters: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            Picker("", selection: $status) { ForEach(StatusFilter.allCases) { Text($0.label).tag($0) } }
-                .pickerStyle(.segmented).labelsHidden()
-            HStack {
-                Picker("클라이언트", selection: $client) {
-                    Text("모든 클라이언트").tag("all")
-                    ForEach(Array(Set(records.map(\.client))).sorted(), id: \.self) { Text($0).tag($0) }
+        ViewThatFits(in: .horizontal) {
+            VStack(spacing: Tokens.Spacing.s) {
+                Picker("", selection: $status) { ForEach(StatusFilter.allCases) { Text($0.label).tag($0) } }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                HStack {
+                    clientPicker
+                    hideEmptyToggle("빈 세션 숨기기").fixedSize()
                 }
-                .labelsHidden()
-                Toggle("빈 세션 숨기기", isOn: $hideEmpty)
-                    .toggleStyle(.checkbox)
-                    .font(Tokens.Font.meta)
-                    .fixedSize()
-                    .help("진행 중이 아니고 작업 내용이 없거나 (pending)인 세션을 숨깁니다")
+            }
+            VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+                Picker("상태", selection: $status) { ForEach(StatusFilter.allCases) { Text($0.label).tag($0) } }
+                    .labelsHidden()
+                clientPicker
+                hideEmptyToggle("빈 세션 숨김")
             }
         }
         .padding(Tokens.Spacing.s)
+    }
+
+    private var clientPicker: some View {
+        Picker("클라이언트", selection: $client) {
+            Text("모든 클라이언트").tag("all")
+            ForEach(Array(Set(records.map(\.client))).sorted(), id: \.self) { Text($0).tag($0) }
+        }
+        .labelsHidden()
+    }
+
+    private func hideEmptyToggle(_ label: String) -> some View {
+        Toggle(label, isOn: $hideEmpty)
+            .toggleStyle(.checkbox)
+            .font(Tokens.Font.meta)
+            .lineLimit(1)
+            .help("진행 중이 아니고 작업 내용이 없거나 (pending)인 세션을 숨깁니다")
     }
 
     private var filtered: [SessionRecord] {

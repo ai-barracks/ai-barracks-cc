@@ -42,9 +42,12 @@ struct TerminalPaneView: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 8)
-            if let size = state.surfaceSize {
+            // A narrow slot drops the size before it squeezes the title.
+            if let size = state.surfaceSize, size.columns >= AppConstants.Terminal.headerSizeMinColumns {
                 Text("\(size.columns)×\(size.rows)")
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(.secondary)
             }
             if let workspace { PaneMenu(pane: pane, workspace: workspace) }

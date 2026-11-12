@@ -108,7 +108,7 @@ struct CenterView: View {
                 ListDetailSplit(widthKey: AppConstants.Terminal.agentListWidthKey,
                                 defaultWidth: AppConstants.Terminal.agentListWidth,
                                 showsList: workspace.selectedBarrack != nil && agentListShown && !workspace.panes.isEmpty,
-                                detailMinWidth: AppConstants.Terminal.gridMinWidthBesideList) {
+                                detailMinWidth: AppConstants.Terminal.gridMinWidthBesideList, foldsList: true) {
                     AgentListView(workspace: workspace)
                 } detail: {
                     TerminalGridView(workspace: workspace)

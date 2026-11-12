@@ -230,6 +230,19 @@ enum PanePlacement {
     /// Shows `id` in `slot`: a pane already on screen trades places with the
     /// one there; a held one comes in and the slot's pane goes off screen
     /// in its place.
+    /// Without `id`: the terminals still on screen keep their slots, and
+    /// the first held one takes the freed slot.
+    static func removing<T: Identifiable>(_ id: T.ID, from panes: [T], layout: PaneLayout) -> [T] {
+        guard let index = panes.firstIndex(where: { $0.id == id }) else { return panes }
+        var remaining = panes
+        remaining.remove(at: index)
+        let slots = layout.paneCount
+        guard index < slots, remaining.count >= slots else { return remaining }
+        let promoted = remaining.remove(at: slots - 1)
+        remaining.insert(promoted, at: index)
+        return remaining
+    }
+
     static func showing<T: Identifiable>(_ id: T.ID, inSlot slot: Int, of panes: [T], layout: PaneLayout) -> [T] {
         guard let from = panes.firstIndex(where: { $0.id == id }), slot < min(layout.paneCount, panes.count), from != slot
         else { return panes }

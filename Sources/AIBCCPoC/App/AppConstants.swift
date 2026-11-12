@@ -49,6 +49,8 @@ enum AppConstants {
         static let agentListShownKey = "agentListShown"
         static let agentListWidthKey = "agentListWidth"
         static let agentListWidth: CGFloat = 240
+        /// Slots narrower than this many columns show no size in the header.
+        static let headerSizeMinColumns = 22
         /// The terminals keep this much beside the list; narrower, the list
         /// folds away (a minimum window with a wide Outputs, LY-02b).
         static let gridMinWidthBesideList: CGFloat = 480
@@ -128,6 +130,9 @@ enum AppConstants {
         /// space a minimum-size window leaves it, and the split view then
         /// looped its constraint pass until AppKit aborted (UX-02).
         static let listMinWidth: CGFloat = 120
+        /// The reader beside a list keeps this much while the list can
+        /// still narrow (its toolbar and a line of text need about this).
+        static let detailMinWidth: CGFloat = 320
     }
 
     enum Liveness {

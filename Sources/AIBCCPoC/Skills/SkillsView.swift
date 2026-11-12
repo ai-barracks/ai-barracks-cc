@@ -95,9 +95,24 @@ struct SkillsView: View {
                             .font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(1)
                             .help("aib 기본 skill — 지우거나 이름을 바꾸면 aib sync가 다시 만듭니다")
                     }
-                    Button("편집") { openEditor(skill) }
-                    Button("이름 변경") { sheet = .rename(skill) }.disabled(seeded)
-                    Button("삭제", role: .destructive) { sheet = .delete(skill) }.disabled(seeded)
+                    Button("편집") { openEditor(skill) }.fixedSize()
+                    // Rename and delete fold into a menu when the reader is
+                    // at its narrowest (they were cut off at a minimum window).
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            Button("이름 변경") { sheet = .rename(skill) }.disabled(seeded).fixedSize()
+                            Button("삭제", role: .destructive) { sheet = .delete(skill) }.disabled(seeded).fixedSize()
+                        }
+                        Menu {
+                            Button("이름 변경") { sheet = .rename(skill) }.disabled(seeded)
+                            Button("삭제", role: .destructive) { sheet = .delete(skill) }.disabled(seeded)
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .help("이름 변경·삭제")
+                    }
+                    .layoutPriority(1)
                 }
                 .padding(Tokens.Spacing.m)
                 if let source, let renderFailure {

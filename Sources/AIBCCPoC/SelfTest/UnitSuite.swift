@@ -1,3 +1,4 @@
+import SwiftUI
 import AppKit
 
 /// Pure checks that need no window: the liveness fold must match aib
@@ -307,6 +308,20 @@ struct UnitSuite {
         if PanePlacement.showing(9, inSlot: 0, of: shown, layout: .quad) != shown
             || PanePlacement.showing(1, inSlot: 4, of: shown, layout: .quad) != shown {
             failures.append("bad id or slot changed panes")
+        }
+        // Closing one on screen: the others stay put, a held one fills in.
+        let closed = PanePlacement.removing(4, from: shown, layout: .quad)
+        if closed.map(\.id) != [0, 3, 1, 5, 2] { failures.append("close visible \(closed.map(\.id))") }
+        if PanePlacement.removing(2, from: shown, layout: .quad).map(\.id) != [0, 4, 1, 5, 3]
+            || PanePlacement.removing(0, from: Array(items.prefix(3)), layout: .quad).map(\.id) != [1, 2] {
+            failures.append("close held or with room")
+        }
+        // The list beside a reader gives way first: at a minimum window the
+        // reader keeps its width and the list narrows to its own minimum.
+        typealias Split = ListDetailSplit<EmptyView, EmptyView>
+        if Split.width(stored: 340, available: 435, detailMin: 320) != 120 || Split.width(stored: 340, available: 1000, detailMin: 320) != 340
+            || Split.width(stored: 900, available: 1000, detailMin: 320) != 600 || Split.width(stored: 240, available: 700, detailMin: 480) != 220 {
+            failures.append("list width beside a detail minimum")
         }
         return .make("PN-02a", "터미널 상한 없음: 빈 칸 → 분할 확대 → 지금 칸 순서로 놓고 밀린 터미널은 화면 밖에 유지, 화면 밖 터미널은 칸과 맞바꿈",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,

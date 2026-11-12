@@ -643,7 +643,7 @@ extension WorkspaceModel {
     /// last one leaves the empty Agents screen, not a new shell.
     func closePane(id paneID: UUID) {
         let current = grid
-        let remaining = current.panes.filter { $0.id != paneID }
+        let remaining = PanePlacement.removing(paneID, from: current.panes, layout: current.layout)
         let fitting = PaneLayout.fitting(min(remaining.count, current.layout.paneCount), keeping: current.layout)
         store(BarrackGrid(panes: remaining, layout: fitting, splitX: current.splitX, splitY: current.splitY))
     }
