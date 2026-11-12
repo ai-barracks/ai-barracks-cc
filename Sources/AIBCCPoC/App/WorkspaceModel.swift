@@ -202,7 +202,8 @@ final class WorkspaceModel {
         directory: String?,
         attachingTo session: UUID?,
         userCommand: String? = nil,
-        agent: AgentClient? = nil
+        agent: AgentClient? = nil,
+        createdAt: Date = Date()
     ) -> TerminalPane {
         let backend: PaneBackend = daemon.map {
             .daemon($0, sessionID: session ?? UUID(), attach: session != nil)
@@ -215,7 +216,8 @@ final class WorkspaceModel {
             extraEnvironment: environment,
             backend: backend,
             userCommand: userCommand,
-            agent: agent
+            agent: agent,
+            createdAt: createdAt
         )
         let paneID = pane.id
         pane.onExit = { [weak self] pane in self?.archive(pane, barrackPath: directory) }
@@ -320,9 +322,11 @@ final class WorkspaceModel {
             guard let grid = saved.grids[barrack.id] else { return }
             // The launch is known only if it was recorded: an unknown folder
             // stays unknown rather than posing as the barrack's.
-            let attached = grid.panes.filter { known.contains($0.session) }.map {
-                makePane(title: $0.title, command: nil, environment: [:], directory: $0.directory, attachingTo: $0.session,
-                         userCommand: $0.command, agent: $0.agent.flatMap(AgentClient.init(rawValue:)))
+            // A record from before creation times keeps its saved order.
+            let attached = grid.panes.enumerated().filter { known.contains($0.element.session) }.map { index, pane in
+                makePane(title: pane.title, command: nil, environment: [:], directory: pane.directory, attachingTo: pane.session,
+                         userCommand: pane.command, agent: pane.agent.flatMap(AgentClient.init(rawValue:)),
+                         createdAt: Date(timeIntervalSince1970: pane.created ?? Double(index)))
             }
             guard !attached.isEmpty else { return }
             let layout = PaneLayout.restored(name: grid.layoutName, slots: grid.layout)
@@ -356,7 +360,8 @@ final class WorkspaceModel {
                 panes: grid.panes.compactMap { pane in
                     pane.remote.map {
                         SavedWorkspace.Pane(session: $0.id, title: pane.title, command: pane.userCommand,
-                                            directory: pane.workingDirectory, agent: pane.agent?.rawValue)
+                                            directory: pane.workingDirectory, agent: pane.agent?.rawValue,
+                                            created: pane.createdAt.timeIntervalSince1970)
                     }
                 }
             )
@@ -650,6 +655,13 @@ extension WorkspaceModel {
 
     /// An Agents bar chip: focus a pane that is on screen where it is; bring
     /// a hidden one to the front.
+    /// The barrack's terminals in the order they were started: the agent
+    /// list's order, which stays put when terminals trade slots
+    /// (2026-11-13 feedback: rows moved when one was clicked).
+    var panesByStart: [TerminalPane] {
+        panes.enumerated().sorted { ($0.element.createdAt, $0.offset) < ($1.element.createdAt, $1.offset) }.map(\.element)
+    }
+
     func selectPane(id paneID: UUID) {
         guard let index = panes.firstIndex(where: { $0.id == paneID }) else { return }
         guard index < layout.paneCount else { return show(paneID, inSlot: focusedSlot ?? 0) }

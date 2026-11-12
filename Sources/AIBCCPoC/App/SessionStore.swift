@@ -10,6 +10,8 @@ struct SavedWorkspace: Codable, Sendable {
         var command: String?
         var directory: String?
         var agent: String?
+        /// Seconds since 1970 it was first started (absent in older records).
+        var created: Double?
     }
 
     struct Grid: Codable, Sendable {

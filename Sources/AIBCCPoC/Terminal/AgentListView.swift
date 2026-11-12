@@ -4,13 +4,15 @@ import SwiftUI
 /// The barrack's terminals as a list beside the grid (v1 SessionsTab "Live
 /// Terminals"; 2026-11-12 report: with several agents it was hard to see
 /// which one was doing what and to switch). Each row says what runs there,
-/// its state, the aib session's task, and where it shows; a click brings it
-/// up (into the focused slot when it is off screen).
+/// its state, what its screen titles itself, the aib session's task and
+/// newest log line, and where it shows; a click brings it up (into the
+/// focused slot when it is off screen). Rows stay in start order: they do
+/// not move when terminals trade slots (2026-11-13 feedback).
 struct AgentListView: View {
     let workspace: WorkspaceModel
     @State private var closing: TerminalPane?
-    /// Task lines by aib session id, read from the session files.
-    @State private var tasks: [String: String] = [:]
+    /// Task and newest log line by aib session id, from the session files.
+    @State private var work: [String: AgentWork] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,10 +28,11 @@ struct AgentListView: View {
             // where an off-screen terminal is brought up.
             ScrollView {
                 LazyVStack(spacing: 2) {
-                    ForEach(Array(workspace.panes.enumerated()), id: \.element.id) { index, pane in
+                    ForEach(workspace.panesByStart) { pane in
                         let session = workspace.liveSession(of: pane)
+                        let index = workspace.panes.firstIndex { $0.id == pane.id } ?? Int.max
                         AgentRow(pane: pane, state: pane.state, session: session,
-                                 task: session.flatMap { tasks[$0.id] },
+                                 work: session.flatMap { work[$0.id] },
                                  slot: index < workspace.layout.paneCount ? index + 1 : nil,
                                  close: { pane.hasExited ? workspace.closePane(id: pane.id) : (closing = pane) })
                             .contentShape(Rectangle())
@@ -40,10 +43,11 @@ struct AgentListView: View {
             }
         }
         .background(Tokens.work)
-        // Session files fill in their task after the agent starts.
+        // Session files change while the agent works: reread often, off
+        // the main thread.
         .task(id: sessionIDs) {
             while !Task.isCancelled {
-                readTasks()
+                await readWork()
                 try? await Task.sleep(for: AppConstants.Terminal.agentTaskRefresh)
             }
         }
@@ -62,11 +66,32 @@ struct AgentListView: View {
         workspace.panes.compactMap { workspace.liveSession(of: $0)?.id }
     }
 
-    private func readTasks() {
-        guard let barrack = workspace.selectedBarrack else { return }
-        tasks = Dictionary(sessionIDs.compactMap { id in
-            SessionRecords.detail(barrackPath: barrack.path, id: id).map { (id, $0.record.task) }
+    private func readWork() async {
+        guard let path = workspace.selectedBarrack?.path else { return }
+        let ids = sessionIDs
+        let read = await Task.detached { AgentWork.read(barrackPath: path, sessions: ids) }.value
+        if !Task.isCancelled, read != work { work = read }
+    }
+}
+
+/// What an aib session file says the agent is on.
+struct AgentWork: Equatable, Sendable {
+    let task: String
+    /// Newest `## Log` entry, if any.
+    let latestLog: String?
+
+    static func read(barrackPath: String, sessions: [String]) -> [String: AgentWork] {
+        Dictionary(sessions.compactMap { id in
+            SessionRecords.detail(barrackPath: barrackPath, id: id).map {
+                (id, AgentWork(task: shown($0.record.task) ?? "", latestLog: $0.log.last.flatMap(shown)))
+            }
         }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Nil for the placeholders a new session file starts with.
+    static func shown(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty || trimmed == "(pending)" || trimmed == "(starting)" ? nil : trimmed
     }
 }
 
@@ -75,7 +100,7 @@ private struct AgentRow: View {
     let pane: TerminalPane
     @ObservedObject var state: TerminalViewState
     let session: LiveSession?
-    let task: String?
+    let work: AgentWork?
     /// 1-based slot, nil when held off screen.
     let slot: Int?
     let close: () -> Void
@@ -93,8 +118,16 @@ private struct AgentRow: View {
                         .foregroundStyle(slot == nil ? Tokens.orange : Tokens.textTertiary)
                 }
                 Text(status).font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary).lineLimit(1)
-                if let task, !task.isEmpty, task != "(pending)" {
+                // What the program titles its screen: the agent's own
+                // one-line summary of what it is on, as it changes.
+                if let screen = screenTitle {
+                    Text(screen).font(Tokens.Font.meta).foregroundStyle(Tokens.textPrimary).lineLimit(2)
+                }
+                if let task = work?.task, !task.isEmpty {
                     Text(task).font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(2)
+                }
+                if let log = work?.latestLog {
+                    Text(log).font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(2)
                 }
             }
             Button(action: close) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
@@ -114,6 +147,11 @@ private struct AgentRow: View {
         if let session { return session.state.label }
         if pane.agent != nil { return "시작 중" }
         return pane.userCommand ?? "셸"
+    }
+
+    private var screenTitle: String? {
+        let title = state.title.trimmingCharacters(in: .whitespaces)
+        return title.isEmpty || title == pane.title || pane.hasExited ? nil : title
     }
 
     private var dotColor: Color {

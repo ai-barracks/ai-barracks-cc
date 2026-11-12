@@ -27,10 +27,19 @@ struct GallerySuite {
             }
         }
         // P01: more terminals than slots, with the agent list beside them.
-        let many = (1 ... 6).compactMap { workspace.runInPane(title: "gallery \($0)", command: "sleep 120") }
+        // Each titles its screen, as an agent does with what it is on.
+        let many = (1 ... 6).compactMap {
+            workspace.runInPane(title: "gallery \($0)", command: "printf '\\033]0;%s\\007' '갤러리 작업 \($0) 진행 중'; sleep 120")
+        }
         workspace.destination = .sessions
         await harness.pause(.seconds(2))
         if let image = await harness.requestCapture(label: "gallery-agents-many") { captures.append(image.lastPathComponent) }
+        // A held terminal brought up: the list keeps its order.
+        if let held = workspace.panes.dropFirst(workspace.layout.paneCount).last {
+            workspace.selectPane(id: held.id)
+            await harness.pause(.seconds(2))
+            if let image = await harness.requestCapture(label: "gallery-agents-selected") { captures.append(image.lastPathComponent) }
+        }
         many.forEach { workspace.closePane(id: $0.id) }
         if let window = harness.window {
             workspace.isPalettePresented = true

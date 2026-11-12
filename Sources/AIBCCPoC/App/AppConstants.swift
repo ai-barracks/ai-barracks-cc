@@ -55,7 +55,7 @@ enum AppConstants {
         /// folds away (a minimum window with a wide Outputs, LY-02b).
         static let gridMinWidthBesideList: CGFloat = 480
         /// How often the list rereads the aib session files' task lines.
-        static let agentTaskRefresh: Duration = .seconds(10)
+        static let agentTaskRefresh: Duration = .seconds(2)
     }
 
     /// Opt-in daemon PTY backend (persistence spike, known issue #4).

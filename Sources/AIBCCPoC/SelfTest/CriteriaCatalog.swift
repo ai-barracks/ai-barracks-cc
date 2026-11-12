@@ -119,6 +119,7 @@ enum CriteriaCatalog {
         .init(id: "LY-01", title: "레이아웃 최소 크기(최소 창에서 충돌·겹침 없음)", blocking: false, requires: ["LY-01a"]),
         .init(id: "LY-02", title: "Outputs가 작업면을 잠식하지 않음", blocking: false, requires: ["LY-02a", "LY-02b"]),
         .init(id: "PN-01", title: "배럭당 터미널 상한 없음(P01): 칸보다 많으면 화면 밖에 유지", blocking: false, requires: ["PN-01b", "PN-02a"]),
+        .init(id: "PN-03", title: "분할 뒤 1개 보기에서 전체 크기 사용, 에이전트 목록 순서 고정·작업 표시", blocking: false, requires: ["PN-03a", "PN-04a"]),
         .init(id: "R7-01", title: "Codex r7 회귀", blocking: false, requires: ["R7-01a", "R7-01b", "R7-01c", "R7-01d"]),
         .init(id: "NV-01", title: "편집 중 이동 확인", blocking: false, requires: ["NV-01a", "NV-01b", "NV-01c"]),
         .init(id: "R5-01", title: "Codex r5 전역 상태 회귀", blocking: false, requires: ["R5-01a"]),

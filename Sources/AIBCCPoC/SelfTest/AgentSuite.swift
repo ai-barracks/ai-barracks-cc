@@ -9,7 +9,7 @@ struct AgentSuite {
 
     func run() async -> [TestResult] {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
-         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await destinationRoundTrip(),
+         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await singleAfterSplitUsesFullSize(), await agentListKeepsOrder(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
          await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(), agentsStartEmpty(),
          await settingsApply(), await lineHeightApplies(), await twoRowsLayout()] + (await QuickCommandTests(harness: harness).run())
@@ -126,6 +126,115 @@ struct AgentSuite {
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["failures": failures.joined(separator: " | "),
                                 "panes": workspace.panes.map(\.title).joined(separator: ",")], startedAt: start)
+    }
+
+    /// PN-03a (2026-11-13 report on beta.7: after a second agent split the
+    /// view, going back to one terminal left it at the split's size): each
+    /// terminal shown alone after a split has the size it had alone before.
+    private func singleAfterSplitUsesFullSize() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        var steps: [String] = []
+        var ok = true
+        workspace.editInProgress = false
+        workspace.destination = .sessions
+        let sizes = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-pn3-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: sizes, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sizes) }
+        // Each terminal keeps writing its PTY's size, so the test sees what
+        // the program inside is told, not only what the view draws.
+        let report = { (name: String) in
+            "/bin/sh -c " + AgentLauncher.shellQuote("while :; do stty size > \(sizes.path)/\(name).tmp && mv \(sizes.path)/\(name).tmp \(sizes.path)/\(name); sleep 0.1; done")
+        }
+        let pty = { (name: String) in
+            (try? String(contentsOf: sizes.appendingPathComponent(name), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
+        let agrees = { (pane: TerminalPane, name: String) -> Bool in
+            guard let size = pane.state.surfaceSize else { return false }
+            return pty(name) == "\(size.rows) \(size.columns)"
+        }
+        let first = workspace.makePane(title: "pn3 a", command: report("a"))
+        await harness.install([first], layout: .single)
+        await harness.pause(.milliseconds(600))
+        let alone = first.state.surfaceSize
+        steps.append("alone \(describe(first))")
+        let second = workspace.openPane(title: "pn3-b", command: report("b"))
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { second?.state.surfaceSize != nil }
+        await harness.pause(.milliseconds(600))
+        steps.append("split \(describe(first)) / \(second.map(describe) ?? "nil")")
+        workspace.setLayout(.single)
+        let firstBack = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+            first.state.surfaceSize?.columns == alone?.columns && agrees(first, "a")
+        }
+        ok = ok && firstBack
+        steps.append("single first \(describe(first)) pty \(pty("a"))")
+        if let second {
+            workspace.selectPane(id: second.id)
+            let secondFull = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+                second.state.surfaceSize?.columns == alone?.columns && second.state.surfaceSize?.rows == alone?.rows && agrees(second, "b")
+            }
+            ok = ok && secondFull && workspace.panes.first?.id == second.id
+            steps.append("single second \(describe(second)) pty \(pty("b"))")
+            workspace.selectPane(id: first.id)
+            let firstAgain = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+                first.state.surfaceSize?.columns == alone?.columns && first.state.surfaceSize?.rows == alone?.rows && agrees(first, "a")
+            }
+            ok = ok && firstAgain
+            steps.append("single first again \(describe(first)) pty \(pty("a"))")
+        } else {
+            ok = false
+        }
+        return .make("PN-03a", "분할 뒤 1개 보기로 돌아가면 어느 터미널이든 혼자일 때 크기를 다시 씀",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["steps": steps.joined(separator: " | ")], startedAt: start)
+    }
+
+    /// PN-04a (2026-11-13 feedback on beta.7: list rows moved when an agent
+    /// was clicked, and what each agent was on did not keep up): the list
+    /// order is the start order whatever the slots do, and a row's work
+    /// comes from the session file's task and newest log line.
+    private func agentListKeepsOrder() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        var failures: [String] = []
+        workspace.editInProgress = false
+        workspace.destination = .sessions
+        let panes = (1 ... 4).map { workspace.makePane(title: "pn4 \($0)", command: "sleep 60") }
+        await harness.install(panes, layout: .double)
+        let order = panes.map(\.id)
+        workspace.selectPane(id: panes[3].id)
+        if workspace.panes.prefix(2).contains(where: { $0.id == panes[3].id }) == false { failures.append("held pane not shown") }
+        if workspace.panes.map(\.id) == order { failures.append("slots did not change") }
+        if workspace.panesByStart.map(\.id) != order { failures.append("list moved after select") }
+        workspace.show(panes[2].id, inSlot: 0)
+        workspace.setLayout(.quad)
+        workspace.setLayout(.single)
+        if workspace.panesByStart.map(\.id) != order { failures.append("list moved after slot change") }
+        workspace.closePane(id: panes[1].id)
+        if workspace.panesByStart.map(\.id) != [order[0], order[2], order[3]] { failures.append("list order after close") }
+
+        let barrack = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-pn4-\(UUID().uuidString)")
+        let sessions = barrack.appendingPathComponent("sessions")
+        try? FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: barrack) }
+        let file = { (task: String, log: String) in
+            "# Session: s1\n\n- **Client**: Claude Code\n- **Status**: active\n- **Task**: \(task)\n\n## Log\n<!-- note -->\n\(log)\n## Decisions\n- later\n"
+        }
+        try? file("(pending)", "").write(to: sessions.appendingPathComponent("s1.md"), atomically: true, encoding: .utf8)
+        let fresh = AgentWork.read(barrackPath: barrack.path, sessions: ["s1", "absent"])
+        if fresh["s1"] != AgentWork(task: "", latestLog: nil) || fresh["absent"] != nil { failures.append("fresh \(fresh)") }
+        try? file("목록 고정", "- [07:10] 첫 일 → 끝\n- [07:20] 둘째 일 → 진행\n").write(to: sessions.appendingPathComponent("s1.md"), atomically: true, encoding: .utf8)
+        let later = AgentWork.read(barrackPath: barrack.path, sessions: ["s1"])
+        if later["s1"] != AgentWork(task: "목록 고정", latestLog: "[07:20] 둘째 일 → 진행") { failures.append("later \(later)") }
+        return .make("PN-04a", "에이전트 목록: 칸을 바꿔도 시작 순서 그대로, 세션 파일의 작업·최근 로그를 읽음",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
+    }
+
+    private func describe(_ pane: TerminalPane) -> String {
+        let size = pane.state.surfaceSize
+        let frame = pane.probeView?.frame.size ?? .zero
+        return "\(size?.columns ?? 0)x\(size?.rows ?? 0) view \(Int(frame.width))x\(Int(frame.height))"
     }
 
     /// Codex build-84 review F1: switching barracks during a scan left the

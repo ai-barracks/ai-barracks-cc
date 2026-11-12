@@ -21,6 +21,9 @@ enum PaneBackend {
 final class TerminalPane: Identifiable {
     let id: UUID
     let title: String
+    /// When it was first started (kept across relaunches): the agent list's
+    /// order, which does not follow the slots.
+    let createdAt: Date
     /// Where it started, and the command as the user gave it (not the
     /// shell wrapper): what "Quick Command로 저장" fills in (v1 Save). A
     /// reattached pane whose launch was not recorded has no folder.
@@ -68,9 +71,11 @@ final class TerminalPane: Identifiable {
         extraEnvironment: [String: String] = [:],
         backend: PaneBackend = .exec,
         userCommand: String? = nil,
-        agent: AgentClient? = nil
+        agent: AgentClient? = nil,
+        createdAt: Date = Date()
     ) {
         let paneID = UUID()
+        self.createdAt = createdAt
         let environment = Self.environment(paneID: paneID, extra: extraEnvironment)
         let viewState = TerminalViewState(controller: controller)
         let relay = PaneEventRelay()
