@@ -90,37 +90,42 @@ struct AgentSuite {
                                 "ms": String(format: "%.0f", elapsed)], startedAt: start)
     }
 
-    /// Codex build-84 review: four empty shells blocked every new agent, and
-    /// a full grid of busy panes made maintenance and Council do nothing
-    /// without a word.
+    /// PN-01b (P01, 2026-11-12 report: a barrack could not run a fifth
+    /// agent): with four busy terminals a fifth and sixth start and show,
+    /// none is ended, and a held one comes back into the focused slot.
     private func fullGridMakesRoom() async -> TestResult {
         let start = ContinuousClock.now
         let workspace = harness.workspace
         var failures: [String] = []
         workspace.editInProgress = false
         workspace.destination = .sessions
-        let shells = (1 ... 4).map { workspace.makePane(title: "pn shell \($0)") }
-        await harness.install(shells, layout: .quad)
-        let idle = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { shells.allSatisfy(\.isIdleShell) }
-        if !idle { failures.append("shells not idle \(shells.map(\.isIdleShell))") }
-        let launched = workspace.runInPane(title: "pn-busy", command: "sleep 30")
-        let ids = Set(workspace.panes.map(\.id))
-        if launched == nil || !ids.contains(launched?.id ?? UUID()) || workspace.panes.count != 4 {
-            failures.append("no room taken (\(workspace.panes.count) panes)")
-        }
-        if shells.filter({ ids.contains($0.id) }).count != 3 { failures.append("not exactly one shell replaced") }
-        let busy = (1 ... 4).map { workspace.makePane(title: "pn busy \($0)", command: "sleep 30") }
+        let busy = (1 ... 4).map { workspace.makePane(title: "pn busy \($0)", command: "sleep 60") }
         await harness.install(busy, layout: .quad)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { busy.allSatisfy { $0.processID != nil } }
-        let before = workspace.notices.notices.filter { $0.kind == .panes }.count
-        let refused = workspace.runInPane(title: "pn-refused", command: "true")
-        let after = workspace.notices.notices.filter { $0.kind == .panes }.count
-        if refused != nil || workspace.panes.count != 4 { failures.append("busy grid accepted a pane") }
-        if after != before + 1 { failures.append("no notice for a full grid") }
-        workspace.notices.notices.filter { $0.kind == .panes }.forEach { workspace.notices.dismiss($0.id) }
-        return .make("PN-01a", "4칸이 빈 셸이면 그 자리에서 시작, 모두 바쁘면 거부하고 알림",
+        let notices = workspace.notices.notices.filter { $0.kind == .panes }.count
+        let fifth = workspace.runInPane(title: "pn-5", command: "sleep 60")
+        let sixth = workspace.runInPane(title: "pn-6", command: "sleep 60")
+        let visible = workspace.panes.prefix(workspace.layout.paneCount).map(\.id)
+        if fifth == nil || sixth == nil || workspace.panes.count != 6 { failures.append("started \(workspace.panes.count) of 6") }
+        if let sixth, !visible.contains(sixth.id) { failures.append("newest not on screen") }
+        if workspace.layout != .quad { failures.append("layout \(workspace.layout)") }
+        if workspace.notices.notices.filter({ $0.kind == .panes }).count != notices { failures.append("full-grid notice") }
+        await harness.pause(.milliseconds(500))
+        let ended = (busy + [fifth, sixth].compactMap { $0 }).filter { $0.hasExited }.map(\.title)
+        if !ended.isEmpty { failures.append("ended \(ended)") }
+        if let held = workspace.panes.dropFirst(workspace.layout.paneCount).first {
+            workspace.selectPane(id: held.id)
+            if !workspace.panes.prefix(workspace.layout.paneCount).contains(where: { $0.id == held.id }) {
+                failures.append("held pane not brought up")
+            }
+            if workspace.panes.count != 6 { failures.append("bringing up changed count") }
+        } else {
+            failures.append("nothing held off screen")
+        }
+        return .make("PN-01b", "터미널 상한 없음: 4칸이 모두 바빠도 5·6번째가 시작돼 화면에 보이고, 어느 것도 끝나지 않으며, 화면 밖 터미널을 고르면 칸으로 옴",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
-                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
+                     evidence: ["failures": failures.joined(separator: " | "),
+                                "panes": workspace.panes.map(\.title).joined(separator: ",")], startedAt: start)
     }
 
     /// Codex build-84 review F1: switching barracks during a scan left the

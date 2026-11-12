@@ -22,6 +22,7 @@ struct TerminalPaneView: View {
                 }
         }
         .onChange(of: state.surfaceSize) { pane.startExitMonitorIfNeeded() }
+        .onChange(of: state.isFocused) { _, focused in if focused { workspace?.noteFocused(pane.id) } }
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(state.isFocused ? Color.accentColor : Color.clear)
@@ -33,9 +34,13 @@ struct TerminalPaneView: View {
         HStack(spacing: 8) {
             Image(systemName: "terminal")
                 .foregroundStyle(.secondary)
-            Text(displayTitle)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            if let workspace, workspace.panes.count > 1, let slot = workspace.panes.firstIndex(where: { $0.id == pane.id }) {
+                SlotPicker(workspace: workspace, slot: slot, title: displayTitle)
+            } else {
+                Text(displayTitle)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             Spacer(minLength: 8)
             if let size = state.surfaceSize {
                 Text("\(size.columns)×\(size.rows)")
@@ -82,5 +87,37 @@ struct TerminalPaneView: View {
 
     private var displayTitle: String {
         state.title.isEmpty ? pane.title : state.title
+    }
+}
+
+/// The slot header's title as a menu of the barrack's terminals: picking
+/// one shows it in this slot, and the one shown here takes its place
+/// (P01 — more terminals than slots; 2026-11-12 report).
+private struct SlotPicker: View {
+    let workspace: WorkspaceModel
+    let slot: Int
+    let title: String
+
+    var body: some View {
+        Menu {
+            Section("이 칸에 보일 터미널") {
+                ForEach(Array(workspace.panes.enumerated()), id: \.element.id) { index, pane in
+                    Button {
+                        workspace.show(pane.id, inSlot: slot)
+                    } label: {
+                        if index == slot {
+                            Label(pane.title, systemImage: "checkmark")
+                        } else {
+                            Text(index < workspace.layout.paneCount ? "\(pane.title) — 칸 \(index + 1)" : "\(pane.title) — 화면 밖")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Text(title).lineLimit(1).truncationMode(.middle)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize(horizontal: false, vertical: true)
+        .help("이 칸에 다른 터미널 보이기")
     }
 }

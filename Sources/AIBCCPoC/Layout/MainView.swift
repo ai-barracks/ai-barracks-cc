@@ -94,6 +94,7 @@ struct MainView: View {
 struct CenterView: View {
     @Bindable var workspace: WorkspaceModel
     let artifacts: ArtifactStore
+    @AppStorage(AppConstants.Terminal.agentListShownKey) private var agentListShown = true
 
     /// Terminals leave the hierarchy while a document is shown; panes keep
     /// their views and shells (same as a barrack switch, WS-01).
@@ -104,7 +105,14 @@ struct CenterView: View {
                     AgentBar(workspace: workspace)
                     Divider()
                 }
-                TerminalGridView(workspace: workspace)
+                ListDetailSplit(widthKey: AppConstants.Terminal.agentListWidthKey,
+                                defaultWidth: AppConstants.Terminal.agentListWidth,
+                                showsList: workspace.selectedBarrack != nil && agentListShown && !workspace.panes.isEmpty,
+                                detailMinWidth: AppConstants.Terminal.gridMinWidthBesideList) {
+                    AgentListView(workspace: workspace)
+                } detail: {
+                    TerminalGridView(workspace: workspace)
+                }
             }
         } else if workspace.destination == .barrack {
             BarrackView(workspace: workspace, changes: artifacts.fileEvents)

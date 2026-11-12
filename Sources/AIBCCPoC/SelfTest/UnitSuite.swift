@@ -9,7 +9,7 @@ struct UnitSuite {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
          sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools(),
-         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions(), wikiIndex(), paneLayouts()]
+         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions(), wikiIndex(), paneLayouts(), panePlacement()]
     }
 
     private func terminalTools() -> TestResult {
@@ -276,6 +276,41 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["before": before?.rawValue ?? "nil", "after": after?.rawValue ?? "nil",
                                 "refused_bad_ids": "\(refused)"], startedAt: start)
+    }
+
+    /// PN-02a (P01, 2026-11-12 report: a fifth agent could not be started):
+    /// no cap on terminals — a new one takes an empty slot, else the layout
+    /// grows, else the focused slot, and the one it displaces stays held off
+    /// screen; showing a held one swaps it into the slot.
+    private func panePlacement() -> TestResult {
+        struct Item: Identifiable, Equatable { let id: Int }
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let items = (0 ..< 6).map(Item.init)
+        let empty = PanePlacement.adding(items[0], to: [items[1]], layout: .double, focused: nil)
+        if empty.panes.map(\.id) != [1, 0] || empty.layout != .double { failures.append("empty slot \(empty.panes.map(\.id))") }
+        let grown = PanePlacement.adding(items[5], to: [items[0], items[1], items[2]], layout: .single, focused: 0)
+        if grown.panes.map(\.id) != [0, 5, 1, 2] || grown.layout != .double { failures.append("grow \(grown.panes.map(\.id)) \(grown.layout)") }
+        let rows = PanePlacement.adding(items[5], to: [items[0], items[1]], layout: .twoRows, focused: nil)
+        if rows.layout != .quad || rows.panes.map(\.id) != [0, 1, 5] { failures.append("twoRows grow \(rows.layout)") }
+        let full = Array(items.prefix(4))
+        let focused = PanePlacement.adding(items[4], to: full, layout: .quad, focused: 1)
+        if focused.panes.map(\.id) != [0, 4, 2, 3, 1] || focused.layout != .quad { failures.append("focused \(focused.panes.map(\.id))") }
+        let unfocused = PanePlacement.adding(items[5], to: focused.panes, layout: .quad, focused: nil)
+        if unfocused.panes.map(\.id) != [0, 4, 2, 5, 3, 1] { failures.append("last slot \(unfocused.panes.map(\.id))") }
+        let stale = PanePlacement.adding(items[5], to: full, layout: .quad, focused: 7)
+        if stale.panes.map(\.id) != [0, 1, 2, 5, 3] { failures.append("stale focus \(stale.panes.map(\.id))") }
+        let shown = PanePlacement.showing(1, inSlot: 2, of: unfocused.panes, layout: .quad)
+        if shown.map(\.id) != [0, 4, 1, 5, 3, 2] { failures.append("show held \(shown.map(\.id))") }
+        let swapped = PanePlacement.showing(5, inSlot: 0, of: shown, layout: .quad)
+        if swapped.map(\.id) != [5, 4, 1, 0, 3, 2] { failures.append("swap visible \(swapped.map(\.id))") }
+        if PanePlacement.showing(9, inSlot: 0, of: shown, layout: .quad) != shown
+            || PanePlacement.showing(1, inSlot: 4, of: shown, layout: .quad) != shown {
+            failures.append("bad id or slot changed panes")
+        }
+        return .make("PN-02a", "터미널 상한 없음: 빈 칸 → 분할 확대 → 지금 칸 순서로 놓고 밀린 터미널은 화면 밖에 유지, 화면 밖 터미널은 칸과 맞바꿈",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// SP-01a (Codex parity audit P02): the top/bottom split, saved by name

@@ -18,6 +18,9 @@ struct PersistSuite {
         let banner: String
         let logPath: String
         let logMark: Int
+        /// P01: extra sessions, some held off screen, and the saved order.
+        var extras: [UUID]? = nil
+        var order: [UUID]? = nil
     }
 
     private var stateURL: URL {
@@ -46,20 +49,30 @@ struct PersistSuite {
         let answered = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
             Self.containsDeviceAttributesReply(recorder.log.bytes(since: 0))
         }
+        // P01: five more terminals — more than the four slots — and the
+        // recorder brought back on screen for the typing checks.
+        let extras = (1 ... 5).compactMap { harness.workspace.runInPane(title: "persist extra \($0)", command: "sleep 600") }
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { extras.allSatisfy { $0.processID != nil } }
+        harness.workspace.selectPane(id: recorder.pane.id)
+        await harness.pause(.milliseconds(300))
         harness.focus(recorder.pane)
         let mark = recorder.log.mark()
         EventSynthesizer.type("p1", in: window)
         let typed = await harness.settledBytes(recorder.log, since: mark, expectingAtLeast: 2)
         let pid = recorder.pane.processID ?? 0
         let state = State(session: session.id, pid: pid, banner: banner,
-                          logPath: recorder.log.url.path, logMark: recorder.log.mark())
+                          logPath: recorder.log.url.path, logMark: recorder.log.mark(),
+                          extras: extras.compactMap { $0.remote?.id },
+                          order: harness.workspace.panes.compactMap { $0.remote?.id })
         let saved = (try? JSONEncoder().encode(state)).map { (try? $0.write(to: stateURL, options: .atomic)) != nil } ?? false
         let ok = ready && rendered && answered && typed == Hex.bytes("p1") && pid > 0 && saved
+            && extras.count == 5 && harness.workspace.panes.count == 6
         return [.make("PS-01-setup", "1단계: 데몬 세션 생성·렌더·DA 응답·입력·상태 기록",
                       status: ok ? .pass : .fail, cause: .app,
                       evidence: ["session": session.id.uuidString, "pid": "\(pid)", "ready": "\(ready)",
                                  "rendered": "\(rendered)", "da_answered": "\(answered)",
-                                 "typed": Hex.string(typed), "state_saved": "\(saved)"],
+                                 "typed": Hex.string(typed), "state_saved": "\(saved)",
+                                 "panes": "\(harness.workspace.panes.count)"],
                       startedAt: start)]
     }
 
@@ -93,7 +106,17 @@ struct PersistSuite {
         EventSynthesizer.type("p2", in: window)
         let typed = await harness.settledBytes(log, since: mark, expectingAtLeast: 2)
         let orphans = await orphanSessions()
+        let restoredOrder = harness.workspace.panes.compactMap { $0.remote?.id }
+        let extrasAlive = (state.extras ?? []).allSatisfy { id in
+            harness.workspace.panes.first { $0.remote?.id == id }.map { !$0.hasExited && $0.processID != nil } ?? false
+        }
+        let manyKept = state.extras?.count == 5 && restoredOrder == state.order && extrasAlive
         return [
+            .make("PS-06a", "터미널 6개(2개 화면 밖)가 재실행 후 모두 같은 순서로 재부착되고 살아 있음",
+                  status: manyKept ? .pass : .fail, cause: .app,
+                  evidence: ["saved": "\(state.order?.count ?? 0)", "restored": "\(restoredOrder.count)",
+                             "same_order": "\(restoredOrder == state.order)", "extras_alive": "\(extrasAlive)",
+                             "layout": harness.workspace.layout.rawValue], startedAt: start),
             .make("PS-01a", "앱 종료 후 같은 프로세스가 살아 있고 재실행 시 자동 재부착",
                   status: samePID && alive ? .pass : .fail, cause: .app,
                   evidence: ["expected_pid": "\(state.pid)", "attached_pid": pane.processID.map(String.init) ?? "nil",

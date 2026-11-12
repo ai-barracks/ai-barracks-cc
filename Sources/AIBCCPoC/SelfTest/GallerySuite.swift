@@ -26,7 +26,12 @@ struct GallerySuite {
                 captures.append(image.lastPathComponent)
             }
         }
+        // P01: more terminals than slots, with the agent list beside them.
+        let many = (1 ... 6).compactMap { workspace.runInPane(title: "gallery \($0)", command: "sleep 120") }
         workspace.destination = .sessions
+        await harness.pause(.seconds(2))
+        if let image = await harness.requestCapture(label: "gallery-agents-many") { captures.append(image.lastPathComponent) }
+        many.forEach { workspace.closePane(id: $0.id) }
         if let window = harness.window {
             workspace.isPalettePresented = true
             await harness.pause(.seconds(1))

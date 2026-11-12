@@ -7,7 +7,7 @@
 #   phase 2  app restores the grid by itself; PS-01a..d are checked in-app
 #   then     PS-04 (replay input fence, archive after the last output) and
 #            PS-02 recovery checks (failed attach, daemon stopped or killed)
-# Exit 0 only if phase 1's setup passed and PS-01, PS-02, PS-04, PS-05 passed in
+# Exit 0 only if phase 1's setup passed and PS-01, PS-02, PS-04, PS-05, PS-06 passed in
 # phase 2 (Codex r4: a failed phase 1 used to be ignored).
 set -euo pipefail
 
@@ -89,7 +89,7 @@ PY
   python3 - "$run/report.json" <<'PY'
 import json, sys
 results = {r["id"]: r["status"] for r in json.load(open(sys.argv[1]))["results"]}
-wanted = ["PS-01", "PS-02", "PS-04", "PS-05"]
+wanted = ["PS-01", "PS-02", "PS-04", "PS-05", "PS-06"]
 print("  ".join(f"{name}: {results.get(name)}" for name in wanted))
 sys.exit(0 if all(results.get(name) == "pass" for name in wanted) else 1)
 PY

@@ -21,8 +21,6 @@ enum PaneBackend {
 final class TerminalPane: Identifiable {
     let id: UUID
     let title: String
-    /// Started as a plain login shell (no command, not a reattach).
-    let isPlainShell: Bool
     /// Where it started, and the command as the user gave it (not the
     /// shell wrapper): what "Quick Command로 저장" fills in (v1 Save). A
     /// reattached pane whose launch was not recorded has no folder.
@@ -59,14 +57,6 @@ final class TerminalPane: Identifiable {
     /// The archive key: the daemon session outlives the pane (a relaunch
     /// attaches a new pane to it), so its output is kept under the session.
     var archiveID: String { (remote?.id ?? id).uuidString }
-    /// A daemon-owned plain shell with nothing running under it: the place a
-    /// new agent may take when the grid is full. Exec panes are never judged
-    /// (their visible pid is the foreground program, not the shell).
-    var isIdleShell: Bool {
-        guard isPlainShell, remote != nil, !hasExited, let pid = remotePID, pid > 0 else { return false }
-        return !ProcessTree.hasChildren(pid)
-    }
-
     /// Root process of the pane: the daemon's child, or Ghostty's.
     var processID: pid_t? { remote == nil ? probeView?.foregroundPid : remotePID }
 
@@ -84,7 +74,6 @@ final class TerminalPane: Identifiable {
         let environment = Self.environment(paneID: paneID, extra: extraEnvironment)
         let viewState = TerminalViewState(controller: controller)
         let relay = PaneEventRelay()
-        var attaching = false
         switch backend {
         case .exec:
             remote = nil
@@ -92,7 +81,6 @@ final class TerminalPane: Identifiable {
                 backend: .exec, workingDirectory: workingDirectory, envVars: environment, command: command
             )
         case let .daemon(daemon, sessionID, attach):
-            attaching = attach
             let start: DaemonSession.Start = attach ? .attach : .create(
                 DaemonLaunch.request(command: command, workingDirectory: workingDirectory, environment: environment)
             )
@@ -110,7 +98,6 @@ final class TerminalPane: Identifiable {
         }
         id = paneID
         self.title = title
-        isPlainShell = command == nil && !attaching
         self.workingDirectory = workingDirectory
         self.userCommand = userCommand
         self.agent = agent

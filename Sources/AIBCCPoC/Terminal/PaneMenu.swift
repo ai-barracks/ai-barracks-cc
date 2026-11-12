@@ -40,7 +40,7 @@ struct PaneMenu: View {
 }
 
 /// Toolbar list of the barrack's terminals (v1 LIVE TERMINALS): the
-/// visible ones are checked; picking a hidden one brings it to the front.
+/// visible ones are checked; picking a hidden one shows it in the focused slot.
 struct TerminalListMenu: View {
     let workspace: WorkspaceModel
 
@@ -48,7 +48,7 @@ struct TerminalListMenu: View {
         Menu {
             ForEach(Array(workspace.panes.enumerated()), id: \.element.id) { index, pane in
                 Button {
-                    workspace.bringToFront(id: pane.id)
+                    workspace.selectPane(id: pane.id)
                 } label: {
                     if index < workspace.layout.paneCount { Label(pane.title, systemImage: "checkmark") } else { Text(pane.title) }
                 }

@@ -70,6 +70,8 @@ final class WorkspaceModel {
         }
     }
     @ObservationIgnored private var terminalHadFocus = false
+    /// The terminal that last took keyboard focus (focusedSlot fallback).
+    @ObservationIgnored private var lastFocusedPaneID: UUID?
     /// What the launch-time reattach did (self-test environment evidence).
     @ObservationIgnored private(set) var restoreSummary = "not attempted"
     /// The saved layout whose sessions could not be confirmed (the daemon's
@@ -442,31 +444,10 @@ extension WorkspaceModel {
         guard let barrack = selectedBarrack else { return nil }
         let folder = directory ?? barrack.path
         let current = grid
-        let pane: TerminalPane
-        let panes: [TerminalPane]
-        if current.panes.count < PaneLayout.quad.paneCount {
-            pane = makePane(title: title, command: command, environment: [:], directory: folder, attachingTo: nil,
+        let pane = makePane(title: title, command: command, environment: [:], directory: folder, attachingTo: nil,
                             userCommand: userCommand, agent: agent)
-            panes = current.panes + [pane]
-        } else if let idle = current.panes.firstIndex(where: \.isIdleShell) {
-            // A full grid of empty shells used to block every new agent
-            // (Codex build-84 review): an empty shell gives up its place;
-            // its screen goes to the archive like any closed pane.
-            pane = makePane(title: title, command: command, environment: [:], directory: folder, attachingTo: nil,
-                            userCommand: userCommand, agent: agent)
-            var replaced = current.panes
-            replaced[idle] = pane
-            panes = replaced
-        } else {
-            // Said, not swallowed: maintenance and Council started nothing
-            // without a word when the grid was full.
-            notices.post(AppNotice(kind: .panes, title: "터미널 \(PaneLayout.quad.paneCount)개가 모두 사용 중",
-                                   body: "하나를 닫으면 \(title)을(를) 시작할 수 있습니다.",
-                                   actionLabel: nil, barrackID: barrack.id, sessionID: nil))
-            return nil
-        }
-        let layout = PaneLayout.fitting(max(panes.count, current.layout.paneCount), keeping: current.layout)
-        store(BarrackGrid(panes: panes, layout: layout, splitX: current.splitX, splitY: current.splitY))
+        let placed = PanePlacement.adding(pane, to: current.panes, layout: current.layout, focused: focusedSlot)
+        store(BarrackGrid(panes: placed.panes, layout: placed.layout, splitX: current.splitX, splitY: current.splitY))
         destination = .sessions
         focusWhenAttached(pane)
         return pane
@@ -671,8 +652,42 @@ extension WorkspaceModel {
     /// a hidden one to the front.
     func selectPane(id paneID: UUID) {
         guard let index = panes.firstIndex(where: { $0.id == paneID }) else { return }
-        guard index < layout.paneCount else { return bringToFront(id: paneID) }
+        guard index < layout.paneCount else { return show(paneID, inSlot: focusedSlot ?? 0) }
+        destination = .sessions
         focusWhenAttached(panes[index])
+    }
+
+    /// The slot whose terminal has keyboard focus or, when focus went to the
+    /// agent list or elsewhere, the slot last focused.
+    var focusedSlot: Int? {
+        let visible = panes.prefix(layout.paneCount)
+        let focused = visible.firstIndex { pane in
+            guard let view = pane.probeView, let responder = view.window?.firstResponder as? NSView else { return false }
+            return responder === view || responder.isDescendant(of: view)
+        }
+        return focused ?? lastFocusedPaneID.flatMap { id in visible.firstIndex { $0.id == id } }
+    }
+
+    /// Called when a terminal takes keyboard focus.
+    func noteFocused(_ paneID: UUID) {
+        lastFocusedPaneID = paneID
+    }
+
+    /// Puts `paneID` in `slot` (slot menu, agent list): the pane there
+    /// trades places with it, or goes off screen if it was held.
+    func show(_ paneID: UUID, inSlot slot: Int) {
+        guard !editInProgress else { return navigate { [weak self] in self?.show(paneID, inSlot: slot) } }
+        let current = grid
+        let panes = PanePlacement.showing(paneID, inSlot: slot, of: current.panes, layout: current.layout)
+        store(BarrackGrid(panes: panes, layout: current.layout, splitX: current.splitX, splitY: current.splitY))
+        destination = .sessions
+        if let pane = panes.first(where: { $0.id == paneID }) { focusWhenAttached(pane) }
+    }
+
+    /// The aib session running in `pane`, if any.
+    func liveSession(of pane: TerminalPane) -> LiveSession? {
+        guard let barrack = selectedBarrackID else { return nil }
+        return liveness.sessions(of: barrack).first { self.pane(running: $0, in: barrack)?.id == pane.id }
     }
 
     /// What the agent in `pane` is doing (aib liveness), if one runs there.

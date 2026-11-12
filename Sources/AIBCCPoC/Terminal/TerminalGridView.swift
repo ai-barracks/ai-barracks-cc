@@ -200,3 +200,41 @@ struct PaneGridLayout: Layout {
         }
     }
 }
+
+/// Where a terminal goes in a barrack's list (Codex parity audit P01, v1's
+/// terminal list apart from its display slots): the first `paneCount`
+/// panes show, the rest are held off screen and keep running. There is no
+/// cap on how many a barrack holds (2026-11-12 report: a fifth agent could
+/// not be started).
+enum PanePlacement {
+    /// A new pane: an empty slot if there is one; else the layout grows
+    /// (1 → left/right → 4) and it takes the new slot; with all four slots
+    /// shown it takes the focused slot and that pane moves off screen,
+    /// first in line to come back.
+    static func adding<T: Identifiable>(_ new: T, to panes: [T], layout: PaneLayout, focused: Int?) -> (panes: [T], layout: PaneLayout) {
+        let slots = layout.paneCount
+        guard panes.count >= slots else { return (panes + [new], layout) }
+        let visible = Array(panes.prefix(slots))
+        let held = Array(panes.dropFirst(slots))
+        if layout != .quad {
+            let grown = PaneLayout.fitting(slots + 1, keeping: layout)
+            return (visible + [new] + held, grown)
+        }
+        let slot = focused.flatMap { $0 < slots ? $0 : nil } ?? slots - 1
+        var shown = visible
+        let displaced = shown[slot]
+        shown[slot] = new
+        return (shown + [displaced] + held, layout)
+    }
+
+    /// Shows `id` in `slot`: a pane already on screen trades places with the
+    /// one there; a held one comes in and the slot's pane goes off screen
+    /// in its place.
+    static func showing<T: Identifiable>(_ id: T.ID, inSlot slot: Int, of panes: [T], layout: PaneLayout) -> [T] {
+        guard let from = panes.firstIndex(where: { $0.id == id }), slot < min(layout.paneCount, panes.count), from != slot
+        else { return panes }
+        var result = panes
+        result.swapAt(from, slot)
+        return result
+    }
+}

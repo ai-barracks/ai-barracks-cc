@@ -45,6 +45,15 @@ enum AppConstants {
         ]
         /// The Agents bar's skip-permissions checkbox (kept across launches).
         static let skipPermissionsKey = "agentSkipPermissions"
+        /// The agent list beside the grid: shown or hidden, and its width.
+        static let agentListShownKey = "agentListShown"
+        static let agentListWidthKey = "agentListWidth"
+        static let agentListWidth: CGFloat = 240
+        /// The terminals keep this much beside the list; narrower, the list
+        /// folds away (a minimum window with a wide Outputs, LY-02b).
+        static let gridMinWidthBesideList: CGFloat = 480
+        /// How often the list rereads the aib session files' task lines.
+        static let agentTaskRefresh: Duration = .seconds(10)
     }
 
     /// Opt-in daemon PTY backend (persistence spike, known issue #4).
