@@ -91,7 +91,7 @@ struct SelfTestRunner {
 
     static let suiteOrder = ["unit", "packaging", "input", "resize", "selection", "lifecycle", "agents", "load", "integration"]
     /// Run only when named (they need a daemon and two app launches).
-    static let explicitSuites = ["persist1", "persist2", "repro10", "repro-r5", "rs06", "gallery", "showcase", "ux", "walk"]
+    static let explicitSuites = ["persist1", "persist2", "repro10", "repro-r5", "rs06", "tui-split", "tui-script", "gallery", "showcase", "ux", "walk"]
     static let allSuites = Set(suiteOrder)
     /// Need no keyboard or mouse: they run without the app in front.
     static let backgroundSuites: Set = ["ux"]
@@ -112,6 +112,8 @@ struct SelfTestRunner {
         case "repro10": return await ReproSuite(harness: harness).run()
         case "repro-r5": return await RenderSuite(harness: harness).run()
         case "rs06": return await TuiSuite(harness: harness).run()
+        case "tui-split": return await TuiSuite(harness: harness).splitFlow()
+        case "tui-script": return await TuiSuite(harness: harness).scriptFlow()
         case "gallery": return await GallerySuite(harness: harness).run()
         case "ux": return await UxSuite(harness: harness).run()
         case "showcase": return await ShowcaseSuite(harness: harness).run()

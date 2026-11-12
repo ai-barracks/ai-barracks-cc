@@ -9,7 +9,7 @@ struct AgentSuite {
 
     func run() async -> [TestResult] {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
-         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await singleAfterSplitUsesFullSize(), await agentListKeepsOrder(), await destinationRoundTrip(),
+         await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await singleAfterSplitUsesFullSize(), await nestedTerminalFollowsSize(), await agentListKeepsOrder(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
          await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(), agentsStartEmpty(),
          await settingsApply(), await lineHeightApplies(), await twoRowsLayout()] + (await QuickCommandTests(harness: harness).run())
@@ -27,9 +27,12 @@ struct AgentSuite {
             launched?.probeView?.window != nil && launched?.processID != nil
         }
         let focused = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { harness.isFirstResponder(launched?.probeView) }
-        let ok = attached && focused && workspace.layout == .double && workspace.panes.count == 2
+        // The view is not split for it (2026-11-13 feedback): it takes the
+        // slot, and the one that was there keeps running off screen.
+        let ok = attached && focused && workspace.layout == .single && workspace.panes.count == 2
+            && workspace.panes.first?.id == launched?.id && !first.pane.hasExited
             && workspace.destination == .sessions
-        return .make("AG-01b", "⌘N: 1분할 → 2분할로 늘려 새 pane 시작·포커스",
+        return .make("AG-01b", "⌘N: 분할을 바꾸지 않고 지금 칸에 새 pane 시작·포커스, 있던 터미널은 화면 밖에서 계속 실행",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["layout": "\(workspace.layout)", "panes": "\(workspace.panes.count)",
                                 "attached": "\(attached)", "focused": "\(focused)"], startedAt: start)
@@ -159,9 +162,12 @@ struct AgentSuite {
         let alone = first.state.surfaceSize
         steps.append("alone \(describe(first))")
         let second = workspace.openPane(title: "pn3-b", command: report("b"))
+        if workspace.layout != .single { ok = false; steps.append("adding changed the layout to \(workspace.layout)") }
+        workspace.setLayout(.double)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { second?.state.surfaceSize != nil }
         await harness.pause(.milliseconds(600))
-        steps.append("split \(describe(first)) / \(second.map(describe) ?? "nil")")
+        // Slot order after the add: the new one, then the first.
+        steps.append("split \(second.map(describe) ?? "nil") / \(describe(first))")
         workspace.setLayout(.single)
         let firstBack = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
             first.state.surfaceSize?.columns == alone?.columns && agrees(first, "a")
@@ -185,6 +191,53 @@ struct AgentSuite {
             ok = false
         }
         return .make("PN-03a", "분할 뒤 1개 보기로 돌아가면 어느 터미널이든 혼자일 때 크기를 다시 씀",
+                     status: ok ? .pass : .fail, cause: .app,
+                     evidence: ["steps": steps.joined(separator: " | ")], startedAt: start)
+    }
+
+    /// PN-05a (2026-11-13 report on beta.7: an agent stayed at the size of
+    /// the split it was started in): `aib start codex|gemini` runs the agent
+    /// under macOS `script`, whose inner terminal never hears of a resize.
+    /// A program under `script` here must see every size the pane takes,
+    /// and be signalled (SIGWINCH) as a TUI needs.
+    private func nestedTerminalFollowsSize() async -> TestResult {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        var steps: [String] = []
+        var ok = true
+        workspace.editInProgress = false
+        workspace.destination = .sessions
+        let files = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-pn5-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: files, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: files) }
+        let size = files.appendingPathComponent("size")
+        let signals = files.appendingPathComponent("winch")
+        let inner = "trap 'echo got >> \(signals.path)' WINCH; while :; do stty size > \(size.path).tmp && mv \(size.path).tmp \(size.path); sleep 0.1; done"
+        let pane = workspace.makePane(title: "pn5 script", command: "/usr/bin/script -q /dev/null /bin/sh -c " + AgentLauncher.shellQuote(inner))
+        let other = workspace.makePane(title: "pn5 other", command: "sleep 60")
+        let read = { (try? String(contentsOf: size, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+        let follows = {
+            await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+                pane.state.surfaceSize.map { read() == "\($0.rows) \($0.columns)" } ?? false
+            }
+        }
+        await harness.install([pane, other], layout: .single)
+        ok = await follows() && ok
+        let alone = pane.state.surfaceSize?.columns ?? 0
+        steps.append("alone grid \(alone) inner \(read())")
+        for layout in [PaneLayout.double, .single, .quad, .single] {
+            workspace.setLayout(layout)
+            _ = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+                (pane.state.surfaceSize?.columns == alone) == (layout == .single)
+            }
+            let followed = await follows()
+            ok = ok && followed
+            steps.append("\(layout.rawValue) grid \(pane.state.surfaceSize?.columns ?? 0) inner \(read())")
+        }
+        let signalled = ((try? String(contentsOf: signals, encoding: .utf8)) ?? "").split(separator: "\n").count
+        ok = ok && signalled >= 4 && read().hasSuffix(" \(alone)")
+        steps.append("SIGWINCH \(signalled)")
+        return .make("PN-05a", "script 안에서 도는 프로그램(aib의 Codex·Gemini 실행 방식)도 칸 크기 변경을 받음",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["steps": steps.joined(separator: " | ")], startedAt: start)
     }

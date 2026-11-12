@@ -21,7 +21,10 @@ struct TerminalPaneView: View {
                     }
                 }
         }
-        .onChange(of: state.surfaceSize) { pane.startExitMonitorIfNeeded() }
+        .onChange(of: state.surfaceSize) {
+            pane.startExitMonitorIfNeeded()
+            pane.resizeNestedTerminals()
+        }
         .onChange(of: state.isFocused) { _, focused in if focused { workspace?.noteFocused(pane.id) } }
         .overlay(alignment: .top) {
             Rectangle()

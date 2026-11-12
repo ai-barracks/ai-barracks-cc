@@ -418,7 +418,7 @@ final class WorkspaceModel {
 
 extension WorkspaceModel {
     /// ⌘N: a new pane running `aib start <client>` in the selected barrack.
-    /// The preset grows to make room (1 → 2 → 4); nil when four are full.
+    /// It takes an empty slot or the focused one; the layout stays as set.
     @discardableResult
     func launchAgent(_ client: AgentClient, skipPermissions: Bool) -> TerminalPane? {
         let profile = ProviderProfiles.load(client)
@@ -452,7 +452,7 @@ extension WorkspaceModel {
         let pane = makePane(title: title, command: command, environment: [:], directory: folder, attachingTo: nil,
                             userCommand: userCommand, agent: agent)
         let placed = PanePlacement.adding(pane, to: current.panes, layout: current.layout, focused: focusedSlot)
-        store(BarrackGrid(panes: placed.panes, layout: placed.layout, splitX: current.splitX, splitY: current.splitY))
+        store(BarrackGrid(panes: placed, layout: current.layout, splitX: current.splitX, splitY: current.splitY))
         destination = .sessions
         focusWhenAttached(pane)
         return pane

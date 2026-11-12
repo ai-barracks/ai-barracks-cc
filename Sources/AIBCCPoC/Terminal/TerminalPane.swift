@@ -50,6 +50,7 @@ final class TerminalPane: Identifiable {
     @ObservationIgnored private var remotePID: pid_t?
     @ObservationIgnored private var reportedExit = false
     @ObservationIgnored private var noticeGeneration = 0
+    @ObservationIgnored private var nestedResize: Task<Void, Never>?
     /// Called once the child is gone and its output is on screen (the
     /// workspace archives it).
     @ObservationIgnored var onExit: (@MainActor (TerminalPane) -> Void)?
@@ -128,6 +129,26 @@ final class TerminalPane: Identifiable {
         // the workspace terminates removed panes explicitly. An app quit
         // never runs this, so daemon sessions survive the quit.
         remote?.kill()
+    }
+
+    /// Passes the surface's size on to terminals opened inside this one
+    /// (`NestedTerminals`: Codex and Gemini run under `script`). Runs a
+    /// moment after the last size change, and once more later for an inner
+    /// terminal that was still starting.
+    func resizeNestedTerminals() {
+        nestedResize?.cancel()
+        nestedResize = Task { [weak self] in
+            for delay in AppConstants.Terminal.nestedResizeDelays {
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled, let self, !self.hasExited,
+                      let grid = self.state.surfaceSize, let pid = self.processID, pid > 0 else { return }
+                let size = NestedTerminals.Size(
+                    columns: grid.columns, rows: grid.rows,
+                    widthPixels: UInt16(clamping: grid.widthPixels), heightPixels: UInt16(clamping: grid.heightPixels)
+                )
+                await Task.detached(priority: .utility) { _ = NestedTerminals.resize(under: pid, to: size) }.value
+            }
+        }
     }
 
     /// Starts watching the surface's child once Ghostty has spawned it

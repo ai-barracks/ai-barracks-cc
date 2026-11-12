@@ -59,6 +59,108 @@ struct TuiSuite {
                                  "process_before_exit": process], startedAt: start)]
     }
 
+    /// 2026-11-13 report on beta.7: a second agent split the view, and back
+    /// on one terminal the agent's screen stayed at the split's size. The
+    /// same steps with real `claude` screens (explicit suite `tui-split`):
+    /// one agent alone, a second one added, the view split by hand, back to
+    /// one terminal, then the other one picked from the list. After each step a
+    /// local `!` command prints one long line (no prompt goes to a model),
+    /// so the captures show the width the program really uses.
+    func splitFlow() async -> [TestResult] {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        let claude = (NSHomeDirectory() as NSString).appendingPathComponent(".local/bin/claude")
+        try? FileManager.default.createDirectory(atPath: Self.directory, withIntermediateDirectories: true)
+        guard let window = harness.window, FileManager.default.isExecutableFile(atPath: claude) else {
+            return [.make("RS-12-poc", "분할 뒤 1개 보기에서 Claude 화면 폭", status: .unverified,
+                          evidence: ["reason": "claude not installed or no window"], startedAt: start)]
+        }
+        let command = "/bin/zsh -lc 'cd \(Self.directory) && exec \(claude)'"
+        var notes: [String] = []
+        func step(_ label: String, _ pane: TerminalPane, typing: Bool = true) async {
+            if typing {
+                harness.focus(pane)
+                await harness.pause(.milliseconds(400))
+                pane.probeView?.insertText("!seq -s , 1 120", replacementRange: NSRange(location: NSNotFound, length: 0))
+                await harness.pause(.milliseconds(400))
+                EventSynthesizer.press(EventSynthesizer.returnKey, in: window)
+                await harness.pause(.seconds(3))
+            }
+            let grid = pane.state.surfaceSize.map { "\($0.columns)x\($0.rows)" } ?? "nil"
+            let image = await harness.requestCapture(label: "split-\(label)")
+            notes.append("\(label) \(pane.title) grid=\(grid) \(image?.lastPathComponent ?? "no capture")")
+        }
+        func trust(_ pane: TerminalPane) async {
+            harness.focus(pane)
+            await harness.pause(Self.startup)
+            EventSynthesizer.press(EventSynthesizer.downArrow, in: window)
+            await harness.pause(.milliseconds(300))
+            EventSynthesizer.press(EventSynthesizer.returnKey, in: window)
+            await harness.pause(.seconds(3))
+        }
+        workspace.destination = .sessions
+        let first = workspace.makePane(title: "claude A", command: command)
+        await harness.install([first], layout: .single)
+        await trust(first)
+        await step("1-alone", first)
+        guard let second = workspace.openPane(title: "claude B", command: command) else {
+            return [.make("RS-12-poc", "분할 뒤 1개 보기에서 Claude 화면 폭", status: .fail, cause: .app,
+                          evidence: ["reason": "second pane"], startedAt: start)]
+        }
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { second.probeView?.window != nil }
+        await trust(second)
+        await step("2a-added-b-alone", second, typing: false)
+        workspace.setLayout(.double)
+        await harness.pause(Self.settle)
+        await step("2-split-b", second)
+        await step("3-split-a", first)
+        workspace.setLayout(.single)
+        await harness.pause(Self.settle)
+        // The new one holds slot 1, so it is the one left on screen.
+        await step("4-single-b-before-typing", second, typing: false)
+        await step("5-single-b", second)
+        workspace.selectPane(id: first.id)
+        await harness.pause(Self.settle)
+        await step("6-single-a-before-typing", first, typing: false)
+        await step("7-single-a", first)
+        let ran = [first, second].map { $0.processID.map { Self.commandName(of: $0) } ?? "none" }
+        for pane in [second, first] { workspace.closePane(id: pane.id) }
+        return [.make("RS-12-poc", "분할 뒤 1개 보기에서 Claude 화면 폭 — 캡처 검토 필요",
+                      status: .unverified, cause: .app,
+                      evidence: ["steps": notes.joined(separator: " | "), "processes": ran.joined(separator: " | ")],
+                      startedAt: start)]
+    }
+
+    /// The same report with a real `codex` started the way `aib start
+    /// codex` starts it — under macOS `script`, whose inner terminal does
+    /// not hear of a resize by itself (explicit suite `tui-script`). Nothing
+    /// is typed: the captures show whether its screen follows the slot.
+    func scriptFlow() async -> [TestResult] {
+        let start = ContinuousClock.now
+        let workspace = harness.workspace
+        try? FileManager.default.createDirectory(atPath: Self.directory, withIntermediateDirectories: true)
+        var notes: [String] = []
+        workspace.destination = .sessions
+        let pane = workspace.makePane(
+            title: "codex in script", command: "/bin/zsh -lc 'cd \(Self.directory) && exec /usr/bin/script -q /dev/null codex'"
+        )
+        let other = workspace.makePane(title: "shell", command: nil)
+        await harness.install([pane, other], layout: .double)
+        await harness.pause(Self.startup)
+        for (label, layout) in [("1-started-in-split", PaneLayout.double), ("2-single", .single), ("3-split-again", .double), ("4-single-again", .single)] {
+            workspace.setLayout(layout)
+            await harness.pause(.seconds(4))
+            let grid = pane.state.surfaceSize.map { "\($0.columns)x\($0.rows)" } ?? "nil"
+            let inner = pane.processID.map { NestedTerminals.devices(under: $0) } ?? []
+            let image = await harness.requestCapture(label: "script-\(label)")
+            notes.append("\(label) grid=\(grid) inner=\(inner.joined(separator: ",")) \(image?.lastPathComponent ?? "no capture")")
+        }
+        for each in [pane, other] { workspace.closePane(id: each.id) }
+        return [.make("RS-13-poc", "script 안의 Codex 화면이 칸 크기를 따라감 — 캡처 검토 필요",
+                      status: .unverified, cause: .app,
+                      evidence: ["steps": notes.joined(separator: " | ")], startedAt: start)]
+    }
+
     private func layoutSequence(_ pane: TerminalPane, _ window: NSWindow) async -> [String?] {
         let workspace = harness.workspace
         let original = window.frame

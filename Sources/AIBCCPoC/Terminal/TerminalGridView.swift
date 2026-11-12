@@ -207,24 +207,20 @@ struct PaneGridLayout: Layout {
 /// cap on how many a barrack holds (2026-11-12 report: a fifth agent could
 /// not be started).
 enum PanePlacement {
-    /// A new pane: an empty slot if there is one; else the layout grows
-    /// (1 → left/right → 4) and it takes the new slot; with all four slots
-    /// shown it takes the focused slot and that pane moves off screen,
-    /// first in line to come back.
-    static func adding<T: Identifiable>(_ new: T, to panes: [T], layout: PaneLayout, focused: Int?) -> (panes: [T], layout: PaneLayout) {
+    /// A new pane: an empty slot if there is one; else it takes the focused
+    /// slot (the last one when none is) and that pane moves off screen,
+    /// first in line to come back. The layout is the user's: a new pane
+    /// never splits the view (2026-11-13 feedback: the split a second agent
+    /// forced narrowed the first one's screen, and what an agent has
+    /// already printed stays that narrow).
+    static func adding<T: Identifiable>(_ new: T, to panes: [T], layout: PaneLayout, focused: Int?) -> [T] {
         let slots = layout.paneCount
-        guard panes.count >= slots else { return (panes + [new], layout) }
-        let visible = Array(panes.prefix(slots))
-        let held = Array(panes.dropFirst(slots))
-        if layout != .quad {
-            let grown = PaneLayout.fitting(slots + 1, keeping: layout)
-            return (visible + [new] + held, grown)
-        }
+        guard panes.count >= slots else { return panes + [new] }
         let slot = focused.flatMap { $0 < slots ? $0 : nil } ?? slots - 1
-        var shown = visible
+        var shown = Array(panes.prefix(slots))
         let displaced = shown[slot]
         shown[slot] = new
-        return (shown + [displaced] + held, layout)
+        return shown + [displaced] + Array(panes.dropFirst(slots))
     }
 
     /// Shows `id` in `slot`: a pane already on screen trades places with the

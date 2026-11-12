@@ -31,6 +31,7 @@ struct GallerySuite {
         let many = (1 ... 6).compactMap {
             workspace.runInPane(title: "gallery \($0)", command: "printf '\\033]0;%s\\007' '갤러리 작업 \($0) 진행 중'; sleep 120")
         }
+        workspace.setLayout(.quad)
         workspace.destination = .sessions
         await harness.pause(.seconds(2))
         if let image = await harness.requestCapture(label: "gallery-agents-many") { captures.append(image.lastPathComponent) }

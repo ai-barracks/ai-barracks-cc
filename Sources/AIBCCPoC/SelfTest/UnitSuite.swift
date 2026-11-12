@@ -280,28 +280,31 @@ struct UnitSuite {
     }
 
     /// PN-02a (P01, 2026-11-12 report: a fifth agent could not be started):
-    /// no cap on terminals — a new one takes an empty slot, else the layout
-    /// grows, else the focused slot, and the one it displaces stays held off
-    /// screen; showing a held one swaps it into the slot.
+    /// no cap on terminals — a new one takes an empty slot, else the focused
+    /// slot (the layout stays as the user set it), and the one it displaces
+    /// stays held off screen; showing a held one swaps it into the slot.
     private func panePlacement() -> TestResult {
         struct Item: Identifiable, Equatable { let id: Int }
         let start = ContinuousClock.now
         var failures: [String] = []
         let items = (0 ..< 6).map(Item.init)
         let empty = PanePlacement.adding(items[0], to: [items[1]], layout: .double, focused: nil)
-        if empty.panes.map(\.id) != [1, 0] || empty.layout != .double { failures.append("empty slot \(empty.panes.map(\.id))") }
-        let grown = PanePlacement.adding(items[5], to: [items[0], items[1], items[2]], layout: .single, focused: 0)
-        if grown.panes.map(\.id) != [0, 5, 1, 2] || grown.layout != .double { failures.append("grow \(grown.panes.map(\.id)) \(grown.layout)") }
-        let rows = PanePlacement.adding(items[5], to: [items[0], items[1]], layout: .twoRows, focused: nil)
-        if rows.layout != .quad || rows.panes.map(\.id) != [0, 1, 5] { failures.append("twoRows grow \(rows.layout)") }
+        if empty.map(\.id) != [1, 0] { failures.append("empty slot \(empty.map(\.id))") }
+        // The layout is never grown for a new one (2026-11-13 feedback):
+        // alone on screen, the new one takes that slot.
+        let alone = PanePlacement.adding(items[5], to: [items[0], items[1], items[2]], layout: .single, focused: 0)
+        if alone.map(\.id) != [5, 0, 1, 2] { failures.append("single \(alone.map(\.id))") }
+        if PanePlacement.adding(items[5], to: [items[0]], layout: .single, focused: nil).map(\.id) != [5, 0] { failures.append("single unfocused") }
+        let rows = PanePlacement.adding(items[5], to: [items[0], items[1]], layout: .twoRows, focused: 0)
+        if rows.map(\.id) != [5, 1, 0] { failures.append("twoRows \(rows.map(\.id))") }
         let full = Array(items.prefix(4))
         let focused = PanePlacement.adding(items[4], to: full, layout: .quad, focused: 1)
-        if focused.panes.map(\.id) != [0, 4, 2, 3, 1] || focused.layout != .quad { failures.append("focused \(focused.panes.map(\.id))") }
-        let unfocused = PanePlacement.adding(items[5], to: focused.panes, layout: .quad, focused: nil)
-        if unfocused.panes.map(\.id) != [0, 4, 2, 5, 3, 1] { failures.append("last slot \(unfocused.panes.map(\.id))") }
+        if focused.map(\.id) != [0, 4, 2, 3, 1] { failures.append("focused \(focused.map(\.id))") }
+        let unfocused = PanePlacement.adding(items[5], to: focused, layout: .quad, focused: nil)
+        if unfocused.map(\.id) != [0, 4, 2, 5, 3, 1] { failures.append("last slot \(unfocused.map(\.id))") }
         let stale = PanePlacement.adding(items[5], to: full, layout: .quad, focused: 7)
-        if stale.panes.map(\.id) != [0, 1, 2, 5, 3] { failures.append("stale focus \(stale.panes.map(\.id))") }
-        let shown = PanePlacement.showing(1, inSlot: 2, of: unfocused.panes, layout: .quad)
+        if stale.map(\.id) != [0, 1, 2, 5, 3] { failures.append("stale focus \(stale.map(\.id))") }
+        let shown = PanePlacement.showing(1, inSlot: 2, of: unfocused, layout: .quad)
         if shown.map(\.id) != [0, 4, 1, 5, 3, 2] { failures.append("show held \(shown.map(\.id))") }
         let swapped = PanePlacement.showing(5, inSlot: 0, of: shown, layout: .quad)
         if swapped.map(\.id) != [5, 4, 1, 0, 3, 2] { failures.append("swap visible \(swapped.map(\.id))") }
@@ -323,7 +326,7 @@ struct UnitSuite {
             || Split.width(stored: 900, available: 1000, detailMin: 320) != 600 || Split.width(stored: 240, available: 700, detailMin: 480) != 220 {
             failures.append("list width beside a detail minimum")
         }
-        return .make("PN-02a", "터미널 상한 없음: 빈 칸 → 분할 확대 → 지금 칸 순서로 놓고 밀린 터미널은 화면 밖에 유지, 화면 밖 터미널은 칸과 맞바꿈",
+        return .make("PN-02a", "터미널 상한 없음: 빈 칸 → 지금 칸 순서로 놓고(분할은 바꾸지 않음) 밀린 터미널은 화면 밖에 유지, 화면 밖 터미널은 칸과 맞바꿈",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }

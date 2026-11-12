@@ -54,6 +54,10 @@ enum AppConstants {
         /// The terminals keep this much beside the list; narrower, the list
         /// folds away (a minimum window with a wide Outputs, LY-02b).
         static let gridMinWidthBesideList: CGFloat = 480
+        /// When, after a size change, the size is passed on to terminals
+        /// opened inside a pane: once it settled, and again for an inner
+        /// terminal that was still starting.
+        static let nestedResizeDelays: [Duration] = [.milliseconds(200), .seconds(2)]
         /// How often the list rereads the aib session files' task lines.
         static let agentTaskRefresh: Duration = .seconds(2)
     }
