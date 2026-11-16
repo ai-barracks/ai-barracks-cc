@@ -258,7 +258,7 @@ struct DocumentView: View {
                 + wiki.ordered(topics.filter { $0.pathExtension == "md" })
         case .council:
             return BarrackDocuments.councilMinutes(in: root)
-        case .barrack, .sessions, .history, .git, .skills:
+        case .barrack, .sessions, .history, .git, .skills, .files:
             return []
         }
     }

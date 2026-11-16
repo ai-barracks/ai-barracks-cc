@@ -99,7 +99,7 @@ struct BarrackSidebar: View {
         case .history:
             let count = SessionRecords.count(barrackPath: barrack.path)
             return count > 0 ? count : nil
-        case .rules, .git:
+        case .rules, .git, .files:
             return nil
         }
     }

@@ -134,6 +134,7 @@ enum CriteriaCatalog {
         .init(id: "AG-02", title: "Agents는 빈 화면으로 시작(기본 셸 없음)", blocking: false, requires: ["AG-02a"]),
         .init(id: "RS-11", title: "다른 화면에 있는 동안 창 크기 변경 후 터미널 크기 일치", blocking: false, requires: ["RS-11a"]),
         .init(id: "SY-01", title: "배럭 골라서 Sync(v1 System)", blocking: false, requires: ["SY-01a"]),
+        .init(id: "FL-01", title: "Files: 배럭 파일 트리와 뷰어", blocking: false, requires: ["FL-01a", "FL-01b", "FL-01c"]),
         .init(id: "SP-01", title: "상하 2분할(v1 Split V)", blocking: false, requires: ["SP-01a", "SP-01b"]),
         .init(id: "WK-01", title: "Wiki 목록 메타데이터(v1 Index·Recent Changes)", blocking: false, requires: ["WK-01a"]),
         .init(id: "HS-01", title: "기록: 빈 세션 숨기기(v1)", blocking: false, requires: ["HS-01a"]),

@@ -21,9 +21,25 @@ struct GallerySuite {
         workspace.isArtifactPanelVisible = true
         for destination in Destination.allCases {
             workspace.destination = destination
+            // Files with something to look at: a document inside a folder.
+            if destination == .files, let barrack = workspace.selectedBarrack {
+                let folders = FileTree.children(of: barrack.url, showHidden: false).filter(\.isDirectory)
+                let document = folders.lazy.flatMap { FileTree.children(of: $0.url, showHidden: false) }
+                    .first { FileTree.kind(of: $0.url) == .markdown }
+                if let document { workspace.fileBrowser.open(document.url, in: barrack) }
+            }
             await harness.pause(.seconds(2))
             if let image = await harness.requestCapture(label: "gallery-\(destination.rawValue)") {
                 captures.append(image.lastPathComponent)
+            }
+            // The same tree ordered by modified date, newest first.
+            if destination == .files {
+                UserDefaults.standard.set(FileOrder.Key.modified.rawValue, forKey: AppConstants.Files.sortKeyKey)
+                UserDefaults.standard.set(false, forKey: AppConstants.Files.sortAscendingKey)
+                await harness.pause(.seconds(1))
+                if let image = await harness.requestCapture(label: "gallery-files-by-date") { captures.append(image.lastPathComponent) }
+                UserDefaults.standard.removeObject(forKey: AppConstants.Files.sortKeyKey)
+                UserDefaults.standard.removeObject(forKey: AppConstants.Files.sortAscendingKey)
             }
         }
         // P01: more terminals than slots, with the agent list beside them.

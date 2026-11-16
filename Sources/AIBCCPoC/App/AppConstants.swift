@@ -139,6 +139,19 @@ enum AppConstants {
         static let detailMinWidth: CGFloat = 320
     }
 
+    enum Files {
+        static let listKey = "filesListWidth"
+        static let listWidth: CGFloat = 280
+        static let showHiddenKey = "filesShowHidden"
+        static let sortKeyKey = "filesSortKey"
+        static let sortAscendingKey = "filesSortAscending"
+        /// Indent per folder level in the tree.
+        static let indent: CGFloat = 14
+        /// Text and Markdown larger than this are not read into the
+        /// reader (Finder is offered instead).
+        static let maxTextBytes = 2 * 1024 * 1024
+    }
+
     enum Liveness {
         static let refreshInterval: TimeInterval = 2
         /// done/crashed ring only this long after the event (seconds).

@@ -10,7 +10,7 @@ struct UnitSuite {
         [foldMatrix(), readerAppliesAck(), attentionWindow(), commentsHidden(), launchCommand(), ackRoundTrip(),
          processTree(), maintenanceParsing(), socketChoice(), skillsAndCouncil(), editingPolicy(), editingConflict(),
          sessionParsing(), sealStatuses(), sessionCommands(), searchSemantics(), healthRules(), attentionTransitions(), terminalTools(),
-         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions(), wikiIndex(), paneLayouts(), panePlacement()]
+         terminalOwnsControlKeys(), ruleCount(), hideEmptySessions(), wikiIndex(), paneLayouts(), panePlacement(), fileTree()]
     }
 
     private func terminalTools() -> TestResult {
@@ -277,6 +277,107 @@ struct UnitSuite {
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["before": before?.rawValue ?? "nil", "after": after?.rawValue ?? "nil",
                                 "refused_bad_ids": "\(refused)"], startedAt: start)
+    }
+
+    /// FL-01a (2026-11-16 request: a Finder-like file browser with a
+    /// Markdown viewer): the tree lists folders first in name order, hides
+    /// dot files unless asked, shows an expanded folder's entries indented;
+    /// files are shown by kind, large or binary ones are not read; aib's
+    /// records and system files are not editable here.
+    private func fileTree() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-files-\(UUID().uuidString)").standardizedFileURL
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files: [(String, Data)] = [
+            ("b.md", Data("# 제목\n".utf8)), ("a10.txt", Data("ten".utf8)), ("a2.txt", Data("two".utf8)), (".hidden", Data("h".utf8)),
+            ("wiki/topics/t.md", Data("topic".utf8)), ("sessions/s.md", Data("log".utf8)), ("docs/guide.md", Data("guide".utf8)),
+            ("resources/out/report.md", Data("report".utf8)), ("resources/pic.png", Data([0x89, 0x50])), ("resources/blob", Data([0, 1, 2])),
+            ("resources/notes", Data("plain words".utf8)), ("resources/big.txt", Data(repeating: 0x61, count: 64)), ("RULES.md", Data("rules".utf8)),
+            ("SOUL.md", Data("soul".utf8)),
+        ]
+        for (path, data) in files {
+            let file = root.appendingPathComponent(path)
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: file)
+        }
+        let top = FileTree.children(of: root, showHidden: false).map(\.name)
+        if top != ["docs", "resources", "sessions", "wiki", "a2.txt", "a10.txt", "b.md", "RULES.md", "SOUL.md"] { failures.append("top \(top)") }
+        if !FileTree.children(of: root, showHidden: true).map(\.name).contains(".hidden") { failures.append("hidden not listed when asked") }
+        let resources = root.appendingPathComponent("resources").standardizedFileURL
+        let out = resources.appendingPathComponent("out").standardizedFileURL
+        let rows = FileTree.rows(root: root, expanded: [resources, out], showHidden: false)
+        let shape = rows.map { "\($0.depth):\($0.node.name)" }
+        let expected = ["0:docs", "0:resources", "1:out", "2:report.md", "1:big.txt", "1:blob", "1:notes", "1:pic.png", "0:sessions", "0:wiki"]
+        if Array(shape.prefix(expected.count)) != expected { failures.append("rows \(shape)") }
+        // A folder that is expanded but whose parent is closed shows nothing.
+        if FileTree.rows(root: root, expanded: [out], showHidden: false).contains(where: { $0.node.name == "report.md" }) {
+            failures.append("child of a closed folder listed")
+        }
+        let report = out.appendingPathComponent("report.md")
+        if FileTree.ancestors(of: report, under: root) != [resources, out] { failures.append("ancestors \(FileTree.ancestors(of: report, under: root))") }
+        if FileTree.relativePath(of: report, under: root) != "resources/out/report.md" { failures.append("relative path") }
+        if !FileTree.ancestors(of: URL(fileURLWithPath: "/etc/hosts"), under: root).isEmpty { failures.append("outside file has ancestors") }
+        // Ordering (2026-11-16: name, modified date, created date): folders
+        // stay first, dates newest or oldest first, entries without the
+        // date last, ties by name.
+        let day = { (offset: Double) in Date(timeIntervalSince1970: 1_800_000_000 + offset * 86_400) }
+        let node = { (name: String, folder: Bool, modified: Double?, created: Double?) in
+            FileNode(url: root.appendingPathComponent(name), isDirectory: folder, modified: modified.map(day), created: created.map(day))
+        }
+        let mixed = [node("b.md", false, 3, 1), node("a.md", false, 1, 3), node("c.md", false, 2, 2), node("zdir", true, 0, 9),
+                     node("adir", true, 5, 0), node("same1.md", false, 2, nil), node("nodate.md", false, nil, nil)]
+        let orders: [(FileOrder, [String])] = [
+            (.byName, ["adir", "zdir", "a.md", "b.md", "c.md", "nodate.md", "same1.md"]),
+            (FileOrder(key: .name, ascending: false), ["zdir", "adir", "same1.md", "nodate.md", "c.md", "b.md", "a.md"]),
+            (.initial(.modified), ["adir", "zdir", "b.md", "c.md", "same1.md", "a.md", "nodate.md"]),
+            (FileOrder(key: .modified, ascending: true), ["zdir", "adir", "a.md", "c.md", "same1.md", "b.md", "nodate.md"]),
+            (.initial(.created), ["zdir", "adir", "a.md", "c.md", "b.md", "nodate.md", "same1.md"]),
+        ]
+        for (order, want) in orders {
+            // Whatever order they arrive in.
+            for input in [mixed, mixed.reversed()] where order.sorted(input).map(\.name) != want {
+                failures.append("order \(order.key.rawValue) \(order.ascending): \(order.sorted(input).map(\.name))")
+            }
+        }
+        if FileOrder.initial(.name).ascending != true || FileOrder.initial(.modified).ascending != false { failures.append("initial directions") }
+        // From disk: the dates are read, and a date order uses them.
+        let older = root.appendingPathComponent("a2.txt")
+        try? FileManager.default.setAttributes([.modificationDate: day(-400), .creationDate: day(-500)], ofItemAtPath: older.path)
+        let byModified = FileTree.children(of: root, showHidden: false, order: .initial(.modified)).filter { !$0.isDirectory }.map(\.name)
+        if byModified.last != "a2.txt" { failures.append("oldest modified not last: \(byModified)") }
+        let byCreatedOldest = FileTree.children(of: root, showHidden: false, order: FileOrder(key: .created, ascending: true)).filter { !$0.isDirectory }
+        if byCreatedOldest.first?.name != "a2.txt" || byCreatedOldest.first?.created == nil { failures.append("oldest created not first") }
+        let contents: [(String, FileContent)] = [
+            ("b.md", .markdown("# 제목\n")), ("a2.txt", .text("two")), ("resources/notes", .text("plain words")), ("resources/pic.png", .image),
+            ("resources/blob", .unavailable("미리 볼 수 없는 형식입니다.")),
+        ]
+        for (path, want) in contents where FileTree.content(of: root.appendingPathComponent(path)) != want {
+            failures.append("content \(path): \(FileTree.content(of: root.appendingPathComponent(path)))")
+        }
+        if case .unavailable = FileTree.content(of: resources.appendingPathComponent("big.txt"), limit: 32) {} else { failures.append("large file read") }
+        if FileTree.kind(of: URL(fileURLWithPath: "/x/a.PDF")) != .pdf || FileTree.kind(of: URL(fileURLWithPath: "/x/A.MD")) != .markdown {
+            failures.append("kind ignores case")
+        }
+        let editable = ["b.md", "a2.txt", "SOUL.md", "resources/out/report.md"]
+        let readOnly = ["RULES.md", "wiki/topics/t.md", "sessions/s.md", "docs/guide.md", "resources/pic.png", "resources/blob"]
+        for path in editable where !FileTree.isEditable(root.appendingPathComponent(path), in: root) { failures.append("not editable \(path)") }
+        for path in readOnly where FileTree.isEditable(root.appendingPathComponent(path), in: root) { failures.append("editable \(path)") }
+        // What was open stays per barrack; closing a folder closes those in it.
+        let barrack = Barrack(name: "files", path: root.path, description: nil)
+        let other = Barrack(name: "other", path: root.path + "-other", description: nil)
+        let model = FileBrowserModel()
+        model.open(report, in: barrack)
+        if model.state(of: barrack) != .init(expanded: [resources, out], highlighted: report, opened: report) { failures.append("open \(model.state(of: barrack))") }
+        if model.state(of: other) != .init() { failures.append("state leaked to another barrack") }
+        model.toggle(resources, in: barrack)
+        if !model.state(of: barrack).expanded.isEmpty || model.state(of: barrack).opened != report { failures.append("closing a folder") }
+        model.setExpanded(resources, true, in: barrack)
+        model.setExpanded(resources, true, in: barrack)
+        if model.state(of: barrack).expanded != [resources] { failures.append("setExpanded") }
+        return .make("FL-01a", "Files: 폴더 먼저 트리(이름·수정일·생성일 정렬), 숨김 파일 제외, 펼친 폴더만 들여쓰기; 종류별 표시, 큰·이진 파일은 읽지 않음; 기록·시스템 파일은 편집 불가",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
 
     /// PN-02a (P01, 2026-11-12 report: a fifth agent could not be started):

@@ -5,7 +5,7 @@ import Observation
 /// What the center shows for the selected barrack (spec §4 destinations).
 enum Destination: String, CaseIterable, Identifiable, Sendable {
     /// `barrack` first: the barrack itself (info and status), then its work.
-    case barrack, sessions, history, rules, wiki, skills, council, git
+    case barrack, sessions, history, files, rules, wiki, skills, council, git
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .barrack: "Barrack"
         case .sessions: "Agents"
         case .history: "History"
+        case .files: "Files"
         case .rules: "Rules"
         case .wiki: "Wiki"
         case .skills: "Skills"
@@ -27,6 +28,7 @@ enum Destination: String, CaseIterable, Identifiable, Sendable {
         case .barrack: "building.2"
         case .sessions: "terminal"
         case .history: "clock.arrow.circlepath"
+        case .files: "folder"
         case .rules: "list.bullet.rectangle"
         case .wiki: "books.vertical"
         case .skills: "puzzlepiece.extension"
@@ -106,6 +108,8 @@ final class WorkspaceModel {
     var pendingStructuredEdit = false
     let maintenance = MaintenanceStore()
     let notices = NoticeCenter()
+    /// What the Files screen has open in each barrack.
+    let fileBrowser = FileBrowserModel()
     let quickCommands = QuickCommandStore()
     let scrollback = ScrollbackArchive.standard
     @ObservationIgnored var lastScrollbackCollection: Date?

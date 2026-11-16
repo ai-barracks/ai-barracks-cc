@@ -118,6 +118,8 @@ struct CenterView: View {
             BarrackView(workspace: workspace, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .history {
             HistoryDestinationView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
+        } else if let barrack = workspace.selectedBarrack, workspace.destination == .files {
+            FilesView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .git {
             GitView(workspace: workspace, barrack: barrack, changes: artifacts.fileEvents)
         } else if let barrack = workspace.selectedBarrack, workspace.destination == .skills {

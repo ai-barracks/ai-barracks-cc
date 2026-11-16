@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import WebKit
 
 /// 3-column integration tests for the artifact viewer (MD-*).
@@ -24,6 +25,8 @@ struct IntegrationSuite {
             await renderCapture(),
             await terminalKeepsFirstKeystroke(),
             await viewerClickAndScrollThenType(sandbox: sandbox),
+            await filesBrowser(),
+            await filesEditSaves(),
         ]
         return results
     }
@@ -165,6 +168,143 @@ struct IntegrationSuite {
         } catch {
             return nil
         }
+    }
+
+    /// FL-01b (2026-11-16 request): on Files, a Markdown file picked in the
+    /// tree is rendered, a file inside folders opens with them expanded, a
+    /// text file shows as written, and the screen is as it was left after a
+    /// visit to Agents. Reads the selected barrack; writes nothing.
+    private func filesBrowser() async -> TestResult {
+        let start = ContinuousClock.now
+        let title = "Files: 고른 md는 렌더, 폴더 안 파일은 폴더가 펼쳐진 채 열림, 텍스트는 원문, 다른 화면에 다녀와도 그대로"
+        let workspace = harness.workspace
+        guard let window = harness.window, let barrack = workspace.selectedBarrack else { return failure("FL-01b", title, reason: "setup", start) }
+        let panelShown = workspace.isArtifactPanelVisible
+        // Only the Files reader's web view may be on screen.
+        workspace.isArtifactPanelVisible = false
+        workspace.editInProgress = false
+        workspace.destination = .files
+        defer {
+            workspace.isArtifactPanelVisible = panelShown
+            workspace.destination = .sessions
+        }
+        let top = FileTree.children(of: barrack.url, showHidden: false)
+        let nested = top.filter(\.isDirectory).lazy.flatMap { FileTree.children(of: $0.url, showHidden: false) }
+            .first { !$0.isDirectory && FileTree.kind(of: $0.url) == .markdown }
+        guard let markdown = top.first(where: { !$0.isDirectory && FileTree.kind(of: $0.url) == .markdown }) else {
+            return .make("FL-01b", title, status: .unverified, evidence: ["reason": "no markdown file in the barrack"], startedAt: start)
+        }
+        var failures: [String] = []
+        func rendered() async -> String {
+            for _ in 0 ..< 60 {
+                if let web = findWebView(in: window.contentView),
+                   let text = try? await web.evaluateJavaScript("document.body.innerText") as? String,
+                   text.trimmingCharacters(in: .whitespacesAndNewlines).count > 10 { return text }
+                await harness.pause(.milliseconds(150))
+            }
+            return ""
+        }
+        workspace.fileBrowser.open(markdown.url, in: barrack)
+        let first = await rendered()
+        if first.isEmpty { failures.append("\(markdown.name) not rendered") }
+        var nestedText = "none"
+        if let nested {
+            workspace.fileBrowser.open(nested.url, in: barrack)
+            await harness.pause(.milliseconds(600))
+            nestedText = await rendered()
+            if nestedText.isEmpty { failures.append("\(nested.name) not rendered") }
+            if !workspace.fileBrowser.state(of: barrack).expanded.contains(nested.url.deletingLastPathComponent().standardizedFileURL) {
+                failures.append("folder of the opened file not expanded")
+            }
+        }
+        if let text = top.first(where: { !$0.isDirectory && FileTree.kind(of: $0.url) == .text }),
+           let written = try? String(contentsOf: text.url, encoding: .utf8), !written.isEmpty {
+            workspace.fileBrowser.open(text.url, in: barrack)
+            let shown = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
+                findTextView(in: window.contentView, holding: written) != nil
+            }
+            if !shown { failures.append("\(text.name) not shown as text") }
+            if findWebView(in: window.contentView) != nil { failures.append("web view left over a text file") }
+        }
+        workspace.fileBrowser.open(markdown.url, in: barrack)
+        _ = await rendered()
+        workspace.destination = .sessions
+        await harness.pause(.milliseconds(500))
+        workspace.destination = .files
+        let back = await rendered()
+        if back.isEmpty || workspace.fileBrowser.state(of: barrack).opened != markdown.url { failures.append("not restored after Agents") }
+        return .make("FL-01b", title, status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | "), "markdown": markdown.name,
+                                "rendered_chars": "\(first.count)", "nested": nested?.name ?? "none"], startedAt: start)
+    }
+
+    /// FL-01c: the reader's own editing, on a scratch folder (no barrack
+    /// file is written), driven by its shortcuts: ⌘E opens the text as it
+    /// is on disk, ⌘S writes what was typed and nothing before that, and a
+    /// file aib keeps as a record cannot be edited.
+    private func filesEditSaves() async -> TestResult {
+        let start = ContinuousClock.now
+        let title = "Files 편집: ⌘E → 입력 → ⌘S가 파일에 그대로 쓰이고(저장 전에는 안 씀), 기록 파일은 편집 불가"
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-fl-edit-\(UUID().uuidString)").standardizedFileURL
+        defer { try? FileManager.default.removeItem(at: root) }
+        let note = root.appendingPathComponent("resources/note.md")
+        let record = root.appendingPathComponent("sessions/s.md")
+        for (file, text) in [(note, "# 처음\n\n본문\n"), (record, "# Session\n")] {
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? text.write(to: file, atomically: true, encoding: .utf8)
+        }
+        let barrack = Barrack(name: "fl-edit", path: root.path, description: nil)
+        let reader = { (file: URL) in FileReaderView(barrack: barrack, file: file, isDirty: .constant(false)) }
+        let host = NSHostingView(rootView: reader(note))
+        let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 720, height: 480), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFront(nil)
+        defer { window.close() }
+        var failures: [String] = []
+        guard let edit = EventSynthesizer.command("e"), let save = EventSynthesizer.command("s") else {
+            return failure("FL-01c", title, reason: "keys", start)
+        }
+        // The reader's shortcuts go to the key window.
+        window.makeKeyAndOrderFront(nil)
+        defer { harness.window?.makeKeyAndOrderFront(nil) }
+        await harness.pause(.milliseconds(800))
+        EventSynthesizer.press(edit, in: window)
+        let original = "# 처음\n\n본문\n"
+        let editorShown = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { editor(in: host)?.string == original }
+        if !editorShown { failures.append("⌘E did not open the editor on the file's text (\(editor(in: host)?.string ?? "none"))") }
+        let typed = "# 바뀜\n\n새 본문 with ``` and <b>\n"
+        if let view = editor(in: host) {
+            window.makeFirstResponder(view)
+            view.insertText(typed, replacementRange: NSRange(location: 0, length: (view.string as NSString).length))
+        }
+        await harness.pause(.milliseconds(300))
+        if (try? String(contentsOf: note, encoding: .utf8)) != original { failures.append("file written before saving") }
+        EventSynthesizer.press(save, in: window)
+        let saved = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { (try? String(contentsOf: note, encoding: .utf8)) == typed }
+        if !saved { failures.append("saved text differs: \((try? String(contentsOf: note, encoding: .utf8)) ?? "unreadable")") }
+        let closed = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) { editor(in: host) == nil }
+        if !closed { failures.append("editor stayed open after saving") }
+        host.rootView = reader(record)
+        await harness.pause(.milliseconds(800))
+        EventSynthesizer.press(edit, in: window)
+        await harness.pause(.milliseconds(800))
+        if editor(in: host) != nil { failures.append("a session record can be edited") }
+        if (try? String(contentsOf: record, encoding: .utf8)) != "# Session\n" { failures.append("record changed") }
+        return .make("FL-01c", title, status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
+    }
+
+    private func editor(in view: NSView?) -> NSTextView? {
+        guard let view else { return nil }
+        if let found = view as? NSTextView, found.isEditable { return found }
+        return view.subviews.lazy.compactMap { editor(in: $0) }.first
+    }
+
+    private func findTextView(in view: NSView?, holding text: String) -> NSTextView? {
+        guard let view else { return nil }
+        if let found = view as? NSTextView, !found.isEditable, found.string == text { return found }
+        return view.subviews.lazy.compactMap { findTextView(in: $0, holding: text) }.first
     }
 
     private func findWebView(in view: NSView?) -> WKWebView? {

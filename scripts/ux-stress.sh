@@ -10,7 +10,7 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$ROOT/dist/AIBCC-PoC.app"
-DESTINATIONS="${*:-barrack sessions history rules wiki skills council git}"
+DESTINATIONS="${*:-barrack sessions history files rules wiki skills council git}"
 
 # verdict <destination> <status> <stdout file> <report dir>: PASS needs the
 # done marker (printed after the last round's resize), no exception, a
