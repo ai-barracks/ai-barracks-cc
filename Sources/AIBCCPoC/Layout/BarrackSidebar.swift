@@ -13,12 +13,16 @@ struct BarrackSidebar: View {
                                     guard next != workspace.selectedBarrackID else { return }
                                     workspace.navigate { workspace.selectedBarrackID = next }
                                 })) {
-            AttentionSummary(attention: workspace.liveness.attentionCount, running: workspace.liveness.runningCount)
+            AppVersionHeader(workspace: workspace)
+                .listRowSeparator(.hidden)
+                .selectionDisabled()
+            AttentionSummary(workspace: workspace)
                 .listRowSeparator(.hidden)
                 .selectionDisabled()
             Section {
                 ForEach(workspace.barracks) { barrack in
-                    BarrackRow(barrack: barrack, liveness: workspace.liveness)
+                    BarrackRow(barrack: barrack, liveness: workspace.liveness,
+                               terminals: workspace.liveTerminalCount(of: barrack.id))
                         .tag(barrack.id)
                         .contextMenu {
                             Button("Finder에서 보기") { NSWorkspace.shared.activateFileViewerSelecting([barrack.url]) }
@@ -85,8 +89,10 @@ struct BarrackSidebar: View {
             let items = workspace.maintenance.items(for: barrack).count
             return items > 0 ? items : nil
         case .sessions:
-            let running = workspace.liveness.sessions(of: barrack.id).filter { $0.state.isRunning }.count
-            return running > 0 ? running : nil
+            // Terminals open here, as the agent list counts them
+            // (2026-11-23 feedback: the count showed only agents mid-reply).
+            let terminals = workspace.liveTerminalCount(of: barrack.id)
+            return terminals > 0 ? terminals : nil
         case .wiki:
             let topics = try? FileManager.default.contentsOfDirectory(atPath: barrack.url.appendingPathComponent("wiki/topics").path)
             return topics?.filter { $0.hasSuffix(".md") }.count
@@ -105,34 +111,11 @@ struct BarrackSidebar: View {
     }
 }
 
-/// "주의 N · 실행 M" — the one line that says whether anything needs you.
-private struct AttentionSummary: View {
-    let attention: Int
-    let running: Int
-
-    var body: some View {
-        HStack(spacing: Tokens.Spacing.s) {
-            Image(systemName: attention > 0 ? "exclamationmark.circle.fill" : "checkmark.circle")
-                .foregroundStyle(attention > 0 ? Tokens.orange : Tokens.textTertiary)
-            Text(attention > 0 ? "주의 \(attention)" : "주의 없음")
-                .fontWeight(attention > 0 ? .semibold : .regular)
-                .foregroundStyle(attention > 0 ? Tokens.orange : Tokens.textSecondary)
-            Text("· 실행 \(running)").foregroundStyle(Tokens.textSecondary)
-            Spacer()
-        }
-        .font(Tokens.Font.body)
-        .padding(.horizontal, Tokens.Spacing.s)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                .fill(attention > 0 ? Tokens.orange.opacity(0.12) : Color.primary.opacity(0.04))
-        )
-    }
-}
-
 private struct BarrackRow: View {
     let barrack: Barrack
     let liveness: LivenessStore
+    /// Terminals open in its Agents screen.
+    let terminals: Int
 
     var body: some View {
         let headline = liveness.headline(of: barrack.id)
@@ -147,9 +130,9 @@ private struct BarrackRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
-            let running = sessions.filter { $0.state.isRunning }.count
-            if running > 0 {
-                Text("\(running)").font(Tokens.Font.numeric).foregroundStyle(Tokens.textSecondary)
+            if terminals > 0 {
+                Text("\(terminals)").font(Tokens.Font.numeric).foregroundStyle(Tokens.textSecondary)
+                    .help("열린 터미널 \(terminals)개")
             }
         }
         .padding(.vertical, 3)
@@ -160,7 +143,8 @@ private struct BarrackRow: View {
                     .padding(-3)
             }
         }
-        .help(sessions.map { "\($0.id) · \($0.state.label) · \($0.ageSeconds)초 전 · pid \($0.pid)" }.joined(separator: "\n"))
+        .help(([terminals > 0 ? "열린 터미널 \(terminals)개" : nil].compactMap { $0 }
+               + sessions.map { "\($0.id) · \($0.state.label) · \($0.ageSeconds)초 전 · pid \($0.pid)" }).joined(separator: "\n"))
     }
 
     private func subtitle(_ headline: Liveness, _ sessions: [LiveSession]) -> String {
@@ -186,7 +170,10 @@ private struct DestinationRow: View {
             HStack {
                 Label(destination.label, systemImage: destination.symbol)
                 Spacer()
-                if let count { Text("\(count)").font(Tokens.Font.numeric).foregroundStyle(Tokens.textSecondary) }
+                if let count {
+                    Text("\(count)").font(Tokens.Font.numeric).foregroundStyle(Tokens.textSecondary)
+                        .help(destination == .sessions ? "열린 터미널 \(count)개" : "")
+                }
             }
             .foregroundStyle(isOn ? Tokens.textPrimary : Tokens.textSecondary)
             .contentShape(Rectangle())

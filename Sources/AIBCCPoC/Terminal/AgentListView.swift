@@ -17,7 +17,8 @@ struct AgentListView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("에이전트 \(workspace.panes.count)")
+                let ended = workspace.panes.filter(\.hasExited).count
+                Text("에이전트 \(workspace.panes.count - ended)" + (ended > 0 ? " · 종료 \(ended)" : ""))
                     .font(Tokens.Font.meta.weight(.semibold)).foregroundStyle(Tokens.textSecondary)
                 Spacer()
             }

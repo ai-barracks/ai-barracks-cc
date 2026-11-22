@@ -11,7 +11,7 @@ struct AgentSuite {
         [await launchGrowsAndFocuses(), await shortcutReachesMenu(), await matchesPaneByProcess(),
          await maintenanceRunsInPane(), await maintenanceScanCompletes(), await maintenanceFollowsBarrack(), await fullGridMakesRoom(), await singleAfterSplitUsesFullSize(), await nestedTerminalFollowsSize(), await agentListKeepsOrder(), await destinationRoundTrip(),
          await sealsAgreeWithAib(), await searchHitOpens(), await noticeActionLands(), await fileEventsRefresh(),
-         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(), agentsStartEmpty(),
+         await registryReload(), await terminalManagement(), await archiveOnClose(), await navigationGuard(), await modelEntryPointsAsk(), await nothingBeforeConfirm(), restoreFailureKeepsSessions(), agentsStartEmpty(), sidebarStatus(),
          await settingsApply(), await lineHeightApplies(), await twoRowsLayout()] + (await QuickCommandTests(harness: harness).run())
     }
 
@@ -469,16 +469,37 @@ struct AgentSuite {
         let front = await harness.waitUntil(AppConstants.SelfTest.settleTimeout) {
             workspace.panes.first?.id == c.pane.id && c.pane.probeView?.window != nil
         }
+        // A pid of 0 would test the whole process group and never "end"
+        // (known-issues #16: the evidence had no pid to tell).
+        _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { (b.pane.processID ?? 0) > 0 }
         let pid = b.pane.processID ?? 0
+        let closedAt = ContinuousClock.now
         workspace.closePane(id: b.pane.id)
-        let ended = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { !ProcessCWD.isAlive(pid) }
+        let ended = pid > 0 ? await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { !ProcessCWD.isAlive(pid) } : false
+        let endedAfter = (ContinuousClock.now - closedAt).milliseconds
+        let leftover = ended ? "" : Self.processState(pid)
         let ok = typed == Hex.bytes("abc\r") && text.contains("TL") && text.contains("BR") && front && ended
             && workspace.panes.count == 2 && workspace.layout == .double
         return .make("TT-01b", "Quick Command 입력·전체 텍스트 읽기·숨은 터미널 앞으로·닫기(프로세스 종료)",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["typed": Hex.string(typed), "text_has_markers": "\(text.contains("TL") && text.contains("BR"))",
-                                "front": "\(front)", "closed_process_ended": "\(ended)", "panes": "\(workspace.panes.count)"],
+                                "front": "\(front)", "closed_process_ended": "\(ended)", "panes": "\(workspace.panes.count)",
+                                "pid": "\(pid)", "b_ready": "\(b.log.isReady)", "ended_after_ms": "\(endedAfter)", "leftover": leftover],
                      startedAt: start)
+    }
+
+    /// `ps` state and command of a process that outlived its pane (Z: a
+    /// zombie its parent has not reaped yet).
+    private static func processState(_ pid: pid_t) -> String {
+        guard pid > 0 else { return "no pid" }
+        let pipe = Pipe()
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-o", "stat=,ppid=,command=", "-p", "\(pid)"]
+        ps.standardOutput = pipe
+        guard (try? ps.run()) != nil else { return "ps failed" }
+        ps.waitUntilExit()
+        return String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Codex r4: one failed session list at launch let the fresh grid be
@@ -488,6 +509,74 @@ struct AgentSuite {
     /// way): a barrack's Agents start empty, a wider layout adds empty slots
     /// rather than shells, a started terminal fills a slot, and closing the
     /// last one leaves the grid empty instead of a new shell.
+    /// SB-01a (2026-11-23 feedback: "주의 1 · 실행 0" said nothing about what
+    /// it counted, and Agents showed no count while agents waited for
+    /// input): the 주의 list is waiting-for-input, crashed, then finished,
+    /// newest first; 작업 중 is only sessions mid-reply; marking finished
+    /// ones as seen empties them from the list; Agents counts the terminals
+    /// still running; a session no terminal here runs opens its barrack.
+    private func sidebarStatus() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-sb-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let live = directory.appendingPathComponent("sessions/.live")
+        try? FileManager.default.createDirectory(at: live, withIntermediateDirectories: true)
+        let ended = Process()
+        ended.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try? ended.run()
+        ended.waitUntilExit()
+        let alive = Int(ProcessInfo.processInfo.processIdentifier)
+        let now = Int(Date().timeIntervalSince1970)
+        let statuses: [(String, String, Int, Int)] = [
+            ("s-done-old", "done", 300, alive), ("s-done-new", "done", 30, alive), ("s-working", "working", 5, alive),
+            ("s-blocked", "blocked", 600, alive), ("s-crashed", "blocked", 60, Int(ended.processIdentifier)),
+            ("s-done-stale", "done", 2 * 86_400, alive), ("s-silent", "working", 86_400, alive),
+        ]
+        for (id, state, age, pid) in statuses {
+            let body: [String: Any] = ["session_id": id, "state": state, "ts": now - age, "pid": pid, "run_id": "r-\(id)"]
+            if let data = try? JSONSerialization.data(withJSONObject: body) {
+                try? data.write(to: live.appendingPathComponent("\(id).status"))
+            }
+        }
+        let barrack = Barrack(name: "sb", path: directory.path, description: nil)
+        let model = WorkspaceModel(barracks: [barrack], daemon: nil)
+        model.selectedBarrackID = barrack.id
+        let order = model.attentionItems.map(\.session.id)
+        if order != ["s-blocked", "s-crashed", "s-done-new", "s-done-old"] { failures.append("attention order \(order)") }
+        if model.liveness.attentionCount != order.count { failures.append("count \(model.liveness.attentionCount) vs list \(order.count)") }
+        if model.workingItems.map(\.session.id) != ["s-working"] || model.liveness.workingCount != 1 { failures.append("working \(model.workingItems.map(\.session.id))") }
+        if model.silentItems.map(\.session.id) != ["s-silent"] { failures.append("silent \(model.silentItems.map(\.session.id))") }
+        if AppVersion.cliVersion(in: "aib version 1.6.0\n") != "1.6.0" || AppVersion.cliVersion(in: "command not found") != nil {
+            failures.append("aib version parse")
+        }
+        model.acknowledgeFinished()
+        let after = model.attentionItems.map(\.session.id)
+        if after != ["s-blocked", "s-crashed"] { failures.append("after seen \(after)") }
+        if !FileManager.default.fileExists(atPath: live.appendingPathComponent("s-done-new.ack").path)
+            || FileManager.default.fileExists(atPath: live.appendingPathComponent("s-blocked.ack").path) {
+            failures.append("ack files")
+        }
+        if model.liveTerminalCount(of: barrack.id) != 0 { failures.append("terminals before start") }
+        let first = model.launchAgent(.terminal, skipPermissions: false)
+        _ = model.launchAgent(.terminal, skipPermissions: false)
+        if model.liveTerminalCount(of: barrack.id) != 2 { failures.append("terminals \(model.liveTerminalCount(of: barrack.id))") }
+        if model.liveTerminalCount(of: "/nowhere") != 0 { failures.append("unknown barrack counted") }
+        if let blocked = model.attentionItems.first?.session {
+            model.destination = .files
+            model.goTo(blocked, in: barrack)
+            if model.destination != .barrack || model.selectedBarrackID != barrack.id { failures.append("goTo without a terminal → \(model.destination)") }
+        }
+        if let first { model.closePane(id: first.id) }
+        for pane in model.panes { model.closePane(id: pane.id) }
+        let labels = [AppVersion.label(from: ["AIBVersionLabel": "2.0.0-beta.10", "CFBundleShortVersionString": "2.0.0"]),
+                      AppVersion.label(from: ["AIBVersionLabel": "dev"]), AppVersion.label(from: ["CFBundleShortVersionString": "2.0.0"])]
+        if labels != ["v2.0.0-beta.10", "dev", "v2.0.0"] { failures.append("version labels \(labels)") }
+        return .make("SB-01a", "사이드바: 주의 목록(입력 대기→비정상 종료→완료, 최신 먼저)·작업 중은 응답 중인 세션만·완료 확인 시 목록에서 빠짐·Agents 숫자는 열린 터미널·버전 표기",
+                     status: failures.isEmpty ? .pass : .fail, cause: .app,
+                     evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
+    }
+
     private func agentsStartEmpty() -> TestResult {
         let start = ContinuousClock.now
         var failures: [String] = []

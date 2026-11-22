@@ -91,7 +91,7 @@ private struct MenuBarContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Text("주의 \(workspace.liveness.attentionCount) · 실행 \(workspace.liveness.runningCount)")
+        Text("주의 \(workspace.liveness.attentionCount) · 작업 중 \(workspace.liveness.workingCount)")
         Button("AIBCC 열기") { show() }
         Button("다음 주의 항목으로") { show(); workspace.goToNextAttention() }
             .disabled(workspace.liveness.attentionCount == 0)

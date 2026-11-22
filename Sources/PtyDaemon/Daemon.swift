@@ -26,6 +26,9 @@ final class Daemon: @unchecked Sendable {
     private var clients: [ObjectIdentifier: Client] = [:]
     private var listener: DispatchSourceRead?
     private var idleTimer: DispatchSourceTimer?
+    private var reapTimer: DispatchSourceTimer?
+    /// How often live sessions are checked for a child that exited unseen.
+    private static let reapInterval: DispatchTimeInterval = .seconds(1)
     private var idleSince = Date()
 
     private final class Client {
@@ -50,6 +53,14 @@ final class Daemon: @unchecked Sendable {
         timer.setEventHandler { [weak self] in self?.exitIfIdle() }
         timer.resume()
         idleTimer = timer
+
+        let reaper = DispatchSource.makeTimerSource(queue: queue)
+        reaper.schedule(deadline: .now() + Self.reapInterval, repeating: Self.reapInterval)
+        reaper.setEventHandler { [weak self] in
+            self?.sessions.values.filter(\.isAlive).forEach { $0.pollExit() }
+        }
+        reaper.resume()
+        reapTimer = reaper
         DaemonLog.write("listening at \(socketPath)")
     }
 

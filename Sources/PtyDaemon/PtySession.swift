@@ -129,7 +129,17 @@ final class PtySession: @unchecked Sendable {
             Self.stopAndKill(Self.members(of: sid), sid: sid)
             guard let self, !self.reaped else { return }
             kill(self.pid, SIGKILL)
+            // Reap here too: the exit event alone once never came and the
+            // killed child stayed a zombie (known-issues #16).
+            self.queue.asyncAfter(deadline: .now() + .milliseconds(100)) { [weak self] in self?.reapIfExited() }
         }
+    }
+
+    /// Reaps the child if it has exited. The exit event normally does this;
+    /// the daemon also calls it on a timer so a missed event cannot leave a
+    /// zombie and a session that never reports EXITED (known-issues #16).
+    func pollExit() {
+        reapIfExited()
     }
 
     /// Session members still running after the leader exited.

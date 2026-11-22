@@ -80,6 +80,13 @@ assemble_bundle() {
   # in the build record meant a release could not be tied to one).
   "$buddy" -c "Add :AIBSourceCommit string $(source_commit)" "$plist"
   "$buddy" -c "Add :AIBSourceDirty bool $(source_dirty)" "$plist"
+  # What the sidebar shows: VERSION_LABEL=2.0.0-beta.10 for a published
+  # build, else the VERSION file; "dev" for a development build.
+  if [[ "$VARIANT" == release ]]; then
+    "$buddy" -c "Add :AIBVersionLabel string ${VERSION_LABEL:-$VERSION}" "$plist"
+  else
+    "$buddy" -c "Add :AIBVersionLabel string dev" "$plist"
+  fi
   if [[ "$VARIANT" == release ]]; then
     "$buddy" -c "Set :CFBundleIdentifier $BUNDLE_ID" "$plist"
     "$buddy" -c "Set :CFBundleName $SHORT_NAME" "$plist"
@@ -126,6 +133,7 @@ write_build_info() {
   "config": "$CONFIG",
   "variant": "$VARIANT",
   "version": "$VERSION",
+  "version_label": "${VERSION_LABEL:-$VERSION}",
   "build": "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")",
   "source_commit": "$(source_commit)",
   "source_dirty": $(source_dirty),

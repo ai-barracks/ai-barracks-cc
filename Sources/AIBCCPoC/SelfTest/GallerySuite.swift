@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// Screens for visual review (explicit suite `--selftest-only=gallery`):
 /// every destination and inspector tab of the selected barrack, set
@@ -42,6 +43,14 @@ struct GallerySuite {
                 UserDefaults.standard.removeObject(forKey: AppConstants.Files.sortAscendingKey)
             }
         }
+        // The 주의 list as its popover shows it, in a window of its own.
+        let list = NSWindow(contentRect: NSRect(x: 120, y: 120, width: 364, height: 520), styleMask: [.titled], backing: .buffered, defer: false)
+        list.isReleasedWhenClosed = false
+        list.contentView = NSHostingView(rootView: AttentionPopover(workspace: workspace) {}.background(Tokens.work))
+        list.orderFront(nil)
+        await harness.pause(.seconds(1))
+        if let image = await harness.requestCapture(label: "gallery-attention-list", of: list) { captures.append(image.lastPathComponent) }
+        list.close()
         // P01: more terminals than slots, with the agent list beside them.
         // Each titles its screen, as an agent does with what it is on.
         let many = (1 ... 6).compactMap {

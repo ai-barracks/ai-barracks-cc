@@ -54,4 +54,8 @@ final class LivenessStore {
 
     var attentionCount: Int { sessions.values.flatMap { $0 }.filter(\.needsAttention).count }
     var runningCount: Int { sessions.values.flatMap { $0 }.filter { $0.state.isRunning }.count }
+    /// Mid-reply and reporting: what "작업 중" counts. A session that said
+    /// "working" and then went quiet for minutes (or a day) is not counted
+    /// (2026-11-23: a day-old silent session showed as 작업 중 1).
+    var workingCount: Int { sessions.values.flatMap { $0 }.filter { $0.state == .working }.count }
 }

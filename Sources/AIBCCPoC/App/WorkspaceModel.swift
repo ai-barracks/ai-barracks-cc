@@ -473,8 +473,56 @@ extension WorkspaceModel {
         guard let (barrack, session) = candidates.first(where: { $0.1.state == .blocked }) ?? candidates.first else {
             return nil
         }
+        return goTo(session, in: barrack)
+    }
+
+    /// Sessions that need the user, in every barrack: waiting for input
+    /// first, then crashed, then finished and not yet seen; newest first
+    /// within each (the "주의" list, 2026-11-23 feedback: the count said
+    /// nothing about what it counted or where to look).
+    var attentionItems: [(barrack: Barrack, session: LiveSession)] {
+        let rank: [Liveness: Int] = [.blocked: 0, .crashed: 1, .done: 2]
+        return barracks.flatMap { barrack in
+            liveness.sessions(of: barrack.id).filter(\.needsAttention).map { (barrack: barrack, session: $0) }
+        }
+        .enumerated()
+        .sorted { ((rank[$0.element.session.state] ?? 3), $0.element.session.ageSeconds, $0.offset)
+            < ((rank[$1.element.session.state] ?? 3), $1.element.session.ageSeconds, $1.offset) }
+        .map(\.element)
+    }
+
+    /// Sessions whose agent is producing a reply right now.
+    var workingItems: [(barrack: Barrack, session: LiveSession)] { items(in: .working) }
+
+    /// Sessions that said they were working and then went quiet (longer
+    /// than aib's stale limit, 3 minutes by default).
+    var silentItems: [(barrack: Barrack, session: LiveSession)] { items(in: .workingStale) }
+
+    private func items(in state: Liveness) -> [(barrack: Barrack, session: LiveSession)] {
+        barracks.flatMap { barrack in
+            liveness.sessions(of: barrack.id).filter { $0.state == state }.map { (barrack: barrack, session: $0) }
+        }
+    }
+
+    /// Marks every finished session as seen (they leave the 주의 list).
+    func acknowledgeFinished() {
+        for (barrack, session) in attentionItems where session.state == .done {
+            LivenessAck.write(barrackPath: barrack.path, sessionID: session.id, runID: session.runID)
+        }
+        liveness.refresh()
+    }
+
+    /// Terminals still running in a barrack's Agents screen.
+    func liveTerminalCount(of barrackID: Barrack.ID) -> Int {
+        grids[barrackID]?.panes.filter { !$0.hasExited }.count ?? 0
+    }
+
+    /// Shows the terminal that runs `session` (or the barrack's screen when
+    /// none here does); a finished one counts as seen.
+    @discardableResult
+    func goTo(_ session: LiveSession, in barrack: Barrack) -> LiveSession? {
         guard !editInProgress else {
-            navigate { [weak self] in self?.goToNextAttention() }
+            navigate { [weak self] in self?.goTo(session, in: barrack) }
             return nil
         }
         selectedBarrackID = barrack.id
