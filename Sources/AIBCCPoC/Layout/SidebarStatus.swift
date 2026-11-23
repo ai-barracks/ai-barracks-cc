@@ -57,13 +57,12 @@ enum AppVersion {
 /// what is counted and goes there (2026-11-23 feedback: the numbers said
 /// nothing about what they counted or where to look).
 struct AttentionSummary: View {
-    let workspace: WorkspaceModel
-    @State private var isShowing = false
+    @Bindable var workspace: WorkspaceModel
 
     var body: some View {
         let attention = workspace.liveness.attentionCount
         let working = workspace.liveness.workingCount
-        Button { isShowing.toggle() } label: {
+        Button { workspace.isAttentionListPresented.toggle() } label: {
             HStack(spacing: Tokens.Spacing.s) {
                 Image(systemName: attention > 0 ? "exclamationmark.circle.fill" : "checkmark.circle")
                     .foregroundStyle(attention > 0 ? Tokens.orange : Tokens.textTertiary)
@@ -85,8 +84,8 @@ struct AttentionSummary: View {
         }
         .buttonStyle(.plain)
         .help("주의: 입력을 기다리거나 끝났는데 아직 안 본 에이전트 세션 · 작업 중: 지금 응답을 만들고 있는 세션 — 눌러서 목록 보기")
-        .popover(isPresented: $isShowing, arrowEdge: .trailing) {
-            AttentionPopover(workspace: workspace) { isShowing = false }
+        .popover(isPresented: $workspace.isAttentionListPresented, arrowEdge: .trailing) {
+            AttentionPopover(workspace: workspace) { workspace.isAttentionListPresented = false }
         }
     }
 }

@@ -46,6 +46,17 @@ python3 scripts/ptyd-smoke.py dist/AIBCC-PoC.app/Contents/MacOS/AIBCCPtyDaemon  
 dist/AIBCC-PoC.app/Contents/MacOS/AIBCCPtyDaemon --socket <path> --list|--shutdown
 ```
 
+README 화면(`docs/screenshots/`) 다시 찍기 — 사용자 배럭이 아니라 `/tmp`의 데모 배럭으로만 동작한다(다른 등록부면 SH-01이 거부):
+
+```bash
+REG=$(./scripts/make-demo.sh)                  # /tmp/aibcc-demo: 실제 aib로 만든 배럭 4개, ~/.aib·~/.claude는 건드리지 않음
+./scripts/capture-watcher.sh &
+open -W --env AIB_REGISTRY="$REG" "dist/release/AI Barracks CommandCenter 2.app" --args --selftest-only=showcase
+python3 scripts/showcase-compose.py ~/Library/Application\ Support/AIBCCPoC/selftest/<실행 폴더>   # → docs/screenshots/NN-*.png
+```
+
+출시 빌드(`VERSION_LABEL=2.0.0 VARIANT=release`)로 찍어야 사이드바 버전이 `v2.0.0`으로 나온다. `~/.local/bin/claude`가 있으면 실제 Claude Code가 데모 폴더에서 켜지고 요청 문구를 입력만 한 뒤 Ctrl+C로 끝난다(보내지 않음, 상태 줄 없이·자동 업데이트 끔).
+
 종료 코드: 0 = 모든 차단 기준 통과(사람 검사 결과 병합 시에만 가능) · 1 = 차단 기준 실패 · 2 = 준비 실패 · 3 = 실패 없음·미검증 남음(자동 실행의 최선) · 4 = 보고서 저장 실패. 상위 ID(IN-01 등)는 하위 결과가 **모두** pass일 때만 pass다. 알려진 제약: [docs/known-issues.md](known-issues.md).
 
 `swift build`는 GitHub에서 프리빌트 `GhosttyKit.xcframework`(약 76MB zip)를 받는다. 출처·체크섬은 `Package.swift`가 고정한 태그의 매니페스트에 있다.

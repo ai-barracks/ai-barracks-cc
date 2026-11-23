@@ -101,6 +101,8 @@ final class WorkspaceModel {
     /// Asked to unregister (confirmation dialog shown while set).
     var barrackToRemove: Barrack?
     var isPalettePresented = false
+    /// The sidebar's 주의 · 작업 중 list (a popover; showcase opens it too).
+    var isAttentionListPresented = false
     /// Set by ⌘K results; the destination view selects it and clears it.
     var pendingDocument: URL?
     var pendingSessionID: String?

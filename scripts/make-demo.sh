@@ -193,6 +193,32 @@ seal "$W" claude-20261101-1015
 session "$W" codex-20261102-1400 "Codex" "2026-11-02 14:00" completed "결제 재시도 정책 Council" "[14:10] council debate 2라운드 → 합의도 84;[14:35] 멱등 키 설계안 정리" "재시도 판정은 서버(멱등 키)" "2026-11-02 14:40"
 seal "$W" codex-20261102-1400
 session "$W" claude-20261103-0930 "Claude Code" "2026-11-03 09:30" active "결제 화면 개편 설계" "[09:40] 퍼널 데이터 확인 → 결제 단계 이탈 23.5%;[10:05] 설계 초안 docs/design/checkout-redesign.md" "결제수단 컴포넌트를 먼저 분리"
+# The showcase marks this one working from a terminal it starts (its pid).
+session "$W" codex-20261103-1010 "Codex" "2026-11-03 10:10" active "주문 목록 API 커서 페이지네이션" "[10:12] offset 쿼리 확인 → 깊은 페이지 p95 1.2s;[10:31] 커서(createdAt+id) 구현, 테스트 작성 중"
+mkdir -p "$W/docs/meetings" "$W/docs/releases"
+cat > "$W/docs/meetings/2026-11-03-weekly.md" <<'EOF'
+# 주간 회의 2026-11-03
+
+## 결정
+- 결제 화면 개편은 A/B 테스트(트래픽 20%) 후 전면 적용
+- 주문 목록 API는 커서 페이지네이션으로 전환 (offset 폐기)
+
+## 할 일
+| 담당 | 내용 | 기한 |
+|---|---|---|
+| Claude | 결제 개편 롤아웃 계획 | 11/05 |
+| Codex | 주문 API 커서 전환 | 11/06 |
+EOF
+cat > "$W/docs/releases/1.4.0.md" <<'EOF'
+# web_service 1.4.0
+
+## 기능
+- 주문 목록 N+1 제거 (p95 420ms → 180ms)
+- 결제 재시도 상한 3회
+
+## 수정
+- 결제 웹훅 중복 처리 (멱등 키)
+EOF
 (cd "$W" && git init -q -b main && git add -A && git -c user.name=Demo -c user.email=demo@example.com commit -qm "chore: barrack init" \
   && echo "export const MAX_RETRY = 3" >> src/checkout.ts && git add -A && git -c user.name=Demo -c user.email=demo@example.com commit -qm "feat: 결제 재시도 상한" \
   && echo "- [ ] 주소 자동완성" >> docs/plan.md && touch src/address.ts)
