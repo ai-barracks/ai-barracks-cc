@@ -7,7 +7,7 @@
 CommandCenter 2 정식 출시(사용자 "정식배포 가보자"). Swift + libghostty로 다시 만든 v2의 첫 정식 버전으로, 아래는 beta.10 이후 변경이다. 베타 기간 전체 변경은 아래 beta 항목들에 있다. 남은 제한(v1 기능 중 일부만 옮긴 P06~P08, 사람 검사 미실시, Apple 공증 없음)은 README '알려진 제한'과 `docs/RELEASE.md`에 있다.
 
 - **Gemini 제거**(2026-11-24 사용자 결정: Google이 2026-06-18부터 개인 계정의 Gemini CLI를 Antigravity CLI로 전환): New Agent 막대·빈 칸·새 에이전트 시트·History의 Continue 대상에서 Gemini를 뺌. 전에 기록된 Gemini 세션은 History에서 그대로 보고 Claude·Codex로 이어받을 수 있고, 업데이트 전에 띄워 둔 Gemini 터미널은 에이전트로 복원됨. GM-01a(수정 전 빌드 실패로 RED)
-- **닫은 터미널의 출력 보관본이 Ghostty 오류 문구로 덮이던 문제**(2026-11-24 README 캡처에서 발견): 터미널을 닫으면 그때 화면이 보관되지만, 이어서 세션이 끝났다는 알림(연결 종료, 실행 시간 0 ms)에 Ghostty가 "Ghostty failed to launch the requested command … Press any key to close the window."를 화면에 찍고, 앱이 그 화면으로 보관본을 다시 저장했음. 앱이 닫은 터미널은 닫을 때의 보관본을 그대로 둠. SB-01b가 닫은 뒤 2초를 더 기다려 보관본이 그대로인지 확인(수정 전 fail)
+- **닫은 터미널의 출력 보관본이 Ghostty 오류 문구로 덮이던 문제**(2026-11-24 README 캡처에서 발견): 터미널을 닫으면 그때 화면이 보관되지만, 이어서 세션이 끝났다는 알림(연결 종료, 실행 시간 0 ms)에 Ghostty가 "Ghostty failed to launch the requested command … Press any key to close the window."를 화면에 찍고, 앱이 그 화면으로 보관본을 다시 저장했음. 앱이 닫은 터미널은 연결 종료 알림으로 보관본을 다시 쓰지 않음. 데몬이 확인한 종료(스스로 끝난 프로그램)는 지금처럼 최종 출력으로 보관(첫 수정이 이것까지 막아 출시 검증의 PS-05c가 fail → 고침). SB-01b가 닫은 뒤 2초를 더 기다려 보관본이 그대로인지 확인(수정 전 fail)
 - **README 새로 작성**(정식 릴리즈 준비): aib 개념(배럭 구조, CLI = 엔진 · CommandCenter = 조종석), 기능별 설명과 데모 배럭 캡처 20장(에이전트 4분할·목록, 주의·작업 중 목록, Files 포함)
 - showcase 스위트(README 캡처): 4분할 + 화면 밖 작업 중 세션, 주의 목록 팝오버(사이드바 "주의 · 작업 중" 팝오버 상태를 모델로 옮김), Files, 설정 창 전체 높이. Claude Code는 상태 줄 없이(사용자 사용량이 찍히지 않게), 자동 업데이트를 끄고, tmux 변수 없이 실행. `scripts/showcase-compose.py`가 캡처를 `docs/screenshots`로 복사(이전 사진 정리)
 

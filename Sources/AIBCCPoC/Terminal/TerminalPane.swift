@@ -49,9 +49,12 @@ final class TerminalPane: Identifiable {
     @ObservationIgnored private var exitMonitor: ProcessExitMonitor?
     @ObservationIgnored private var remotePID: pid_t?
     @ObservationIgnored private var reportedExit = false
-    /// Closed by the app: its archive was taken as it left the grid, and
-    /// the session's end that follows must not replace it (the end of a
-    /// closed session is Ghostty's "failed to launch … Runtime: 0 ms").
+    /// Closed by the app: its archive was taken as it left the grid. An end
+    /// that only says the connection closed (not the daemon's EXITED) must
+    /// not replace it: Ghostty prints "failed to launch … Runtime: 0 ms" for
+    /// it. A confirmed end still archives the final output — a program that
+    /// ended on its own also leaves the grid this way, when Ghostty closes
+    /// its surface (PS-05c).
     @ObservationIgnored private var terminated = false
     @ObservationIgnored private var noticeGeneration = 0
     @ObservationIgnored private var nestedResize: Task<Void, Never>?
@@ -180,7 +183,7 @@ final class TerminalPane: Identifiable {
     }
 
     private func reportExit() {
-        guard !reportedExit, !terminated else { return }
+        guard !reportedExit, !terminated || exitConfirmed else { return }
         reportedExit = true
         onExit?(self)
     }
