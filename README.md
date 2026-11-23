@@ -8,7 +8,7 @@
 
 ![에이전트 4분할과 에이전트 목록](docs/screenshots/01-agents.png)
 
-v2는 CommandCenter 1.x(Tauri + xterm.js)를 **Swift + [libghostty](https://github.com/ghostty-org/ghostty)** 로 처음부터 다시 만든 버전입니다. v1의 기능을 그대로 담고, 터미널과 세션 유지를 새로 설계했습니다.
+v2는 CommandCenter 1.x(Tauri + xterm.js)를 **Swift + [libghostty](https://github.com/ghostty-org/ghostty)** 로 처음부터 다시 만든 버전입니다. v1의 기능을 대부분 옮겼고(아직 일부만 옮긴 것은 아래 '알려진 제한'에 적었습니다), 터미널과 세션 유지를 새로 설계했습니다.
 
 | | v1.6.1 | **v2** |
 |---|---|---|
@@ -33,7 +33,7 @@ my-project/                  ← 배럭 (aib init)
 ├── GROWTH.md                🖋️ 성장 트리거: 무엇을 발견하면 어디에 기록할지
 ├── agent.yaml               🔒 배럭 메타데이터 (aib 관리)
 ├── sessions/                📝 세션 실록: 세션마다 Task·Log·Decisions·Blockers, 종료 시 봉인
-│   └── .live/               🟢 지금 상태: 작업 중 / 입력 대기 / 완료 (Claude·Codex hook이 기록)
+│   └── .live/               🟢 지금 상태: 작업 중 / 입력 대기 / 완료 (Claude hook, Codex는 켠 경우 hook이 기록)
 ├── wiki/                    📚 장기 지식: Index.md만 읽고 필요한 토픽만 골라 로딩
 ├── skills/<slug>/SKILL.md   🧪 배럭의 능력 (Anthropic Agent Skills 호환)
 └── resources/council/       🗳️ 여러 LLM이 토론한 의사록
@@ -103,7 +103,7 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
 | **작업 중** | 🔵 지금 응답을 만들고 있는 세션 |
 | 응답 없음 | 작업 중이었는데 3분 넘게 소식이 없는 세션(세지 않고 따로 표시) |
 
-상태는 Claude Code·Codex의 aib hook이 `sessions/.live/`에 남긴 기록과 프로세스 생존 여부로 판정합니다(`aib`와 같은 규칙). 사이드바 위에는 CommandCenter와 `aib` 버전이, Agents 옆과 배럭 옆에는 열린 터미널 수가 표시됩니다. 메뉴 막대 아이콘에도 같은 요약이 나옵니다.
+상태는 aib hook이 `sessions/.live/`에 남긴 기록과 프로세스 생존 여부로 판정합니다(`aib`와 같은 규칙). Claude Code는 `aib init`으로 hook이 걸리고, Codex는 `aib hooks codex install`로 켠 배럭에서만 상태가 보입니다. hook이 없는 세션은 세지 않습니다. 사이드바 위에는 CommandCenter와 `aib` 버전이, Agents 옆과 배럭 옆에는 열린 터미널 수가 표시됩니다. 메뉴 막대 아이콘에도 같은 요약이 나옵니다.
 
 ### 📁 Files: 배럭의 산출물을 Finder처럼
 
@@ -188,6 +188,7 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
   cd ~/my-project && aib init
   ```
 - 쓰려는 에이전트 CLI(Claude Code · Codex · Gemini 중 쓰는 것만)가 로그인 셸 PATH에 있을 것
+- **Gemini**: Google이 2026-06-18부터 개인 계정(무료·AI Pro·Ultra)의 Gemini CLI를 [Antigravity CLI로 전환](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)해, Gemini 버튼은 유료 API 키나 기업(Code Assist Standard·Enterprise) 계정에서만 동작합니다. 이 버전의 Gemini 경로는 실제 계정으로 확인하지 않았습니다.
 
 **설치**
 
@@ -247,7 +248,7 @@ VERSION_LABEL=2.0.0 VARIANT=release ./scripts/package-app.sh   # dist/release/AI
 ## ⚠️ 알려진 제한
 
 - Apple 공증이 없는 ad-hoc 서명입니다(위 `xattr` 단계 필요). arm64 빌드만 배포합니다.
-- 보관한 터미널 출력은 텍스트로만 다시 봅니다(색 재현 없음). 보관된 터미널의 폴더에서 새 셸을 바로 여는 기능과 v1 보관 기록 가져오기는 아직 없습니다([docs/PARITY.md](docs/PARITY.md) P06~P08).
+- v1에서 일부만 옮긴 것([docs/PARITY.md](docs/PARITY.md) P06~P08): 실행 중 출력은 데몬 메모리에만 있고 터미널을 닫거나 프로그램이 끝날 때 보관됩니다(v1은 약 1초마다 디스크에 저장). 보관한 출력은 텍스트로만 다시 보고(색 재현 없음), 보관된 터미널의 폴더에서 새 셸을 바로 열 수 없습니다. v1 설정은 Quick Command·글꼴 크기·줄 간격·커서·모델 프로필만 가져오고, 글꼴 이름·테마·터미널 목록·v1 보관 기록은 가져오지 않습니다.
 - 터미널을 넓혀도 Claude·Codex가 이미 출력한 대화는 그때 폭으로 줄바꿈된 채 남습니다.
 - 그 밖의 항목은 [docs/known-issues.md](docs/known-issues.md)에 있습니다.
 
