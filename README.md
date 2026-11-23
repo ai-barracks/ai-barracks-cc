@@ -2,7 +2,7 @@
 
 *배럭이 하나일 땐 CLI로 충분합니다. 둘 이상이 되는 순간, CommandCenter가 필요합니다.*
 
-[AI Barracks](https://github.com/ai-barracks/ai-barracks)(`aib`)의 배럭을 한 화면에서 관제하는 macOS 네이티브 앱입니다. 여러 배럭에서 Claude Code·Codex·Gemini를 동시에 띄우고, 누가 무엇을 하고 있는지와 누가 나를 기다리는지 보고, 에이전트가 남긴 기록과 산출물을 읽고 고칩니다.
+[AI Barracks](https://github.com/ai-barracks/ai-barracks)(`aib`)의 배럭을 한 화면에서 관제하는 macOS 네이티브 앱입니다. 여러 배럭에서 Claude Code와 Codex를 동시에 띄우고, 누가 무엇을 하고 있는지와 누가 나를 기다리는지 보고, 에이전트가 남긴 기록과 산출물을 읽고 고칩니다.
 
 > 스타크래프트의 Command Center처럼, Barracks에서 유닛(에이전트)을 생산하고 Command Center에서 모든 것을 관제합니다.
 
@@ -24,7 +24,7 @@ v2는 CommandCenter 1.x(Tauri + xterm.js)를 **Swift + [libghostty](https://gith
 
 > **에이전트의 기억을 프롬프트가 아니라 Git 저장소에 남긴다.**
 
-`aib`는 프로젝트 폴더 하나를 **배럭(Barrack)** 으로 만듭니다. 배럭 안에서 Claude·Codex·Gemini 중 무엇을 띄우든 세션은 같은 규칙으로 기록되고, 에이전트는 같은 지식을 읽습니다. DB도 서버도 없이 마크다운 파일과 Git이 에이전트의 장기 기억이 됩니다.
+`aib`는 프로젝트 폴더 하나를 **배럭(Barrack)** 으로 만듭니다. 배럭 안에서 Claude Code를 띄우든 Codex를 띄우든 세션은 같은 규칙으로 기록되고, 에이전트는 같은 지식을 읽습니다. DB도 서버도 없이 마크다운 파일과 Git이 에이전트의 장기 기억이 됩니다.
 
 ```
 my-project/                  ← 배럭 (aib init)
@@ -53,7 +53,7 @@ flowchart LR
         F["SOUL · RULES · GROWTH · agent.yaml<br/>sessions/ · wiki/ · skills/"]
     end
     A["aib CLI (엔진)"]
-    L["claude · codex · gemini"]
+    L["claude · codex"]
     UI -- "읽기 · 편집 · 감시" --> F
     UI -- "init · sync · start · council" --> A
     A -- "hook으로 기록" --> F
@@ -66,7 +66,7 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
 | 하고 싶은 일 | CLI만 쓸 때 | CommandCenter에서 |
 |---|---|---|
 | 여러 배럭의 에이전트 상황 보기 | 배럭마다 `cd` 하고 세션 파일 확인 | 사이드바의 **주의 · 작업 중** 한 줄과 배럭별 터미널 수 |
-| Claude·Codex·Gemini 병렬 작업 | Terminal 창·탭을 손으로 정리 | 배럭마다 분할 작업면과 **에이전트 목록**. 배럭을 바꾸면 그 배럭의 터미널로 |
+| Claude·Codex 병렬 작업 | Terminal 창·탭을 손으로 정리 | 배럭마다 분할 작업면과 **에이전트 목록**. 배럭을 바꾸면 그 배럭의 터미널로 |
 | 앱·터미널을 닫았다 다시 열기 | 세션이 끊김 | PTY 데몬이 세션을 쥐고 있어 **그대로 이어짐** |
 | 에이전트가 만든 문서 읽기 | Finder·에디터를 따로 열기 | **Files**(트리 + md 뷰어·편집), **Outputs**(터미널 옆 최근 문서) |
 | SOUL·RULES·GROWTH 고치기 | 형식과 ownership 마커를 손으로 지킴 | **폼 에디터**. 편집 중 에이전트가 같은 파일을 고치면 저장 전에 알려 줌 |
@@ -83,13 +83,13 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
 
 ![에이전트 목록과 Outputs](docs/screenshots/02-workspace.png)
 
-- **New Agent 막대**에서 Claude·Codex·Gemini·Terminal·Council을 바로 시작합니다. 에이전트는 `aib start`로 실행되어 세션이 기록됩니다. `--skip-permissions`도 여기서 켜고, 모델은 설정의 모델 프로필이 새 세션에 적용됩니다.
+- **New Agent 막대**에서 Claude·Codex·Terminal·Council을 바로 시작합니다. 에이전트는 `aib start`로 실행되어 세션이 기록됩니다. `--skip-permissions`도 여기서 켜고, 모델은 설정의 모델 프로필이 새 세션에 적용됩니다.
 - **분할**: 1칸 · 좌우 2칸 · 상하 2칸 · 4칸(⌘⌥1~4). 경계를 끌어 비율을 바꿉니다. 에이전트를 추가해도 분할은 사용자가 고른 대로 유지됩니다.
 - **터미널 수 제한 없음**: 칸이 다 차면 새 터미널은 지금 칸에 뜨고, 밀린 터미널은 **화면 밖에서 계속 실행**됩니다. 칸 머리글의 제목을 누르면 그 칸에 보일 터미널을 고릅니다.
 - **에이전트 목록**(왼쪽): 시작한 순서로 고정된 줄마다 상태 점, 에이전트가 화면 제목에 붙이는 작업 요약, aib 세션의 Task와 최근 Log, 칸 번호 또는 "화면 밖"이 보입니다(2초마다 갱신). 누르면 그 터미널로 갑니다.
 - **Outputs**(오른쪽, ⌘⌥I): 배럭에서 최근 바뀐 문서를 터미널 옆에서 바로 렌더링해 봅니다.
 - **세션 유지**: 터미널은 별도 PTY 데몬이 소유합니다. 앱을 끄거나 업데이트해도 에이전트는 계속 일하고, 다시 켜면 이전 화면을 재생한 뒤 이어 붙습니다. 닫은 터미널의 출력은 History → 터미널 출력에 보관됩니다.
-- **Ghostty 터미널**: 출력이 쏟아지는 중에도 입력이 밀리지 않고, 창이나 칸 크기를 바꿔도 줄이 잘리지 않습니다. `aib start codex|gemini`가 쓰는 안쪽 터미널에도 크기 변경을 전달해 Codex·Gemini 화면도 칸 크기를 따라갑니다. 한글 입력, ⌘V 붙여넣기, Quick Command, 출력 내보내기를 지원합니다.
+- **Ghostty 터미널**: 출력이 쏟아지는 중에도 입력이 밀리지 않고, 창이나 칸 크기를 바꿔도 줄이 잘리지 않습니다. `aib start codex`가 쓰는 안쪽 터미널에도 크기 변경을 전달해 Codex 화면도 칸 크기를 따라갑니다. 한글 입력, ⌘V 붙여넣기, Quick Command, 출력 내보내기를 지원합니다.
 
 ### 🔔 주의 · 작업 중: 나를 기다리는 에이전트
 
@@ -168,7 +168,7 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
 | ![다크 모드](docs/screenshots/18-workspace-dark.png) | ![설정](docs/screenshots/20-settings.png) |
 
 - **배럭 추가·제거**: 폴더를 고르면 `aib init`과 `aib sync`로 배럭을 만들고 등록합니다.
-- **모델 프로필**: Claude·Codex·Gemini별 모델과 옵션을 저장해 새 세션에 적용합니다.
+- **모델 프로필**: Claude·Codex별 모델과 추론 강도를 저장해 새 세션에 적용합니다.
 - **Quick Command**: 자주 쓰는 명령을 이름·폴더와 함께 저장해 새 터미널에서 실행합니다.
 - **예약 활성화**: 정해진 시각에 짧은 요청을 보내는 기능입니다(기본 꺼짐, 켜기 전에 비용 고지). v1과 같은 파일·잠금을 써서 두 앱이 함께 켜져 있어도 한 번만 실행됩니다.
 - **v1 설정 가져오기**: v1의 Quick Command, 터미널 글꼴·커서·줄 간격, 모델 프로필을 읽어 옵니다(v1 파일은 건드리지 않음).
@@ -187,8 +187,8 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
   brew install ai-barracks/ai-barracks/ai-barracks
   cd ~/my-project && aib init
   ```
-- 쓰려는 에이전트 CLI(Claude Code · Codex · Gemini 중 쓰는 것만)가 로그인 셸 PATH에 있을 것
-- **Gemini**: Google이 2026-06-18부터 개인 계정(무료·AI Pro·Ultra)의 Gemini CLI를 [Antigravity CLI로 전환](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)해, Gemini 버튼은 유료 API 키나 기업(Code Assist Standard·Enterprise) 계정에서만 동작합니다. 이 버전의 Gemini 경로는 실제 계정으로 확인하지 않았습니다.
+- 쓰려는 에이전트 CLI(Claude Code · Codex 중 쓰는 것만)가 로그인 셸 PATH에 있을 것
+- **Gemini는 2.0에서 뺐습니다.** Google이 2026-06-18부터 개인 계정(무료·AI Pro·Ultra)의 Gemini CLI를 [Antigravity CLI로 전환](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)했기 때문입니다. 전에 기록된 Gemini 세션은 History에서 그대로 보고 Claude·Codex로 이어받을 수 있고, 업데이트 전에 띄워 둔 Gemini 터미널도 그대로 복원됩니다.
 
 **설치**
 
@@ -215,7 +215,7 @@ flowchart TB
     Daemon["AIBCCPtyDaemon<br/>PTY · 출력 버퍼 (앱과 별도 프로세스)"]
     AIB["aib CLI"]
     Files["배럭 파일<br/>sessions/ · wiki/ · RULES.md …"]
-    Agents["claude · codex · gemini · shell"]
+    Agents["claude · codex · shell"]
     App -- "Unix 소켓 (붙었다 떨어짐)" --> Daemon
     Daemon -- "소유 · 실행" --> Agents
     App -- "init · sync · start · council" --> AIB

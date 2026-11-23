@@ -116,7 +116,7 @@ struct AttentionPopover: View {
                 Text("주의 — 입력 대기(에이전트가 답을 기다림), 비정상 종료, 완료(끝났는데 아직 안 봄, 12시간 이내)")
                 Text("작업 중 — 지금 응답을 만들고 있는 세션. 입력을 기다리는 동안은 세지 않습니다")
                 Text("응답 없음 — 작업 중이라고 한 뒤 3분 넘게 소식이 없는 세션(세지 않음). 오래됐다면 터미널을 확인하세요")
-                Text("aib start로 시작한 Claude·Codex·Gemini 세션만 셉니다. 누르면 그 터미널로 갑니다(⌘⇧A: 다음 주의)")
+                Text("aib start로 시작한 Claude·Codex 세션만 셉니다. 누르면 그 터미널로 갑니다(⌘⇧A: 다음 주의)")
             }
             .font(Tokens.Font.meta)
             .foregroundStyle(Tokens.textTertiary)

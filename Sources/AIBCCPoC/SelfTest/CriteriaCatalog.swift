@@ -129,6 +129,7 @@ enum CriteriaCatalog {
         .init(id: "CT-01", title: "self-test 크래시 기록(치명 신호 → crash.txt)", blocking: false, requires: ["CT-01a"]),
         .init(id: "AC-02", title: "예약 활성화 안전 UX(켜기 전 확인·OFF 경로·상태 갱신)", blocking: false, requires: ["AC-02a"]),
         .init(id: "PR-01", title: "Provider/Model 프로필(v1 providers)", blocking: false, requires: ["PR-01a", "PR-01b"]),
+        .init(id: "GM-01", title: "Gemini 제거(실행 경로 없음, 옛 기록·터미널은 유지)", blocking: false, requires: ["GM-01a"]),
         .init(id: "SB-01", title: "터미널 출력 보관(v1 scrollback archive)", blocking: false, requires: ["SB-01a", "SB-01b"]),
         .init(id: "OV-01", title: "배럭 개요(v1 Overview)", blocking: false, requires: ["OV-01a"]),
         .init(id: "AG-02", title: "Agents는 빈 화면으로 시작(기본 셸 없음)", blocking: false, requires: ["AG-02a"]),

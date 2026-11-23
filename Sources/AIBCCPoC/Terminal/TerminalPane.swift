@@ -137,7 +137,7 @@ final class TerminalPane: Identifiable {
     }
 
     /// Passes the surface's size on to terminals opened inside this one
-    /// (`NestedTerminals`: Codex and Gemini run under `script`). Runs a
+    /// (`NestedTerminals`: Codex — and Gemini sessions from before its removal — run under `script`). Runs a
     /// moment after the last size change, and once more later for an inner
     /// terminal that was still starting.
     func resizeNestedTerminals() {

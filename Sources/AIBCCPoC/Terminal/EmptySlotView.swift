@@ -32,7 +32,7 @@ struct EmptySlotView: View {
     }
 
     @ViewBuilder private var buttons: some View {
-        ForEach([AgentClient.claude, .codex, .gemini]) { client in
+        ForEach(AgentClient.agents) { client in
             Button(client.label) { _ = workspace.launchAgent(client, skipPermissions: skipPermissions) }
                 .help("aib start \(client.rawValue)\(skipPermissions ? " --skip-permissions" : "")")
         }

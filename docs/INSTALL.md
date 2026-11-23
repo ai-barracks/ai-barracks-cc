@@ -19,7 +19,7 @@ VARIANT=release ./scripts/package-app.sh     # dist/release/AI Barracks CommandC
 
 DMG를 열어 앱을 `/Applications`로 끌어 놓는다. ad-hoc 서명이라 첫 실행은 Finder에서 우클릭 → 열기.
 
-요구 사항: macOS 14+, `aib` CLI(1.6.0+)가 로그인 셸 PATH에 있을 것(`~/.local/bin` 등). Claude Code·Codex·Gemini CLI는 쓰는 것만.
+요구 사항: macOS 14+, `aib` CLI(1.6.0+)가 로그인 셸 PATH에 있을 것(`~/.local/bin` 등). Claude Code·Codex CLI는 쓰는 것만(Gemini는 2.0에서 시작 메뉴에서 뺌).
 
 ## 데이터 위치
 

@@ -427,6 +427,7 @@ extension WorkspaceModel {
     /// It takes an empty slot or the focused one; the layout stays as set.
     @discardableResult
     func launchAgent(_ client: AgentClient, skipPermissions: Bool) -> TerminalPane? {
+        guard AgentClient.launchable.contains(client) else { return nil }
         let profile = ProviderProfiles.load(client)
         return openPane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions, profile: profile),
                         userCommand: AgentLauncher.start(client, skipPermissions: skipPermissions, profile: profile),

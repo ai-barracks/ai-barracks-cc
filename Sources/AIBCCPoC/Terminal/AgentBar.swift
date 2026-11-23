@@ -24,7 +24,7 @@ struct AgentBar: View {
             Text("New Agent")
                 .font(Tokens.Font.meta.weight(.semibold))
                 .foregroundStyle(Tokens.textSecondary)
-            ForEach([AgentClient.claude, .codex, .gemini]) { client in
+            ForEach(AgentClient.agents) { client in
                 Button(client.label) { _ = workspace.launchAgent(client, skipPermissions: skipPermissions) }
                     .help("aib start \(client.rawValue)\(skipPermissions ? " --skip-permissions" : "")")
             }
@@ -37,7 +37,7 @@ struct AgentBar: View {
             Toggle("skip-permissions", isOn: $skipPermissions)
                 .toggleStyle(.checkbox)
                 .font(Tokens.Font.meta)
-                .help("Claude·Codex·Gemini를 권한 확인 없이 시작 (--skip-permissions)")
+                .help("Claude·Codex를 권한 확인 없이 시작 (--skip-permissions)")
             Divider().frame(height: 14)
             Toggle(isOn: $listShown) { Label("에이전트 목록", systemImage: "sidebar.left") }
                 .toggleStyle(.button)

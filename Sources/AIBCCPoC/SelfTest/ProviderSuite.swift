@@ -13,7 +13,22 @@ struct ProviderSuite {
     }
 
     func run() async -> [TestResult] {
-        [profiles(), await probe()]
+        [profiles(), retiredGemini(), await probe()]
+    }
+
+    /// Gemini removed (2026-11-24, user: Google moved personal accounts off
+    /// Gemini CLI on 2026-06-18): nothing starts or continues it any more,
+    /// while a pane saved with agent "gemini" still restores as an agent.
+    private func retiredGemini() -> TestResult {
+        let start = ContinuousClock.now
+        var failures: [String] = []
+        if AgentClient.agents != [.claude, .codex] { failures.append("agents \(AgentClient.agents.map(\.rawValue))") }
+        if let line = AgentLauncher.start(.gemini, skipPermissions: false) { failures.append("start \(line)") }
+        if let command = AgentLauncher.command(for: .gemini, skipPermissions: true) { failures.append("command \(command)") }
+        if SessionRecords.continueClients != ["claude", "codex"] { failures.append("continue \(SessionRecords.continueClients)") }
+        if ProviderProfiles.clients.contains(.gemini) { failures.append("profile client") }
+        if AgentClient(rawValue: "gemini") != .gemini { failures.append("saved gemini pane loses its agent marker") }
+        return check("GM-01a", "Gemini 제거: 시작·이어받기·프로필 없음, 저장된 Gemini 터미널은 에이전트로 복원", failures, start)
     }
 
     private func check(_ id: String, _ title: String, _ failures: [String], _ start: ContinuousClock.Instant) -> TestResult {
@@ -38,7 +53,7 @@ struct ProviderSuite {
         let command = AgentLauncher.command(for: .claude, skipPermissions: true, profile: ProviderProfile(model: "it's", effort: "high")) ?? ""
         let expected = "/bin/zsh -lc " + AgentLauncher.shellQuote("aib start claude --skip-permissions '--model' 'it'\\''s' '--effort' 'high'; exec /bin/zsh -l")
         if command != expected { failures.append("command \(command)") }
-        if AgentLauncher.command(for: .gemini, skipPermissions: false) != "/bin/zsh -lc 'aib start gemini; exec /bin/zsh -l'" { failures.append("no profile") }
+        if AgentLauncher.command(for: .codex, skipPermissions: false) != "/bin/zsh -lc 'aib start codex; exec /bin/zsh -l'" { failures.append("no profile") }
         let page: [String: Any] = ["data": [["model": "future", "displayName": "Future", "isDefault": true,
                                              "supportedReasoningEfforts": [["reasoningEffort": "high"], ["reasoningEffort": "unknown"]]],
                                             ["model": "hidden", "hidden": true]]]

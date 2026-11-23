@@ -168,6 +168,9 @@ enum SessionRecords {
 
     // MARK: - Actions (CC v1.6.1 parity)
 
+    /// Where a session can be continued (any session, Gemini ones too).
+    static var continueClients: [String] { AgentClient.agents.map(\.rawValue) }
+
     static func continueCommand(client: String, sessionID: String, skipPermissions: Bool = false) -> String {
         let prompt = "이전 세션 \(sessionID)의 작업을 이어서 진행해주세요. sessions/\(sessionID).md 파일을 읽고 작업을 계속하세요."
         let start = ["aib", "start", client] + (skipPermissions ? ["--skip-permissions"] : [])

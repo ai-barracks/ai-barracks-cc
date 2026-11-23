@@ -14,7 +14,7 @@ struct NewAgentSheet: View {
             Text(workspace.selectedBarrack.map { "\($0.name) 배럭에서 시작" } ?? "배럭을 먼저 선택하세요")
                 .font(Tokens.Font.meta).foregroundStyle(Tokens.textSecondary)
             Picker("클라이언트", selection: $client) {
-                ForEach(AgentClient.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
+                ForEach(AgentClient.launchable) { Label($0.label, systemImage: $0.symbol).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()

@@ -1,9 +1,9 @@
 import Darwin
 import Foundation
 
-/// Terminals a program opened inside a pane's own. `aib start codex` and
-/// `aib start gemini` run the agent under macOS `script` (to keep its raw
-/// output), and `script` opens a second PTY at the size it starts with and
+/// Terminals a program opened inside a pane's own. `aib start codex` (and
+/// `aib start gemini`, no longer offered) runs the agent under macOS
+/// `script` (to keep its raw output), and `script` opens a second PTY at the size it starts with and
 /// never passes a later size change on: the agent stayed as wide as the
 /// slot it was started in (2026-11-13 report on beta.7, and the 2026-11-09
 /// "agent stayed narrow in a widened window"). The pane's size is given to

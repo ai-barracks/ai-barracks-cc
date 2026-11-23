@@ -5,7 +5,15 @@ import Foundation
 /// barrack, so aib's session tracking and hooks apply. The pane's login
 /// shell stays after the agent exits.
 enum AgentClient: String, CaseIterable, Identifiable, Sendable {
+    /// `gemini` is no longer started (2026-11-24: Google moved personal
+    /// accounts off Gemini CLI on 2026-06-18). The case stays so a pane saved
+    /// before the removal still restores as an agent.
     case claude, codex, gemini, terminal
+
+    /// The agents the app starts (`aib start <client>`).
+    static let agents: [AgentClient] = [.claude, .codex]
+    /// The New Agent choices: the agents, then a plain login shell.
+    static let launchable: [AgentClient] = agents + [.terminal]
 
     var id: String { rawValue }
     var label: String { self == .terminal ? "터미널" : rawValue.capitalized }
@@ -24,7 +32,7 @@ enum AgentLauncher {
 
     /// The `aib start …` line as the user would type it.
     static func start(_ client: AgentClient, skipPermissions: Bool, profile: ProviderProfile = ProviderProfile()) -> String? {
-        guard client != .terminal else { return nil }
+        guard AgentClient.agents.contains(client) else { return nil }
         return (["aib", "start", client.rawValue] + (skipPermissions ? ["--skip-permissions"] : [])
             + ProviderProfiles.arguments(profile, for: client).map(shellQuote)).joined(separator: " ")
     }

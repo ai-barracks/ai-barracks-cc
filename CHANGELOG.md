@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **Gemini 제거**(2026-11-24 사용자 결정: Google이 2026-06-18부터 개인 계정의 Gemini CLI를 Antigravity CLI로 전환): New Agent 막대·빈 칸·새 에이전트 시트·History의 Continue 대상에서 Gemini를 뺌. 전에 기록된 Gemini 세션은 History에서 그대로 보고 Claude·Codex로 이어받을 수 있고, 업데이트 전에 띄워 둔 Gemini 터미널은 에이전트로 복원됨. GM-01a(수정 전 빌드 실패로 RED)
+
 - **닫은 터미널의 출력 보관본이 Ghostty 오류 문구로 덮이던 문제**(2026-11-24 README 캡처에서 발견): 터미널을 닫으면 그때 화면이 보관되지만, 이어서 세션이 끝났다는 알림(연결 종료, 실행 시간 0 ms)에 Ghostty가 "Ghostty failed to launch the requested command … Press any key to close the window."를 화면에 찍고, 앱이 그 화면으로 보관본을 다시 저장했음. 앱이 닫은 터미널은 닫을 때의 보관본을 그대로 둠. SB-01b가 닫은 뒤 2초를 더 기다려 보관본이 그대로인지 확인(수정 전 fail)
 - **README 새로 작성**(정식 릴리즈 준비): aib 개념(배럭 구조, CLI = 엔진 · CommandCenter = 조종석), 기능별 설명과 데모 배럭 캡처 20장(에이전트 4분할·목록, 주의·작업 중 목록, Files 포함)
 - showcase 스위트(README 캡처): 4분할 + 화면 밖 작업 중 세션, 주의 목록 팝오버(사이드바 "주의 · 작업 중" 팝오버 상태를 모델로 옮김), Files, 설정 창 전체 높이. Claude Code는 상태 줄 없이(사용자 사용량이 찍히지 않게), 자동 업데이트를 끄고, tmux 변수 없이 실행. `scripts/showcase-compose.py`가 캡처를 `docs/screenshots`로 복사(이전 사진 정리)

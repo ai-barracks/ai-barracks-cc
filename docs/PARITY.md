@@ -32,3 +32,5 @@ v1.6.1(`ai-barracks-cc` 6e53aaa)에서 사용자가 할 수 있던 일을 v2에�
 5. 병행: P04, P05, P09, P10
 
 v2 고유 미완(이 대장 범위 밖): Council 의사록 전용 화면, `archive prune`·`hooks codex install` 전용 경로(`docs/reviews/codex-build84-triage.md`).
+
+**제외 승인(사용자, 2026-11-24)**: v1의 Gemini 시작(New Agent·빈 칸·새 에이전트 시트·Continue 대상). Google이 2026-06-18부터 개인 계정의 Gemini CLI를 Antigravity CLI로 전환해, 사용자가 "Gemini는 이제 걷어내야겠다"고 결정. 남긴 것: 전에 기록된 Gemini 세션 열람·필터·Claude/Codex로 이어받기, 업데이트 전에 띄운 Gemini 터미널의 복원과 에이전트 표시(GM-01a). aib CLI 쪽(`aib start gemini`, `aib init`의 Gemini hook·GEMINI.md, `council --gemini`)은 이 앱 범위 밖.

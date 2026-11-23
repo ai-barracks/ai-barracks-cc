@@ -202,7 +202,7 @@ private struct SessionDetailView: View {
             }
             HStack {
                 Menu("Continue") {
-                    ForEach(["claude", "codex", "gemini"], id: \.self) { client in
+                    ForEach(SessionRecords.continueClients, id: \.self) { client in
                         Button(client == detail.record.clientKey ? "\(client) (같은 클라이언트)" : client) {
                             workspace.runInPane(title: "continue", command: SessionRecords.continueCommand(client: client, sessionID: detail.record.id))
                         }
