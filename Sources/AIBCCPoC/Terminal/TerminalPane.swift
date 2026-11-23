@@ -49,6 +49,10 @@ final class TerminalPane: Identifiable {
     @ObservationIgnored private var exitMonitor: ProcessExitMonitor?
     @ObservationIgnored private var remotePID: pid_t?
     @ObservationIgnored private var reportedExit = false
+    /// Closed by the app: its archive was taken as it left the grid, and
+    /// the session's end that follows must not replace it (the end of a
+    /// closed session is Ghostty's "failed to launch … Runtime: 0 ms").
+    @ObservationIgnored private var terminated = false
     @ObservationIgnored private var noticeGeneration = 0
     @ObservationIgnored private var nestedResize: Task<Void, Never>?
     /// Called once the child is gone and its output is on screen (the
@@ -121,6 +125,7 @@ final class TerminalPane: Identifiable {
     /// Ends a daemon session for good (the pane left its grid). Exec panes
     /// end with their view, as before.
     func terminate() {
+        terminated = true
         remote?.kill()
     }
 
@@ -175,7 +180,7 @@ final class TerminalPane: Identifiable {
     }
 
     private func reportExit() {
-        guard !reportedExit else { return }
+        guard !reportedExit, !terminated else { return }
         reportedExit = true
         onExit?(self)
     }

@@ -723,16 +723,25 @@ struct AgentSuite {
         await harness.install([recorder.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { recorder.log.isReady }
         let id = recorder.pane.archiveID
+        // Ghostty treats an exit within 250ms of launch as a failed launch.
+        await harness.pause(AppConstants.SelfTest.minimumChildRuntime)
         workspace.closePane(id: recorder.pane.id)
         let text = workspace.scrollback.text(of: id) ?? ""
         let entry = workspace.scrollback.list().first { $0.id == id }
         let isolated = workspace.scrollback.directory.lastPathComponent == AppConstants.Scrollback.selfTestDirectory
-        let ok = text.contains("TL") && text.contains("BR") && entry?.barrackPath == workspace.selectedBarrack?.path && isolated
+        // The session's end arrives after the close; it must not replace the
+        // archive (2026-11-24 README capture: the closed pane's archive got
+        // Ghostty's "failed to launch … Runtime: 0 ms" appended).
+        await harness.pause(.seconds(2))
+        let later = workspace.scrollback.text(of: id) ?? ""
+        let kept = later == text && !later.contains("Ghostty failed")
+        let ok = text.contains("TL") && text.contains("BR") && entry?.barrackPath == workspace.selectedBarrack?.path && isolated && kept
         workspace.deleteArchived(id)
-        return .make("SB-01b", "pane을 닫으면 화면 내용이 보관됨(배럭 경로 포함, 테스트 전용 보관소)",
+        return .make("SB-01b", "pane을 닫으면 화면 내용이 보관됨(배럭 경로 포함, 테스트 전용 보관소), 세션 종료 뒤에도 그대로",
                      status: ok ? .pass : .fail, cause: .app,
                      evidence: ["markers": "\(text.contains("TL") && text.contains("BR"))", "entry": "\(entry != nil)",
-                                "isolated": "\(isolated)"], startedAt: start)
+                                "isolated": "\(isolated)", "kept_after_end": "\(kept)",
+                                "tail_after_end": String(later.suffix(120))], startedAt: start)
     }
 
     private func settingsApply() async -> TestResult {
