@@ -19,20 +19,22 @@ struct WrapUpTests {
         var failures: [String] = []
         let asked = Date(timeIntervalSince1970: 1_000_000)
         let wrapUp = WrapUp(paneID: UUID(), barrackID: "b", requestedAt: asked)
-        let session = { (state: Liveness, ts: Int) in
-            LiveSession(id: "s", state: state, ageSeconds: 0, pid: 1, cwd: nil, runID: "one-run", updatedAt: ts)
+        func session(_ state: Liveness, _ ts: Int, _ event: String = "Stop") -> LiveSession {
+            LiveSession(id: "s", state: state, ageSeconds: 0, pid: 1, cwd: nil, runID: "one-run", updatedAt: ts, event: event)
         }
         let cases: [(String, LiveSession?, Bool, TimeInterval, WrapUpRule.Decision)] = [
             ("finish before the request", session(.done, 999_999), false, 5, .wait),
             ("finish in the request's second", session(.done, 1_000_000), false, 5, .wait),
-            ("turn running", session(.working, 1_000_003), false, 5, .wait),
-            ("permission prompt mid wrap-up", session(.blocked, 1_000_003), false, 5, .wait),
+            ("turn running", session(.working, 1_000_003, "PreToolUse"), false, 5, .wait),
+            ("permission prompt mid wrap-up", session(.blocked, 1_000_003, "Notification"), false, 5, .wait),
             ("finished 1 s ago (Stop hooks still running)", session(.done, 1_000_004), false, 5, .wait),
             ("turn finished", session(.done, 1_000_004), false, 4 + TimeInterval(AppConstants.WrapUp.settleSeconds), .close),
             ("finished and already seen", session(.idle, 1_000_004), false, 30, .close),
+            // A compaction mid-turn writes SessionStart, which folds to idle.
+            ("compaction mid wrap-up", session(.idle, 1_000_004, "SessionStart"), false, 30, .wait),
             ("no aib state yet", nil, false, 60, .wait),
             ("terminal gone", session(.done, 1_000_004), true, 5, .forget),
-            ("never finished", session(.working, 1_000_003), false, AppConstants.WrapUp.timeout + 1, .expire),
+            ("never finished", session(.working, 1_000_003, "PreToolUse"), false, AppConstants.WrapUp.timeout + 1, .expire),
         ]
         for (name, live, gone, after, expected) in cases {
             let got = WrapUpRule.decide(wrapUp, session: live, paneGone: gone, now: asked.addingTimeInterval(after))
@@ -45,9 +47,7 @@ struct WrapUpTests {
         let fresh = LiveSession(id: "s", state: fold("SessionStart"), ageSeconds: 5, pid: 1, cwd: nil, event: "SessionStart")
         let tool = LiveSession(id: "s", state: fold("PreToolUse"), ageSeconds: 5, pid: 1, cwd: nil, event: "PreToolUse")
         if fresh.isMidTurn || !tool.isMidTurn { failures.append("SessionStart working counted as mid-turn (or a tool not)") }
-        if AppConstants.WrapUp.request.contains("\n") || !AppConstants.WrapUp.request.hasPrefix("끝") {
-            failures.append("request must be one line starting with 끝")
-        }
+        failures += requestText()
         if !AppConstants.Terminal.appReservedChords.contains("super+shift+w") { failures.append("⌘⇧W left to Ghostty") }
         let w = UInt16(kVK_ANSI_W)
         let chords: [(UInt16, NSEvent.ModifierFlags, Bool)] = [
@@ -58,9 +58,20 @@ struct WrapUpTests {
         for (code, flags, expected) in chords where (KeyChord(keyCode: code, flags: flags) == wrapUpKey) != expected {
             failures.append("chord \(code) \(flags.rawValue) → \(!expected)")
         }
-        return .make("WU-01a", "정리하고 닫기 판정: 요청 뒤에 끝난 턴만, 끝난 지 3초 뒤 닫음(입력 대기·작업 중은 기다림), 터미널이 없어지면 잊고 30분 넘으면 포기, ⌘⇧W는 키 위치로",
+        return .make("WU-01a", "정리하고 닫기 판정: 요청 뒤에 끝난 턴만, 끝난 지 3초 뒤 닫음(입력 대기·작업 중·턴 중 압축은 기다림), 터미널이 없어지면 잊고 30분 넘으면 포기, 닫을 때만 '앱이 닫습니다', ⌘⇧W는 키 위치로",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
+    }
+
+    /// One line starting with 끝; "앱이 닫습니다" only when the app will
+    /// (2026-11-25: promised to a Codex whose turn end it could not see).
+    private static func requestText() -> [String] {
+        [true, false].flatMap { closing -> [String] in
+            let request = AppConstants.WrapUp.request(closing: closing)
+            let shape = request.contains("\n") || !request.hasPrefix(AppConstants.WrapUp.requestBody) || !request.hasPrefix("끝")
+            let promise = request.contains(AppConstants.WrapUp.closingNote) != closing
+            return (shape ? ["request must be one line starting with 끝 and the body"] : []) + (promise ? ["close promised: \(!closing)"] : [])
+        }
     }
 
     /// The reader keeps the status file's `ts` (aib reuses one run_id).
@@ -97,7 +108,7 @@ struct WrapUpTests {
         let freshState = Liveness.fold(state: "working", event: "SessionStart", statusTimestamp: now - 5, runID: "r",
                                        ack: nil, now: now, pid: .alive, staleAfter: LivenessReader.staleAfter)
         let fresh = LiveSession(id: "s", state: freshState, ageSeconds: 5, pid: 1, cwd: nil, updatedAt: now - 5, event: "SessionStart")
-        let request = Array(AppConstants.WrapUp.request.utf8)
+        let request = Array(AppConstants.WrapUp.request(closing: true).utf8)
 
         let shellMark = shell.log.mark()
         if workspace.startWrapUp(of: shell.pane, current: .some(nil)) != .refused { failures.append("shell not refused") }
@@ -127,11 +138,8 @@ struct WrapUpTests {
         if workspace.toggleWrapUp(of: other.pane) != .cancelled || !workspace.wrapUps.isEmpty { failures.append("asking again did not call off") }
         workspace.checkWrapUps(now: settled) { _ in live(.done, later) }
         if !workspace.panes.contains(where: { $0.id == other.pane.id }) { failures.append("closed after call-off") }
-        if workspace.startWrapUp(of: other.pane, current: .some(nil)) != .sentWithoutClose || !workspace.wrapUps.isEmpty {
-            failures.append("no aib state: not typed-only")
-        }
         await harness.pause(AppConstants.WrapUp.submitDelay + .milliseconds(200))
-        return .make("WU-01b", "정리하고 닫기: 셸·작업 중·입력 대기에는 입력 안 함(막 시작한 에이전트는 보냄), 한 줄 요청 뒤 Enter 따로, 다음 턴이 끝나고 3초 뒤 닫음(입력 대기 중엔 유지), 다시 누르면 닫지 않음, aib 상태 없으면 입력만",
+        return .make("WU-01b", "정리하고 닫기: 셸·작업 중·입력 대기에는 입력 안 함(막 시작한 에이전트는 보냄), 한 줄 요청 뒤 Enter 따로, 다음 턴이 끝나고 3초 뒤 닫음(입력 대기 중엔 유지), 다시 누르면 닫지 않음",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }
@@ -150,7 +158,8 @@ struct WrapUpTests {
         else { return Self.fail("WU-01c", "setup", start) }
         await harness.install([agent.pane], layout: .single)
         _ = await harness.waitUntil(AppConstants.SelfTest.readyTimeout) { agent.log.isReady }
-        let request = Array(AppConstants.WrapUp.request.utf8)
+        // A recorder has no aib state: the request goes without the close promise.
+        let request = Array(AppConstants.WrapUp.request(closing: false).utf8)
         var evidence = ["menu_w": Self.menuItems(key: "w").joined(separator: "; ")]
         var missed: [String] = []
         for (name, source) in [("ascii", ascii), ("korean", InputSourceGuard.korean2Set)] {

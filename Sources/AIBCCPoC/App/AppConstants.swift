@@ -164,7 +164,22 @@ enum AppConstants {
     enum WrapUp {
         /// One line (a newline would submit early). Names the barrack
         /// protocol's steps so it works in any barrack, Claude or Codex.
-        static let request = "끝. 세션 종료 절차를 진행해 주세요 — 세션 파일의 Log·Decisions 마무리, GROWTH.md 기준 Growth Audit(wiki·RULES.md 반영, ## Wiki Extractions 작성), Ended 기록. 확인 질문 없이 끝까지 진행하세요. 마치면 이 터미널은 앱이 닫습니다."
+        /// Also what the app finds the request by in Codex's transcript.
+        static let requestBody = "끝. 세션 종료 절차를 진행해 주세요 — 세션 파일의 Log·Decisions 마무리, GROWTH.md 기준 Growth Audit(wiki·RULES.md 반영, ## Wiki Extractions 작성), Ended 기록. 확인 질문 없이 끝까지 진행하세요."
+        /// Said only when the app will close the terminal (2026-11-25: it
+        /// was promised to a Codex whose turn end the app could not see).
+        static let closingNote = "마치면 이 터미널은 앱이 닫습니다."
+        static func request(closing: Bool) -> String {
+            closing ? requestBody + " " + closingNote : requestBody
+        }
+        /// Codex without aib hooks: its transcript must show the request
+        /// within this many seconds, or the app stops waiting to close.
+        static let codexNotSeenTimeout: TimeInterval = 120
+        /// How much of a Codex transcript's end tells whether a turn runs.
+        static let transcriptTailBytes: UInt64 = 256 * 1024
+        /// Codex transcripts written this recently (seconds) are watched
+        /// when none is held by the terminal's own processes.
+        static let recentTranscriptWindow: TimeInterval = 7 * 24 * 3600
         /// Enter goes separately, after the text: Codex treats an Enter
         /// inside a fast burst of characters as a pasted newline.
         static let submitDelay: Duration = .milliseconds(400)

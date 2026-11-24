@@ -133,6 +133,7 @@ enum CriteriaCatalog {
         .init(id: "UP-01", title: "앱 안 업데이트(확인·검증·교체·백업)", blocking: false, requires: ["UP-01a", "UP-01b"]),
         .init(id: "KB-01", title: "설정 가능한 단축키(키 위치, 한/영 무관)", blocking: false, requires: ["KB-01a", "KB-01b", "KB-01c"]),
         .init(id: "WU-01", title: "정리하고 닫기(⌘⇧W): 에이전트 세션 종료 절차 뒤 닫기", blocking: false, requires: ["WU-01a", "WU-01b", "WU-01c"]),
+        .init(id: "WU-02", title: "Codex(aib hook 없음) 정리하고 닫기: Codex 기록에서 턴 끝을 읽어 닫기", blocking: false, requires: ["WU-02a", "WU-02b", "WU-02c"]),
         .init(id: "SB-01", title: "터미널 출력 보관(v1 scrollback archive)", blocking: false, requires: ["SB-01a", "SB-01b"]),
         .init(id: "OV-01", title: "배럭 개요(v1 Overview)", blocking: false, requires: ["OV-01a"]),
         .init(id: "AG-02", title: "Agents는 빈 화면으로 시작(기본 셸 없음)", blocking: false, requires: ["AG-02a"]),
