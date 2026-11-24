@@ -198,7 +198,7 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
 **요구 사항**
 
 - Apple Silicon Mac, macOS 14 이상
-- [`aib`](https://github.com/ai-barracks/ai-barracks) CLI 1.6.0 이상과 등록된 배럭 하나 이상
+- [`aib`](https://github.com/ai-barracks/ai-barracks) CLI 1.6.0 이상(1.6.1 권장 — 세션이 없을 때 ⌘K `aib status`가 실패하던 문제, 닫은 칸의 원문 보관 작업이 끊기던 문제 수정)과 등록된 배럭 하나 이상
   ```bash
   brew tap ai-barracks/ai-barracks
   brew install ai-barracks/ai-barracks/ai-barracks
