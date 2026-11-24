@@ -100,6 +100,7 @@ struct SettingsView: View {
                     .font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary)
             }
             ShortcutSettingsSection()
+            UpdateSettingsSection()
             Section("정보") {
                 LabeledContent("AIBCC", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")
                 LabeledContent("aib CLI", value: aibVersion)

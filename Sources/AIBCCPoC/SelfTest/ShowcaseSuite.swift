@@ -44,6 +44,7 @@ struct ShowcaseSuite {
         await destinationScenes(barrack, shoot)
         await sheetScenes(shoot)
         let settings = await darkAndSettings(shoot)
+        await updateScene(shoot)
         if let claude, let ctrlC = EventSynthesizer.control("c") {
             harness.focus(claude)
             EventSynthesizer.press(ctrlC, in: window)
@@ -250,6 +251,24 @@ struct ShowcaseSuite {
         await shoot("17-add-barrack")
         workspace.isAddBarrackPresented = false
         await harness.pause(.milliseconds(600))
+    }
+
+    /// 22: a newer release on offer in the sidebar, and the question asked
+    /// before installing it (a made-up 2.3.0; nothing is downloaded).
+    private func updateScene(_ shoot: Shoot) async {
+        guard let version = ReleaseVersion("2.3.0"),
+              let page = URL(string: "https://github.com/ai-barracks/ai-barracks-cc/releases") else { return }
+        let release = ReleaseInfo(version: version, page: page, archive: page, checksums: page, notes: "")
+        let updater = AppUpdater.shared
+        workspace.destination = .sessions
+        updater.offer(release)
+        await harness.pause(.milliseconds(800))
+        updater.confirming = release
+        await harness.pause(.seconds(1))
+        await shoot("22-update")
+        updater.confirming = nil
+        await harness.settleSheet(shown: false)
+        updater.offer(nil)
     }
 
     private func darkAndSettings(_ shoot: Shoot) async -> String {

@@ -130,6 +130,7 @@ enum CriteriaCatalog {
         .init(id: "AC-02", title: "예약 활성화 안전 UX(켜기 전 확인·OFF 경로·상태 갱신)", blocking: false, requires: ["AC-02a"]),
         .init(id: "PR-01", title: "Provider/Model 프로필(v1 providers)", blocking: false, requires: ["PR-01a", "PR-01b"]),
         .init(id: "GM-01", title: "Gemini 제거(실행 경로 없음, 옛 기록·터미널은 유지)", blocking: false, requires: ["GM-01a"]),
+        .init(id: "UP-01", title: "앱 안 업데이트(확인·검증·교체·백업)", blocking: false, requires: ["UP-01a", "UP-01b"]),
         .init(id: "KB-01", title: "설정 가능한 단축키(키 위치, 한/영 무관)", blocking: false, requires: ["KB-01a", "KB-01b", "KB-01c"]),
         .init(id: "WU-01", title: "정리하고 닫기(⌘⇧W): 에이전트 세션 종료 절차 뒤 닫기", blocking: false, requires: ["WU-01a", "WU-01b", "WU-01c"]),
         .init(id: "SB-01", title: "터미널 출력 보관(v1 scrollback archive)", blocking: false, requires: ["SB-01a", "SB-01b"]),

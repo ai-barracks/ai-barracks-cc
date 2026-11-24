@@ -16,6 +16,7 @@ struct AppVersionHeader: View {
             }
             Text(cliVersion.isEmpty ? "AI Barracks" : "AI Barracks v\(cliVersion)")
                 .font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(1)
+            UpdateBadge().padding(.top, 3)
         }
         .padding(.horizontal, Tokens.Spacing.s)
         .help(AppVersion.details)

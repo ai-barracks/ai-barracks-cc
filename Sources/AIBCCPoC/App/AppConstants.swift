@@ -177,6 +177,17 @@ enum AppConstants {
         static let timeout: TimeInterval = 30 * 60
     }
 
+    /// 앱 안 업데이트.
+    enum Update {
+        /// After launch, so the first check never slows the start.
+        static let firstCheckDelay: Duration = .seconds(10)
+        static let checkInterval: Duration = .seconds(24 * 3600)
+        /// Download scratch and the one previous app kept as a backup.
+        static var directory: URL {
+            URL(fileURLWithPath: (Daemon.supportDirectory as NSString).expandingTildeInPath).appendingPathComponent("updates")
+        }
+    }
+
     enum Layout {
         static let minWindowWidth: CGFloat = 960
         static let minWindowHeight: CGFloat = 600

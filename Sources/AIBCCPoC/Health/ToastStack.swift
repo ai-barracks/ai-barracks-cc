@@ -41,6 +41,7 @@ struct ToastStack: View {
         case .registry: "tray.full"
         case .daemon: "server.rack"
         case .panes: "rectangle.split.2x2"
+        case .update: "arrow.down.circle"
         }
     }
 

@@ -40,6 +40,9 @@ struct AIBCCPoCApp: App {
             }
             // Every key below is the user's (Settings → 단축키); the menus
             // show it, ShortcutCenter runs it by key position.
+            CommandGroup(after: .appInfo) {
+                Button("업데이트 확인…") { Task { await workspace.checkForUpdates() } }
+            }
             CommandGroup(after: .newItem) {
                 ShortcutMenuItem(action: .palette, workspace: workspace, title: "명령·검색…")
             }

@@ -6,7 +6,7 @@ import UserNotifications
 /// tauri notification plugin).
 struct AppNotice: Identifiable, Sendable {
     enum Kind: String, Sendable {
-        case stale, sync, attention, export, registry, daemon, panes
+        case stale, sync, attention, export, registry, daemon, panes, update
 
         /// Its action takes the user to another place (asks before
         /// dropping an open edit).

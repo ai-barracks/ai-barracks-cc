@@ -43,6 +43,7 @@ struct MainView: View {
         .sheet(item: $workspace.quickCommandDraft) { draft in QuickCommandSheet(workspace: workspace, draft: draft) }
         .modifier(QuickCommandPrompts(workspace: workspace))
         .modifier(CloseRequestDialog(workspace: workspace))
+        .modifier(UpdatePrompt())
         .navigationTitle(workspace.selectedBarrack?.name ?? "AIBCC")
         .navigationSubtitle(workspace.destination.label)
         .onChange(of: workspace.selectedBarrackID, initial: true) {
@@ -50,6 +51,7 @@ struct MainView: View {
         }
         .task {
             ShortcutCenter.install(workspace: workspace)
+            AppUpdater.shared.startAutomaticChecks()
             await SelfTestLauncher.runIfRequested(workspace: workspace, artifacts: artifacts)
         }
     }

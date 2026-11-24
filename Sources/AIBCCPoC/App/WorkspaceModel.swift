@@ -663,7 +663,7 @@ extension WorkspaceModel {
             destination = .history
         case .sync:
             syncAll(paths: health?.outdatedBarracks ?? [])
-        case .registry, .daemon, .panes:
+        case .registry, .daemon, .panes, .update:
             break
         case .export:
             if let path = notice.sessionID { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }

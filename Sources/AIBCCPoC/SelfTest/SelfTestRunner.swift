@@ -91,7 +91,7 @@ struct SelfTestRunner {
 
     static let suiteOrder = ["unit", "packaging", "input", "resize", "selection", "lifecycle", "agents", "load", "integration"]
     /// Run only when named (they need a daemon and two app launches).
-    static let explicitSuites = ["persist1", "persist2", "repro10", "repro-r5", "rs06", "tui-split", "tui-script", "gallery", "showcase", "ux", "walk"]
+    static let explicitSuites = ["persist1", "persist2", "repro10", "repro-r5", "rs06", "tui-split", "tui-script", "gallery", "showcase", "ux", "walk", "updatelive"]
     static let allSuites = Set(suiteOrder)
     /// Need no keyboard or mouse: they run without the app in front.
     static let backgroundSuites: Set = ["ux"]
@@ -99,7 +99,7 @@ struct SelfTestRunner {
 
     private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {
         switch name {
-        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + [OverviewSuite().run(), ScrollbackSuite().run(), V1ImportSuite().run()] + ActivationSuite().run() + [await ActivationSettingsTests.run(), CrashTraceProbe.run(), await BarrackSyncTests.run()] + (await UnitSuite().runAsync()) + (await GitSuite().run()) + (await ProviderSuite().run()) + [await ReviewR5Suite().run()] + ReviewR6Suite().run() + [await ReviewR6Suite().writeLock()] + (await ReviewR7Suite().run()) + [WrapUpTests.rule(), ShortcutTests.rules()]
+        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + [OverviewSuite().run(), ScrollbackSuite().run(), V1ImportSuite().run()] + ActivationSuite().run() + [await ActivationSettingsTests.run(), CrashTraceProbe.run(), await BarrackSyncTests.run()] + (await UnitSuite().runAsync()) + (await GitSuite().run()) + (await ProviderSuite().run()) + [await ReviewR5Suite().run()] + ReviewR6Suite().run() + [await ReviewR6Suite().writeLock()] + (await ReviewR7Suite().run()) + [WrapUpTests.rule(), ShortcutTests.rules(), UpdateTests.rules(), await UpdateTests.installs()]
         case "agents": return await AgentSuite(harness: harness).run() + [await SkillSuite().syncIntegration(), await BarrackAdminSuite().run()]
             + (await WrapUpTests(harness: harness).run()) + (await ShortcutTests(harness: harness).run())
         case "packaging": return await PackagingSuite(harness: harness).run()
@@ -118,6 +118,7 @@ struct SelfTestRunner {
         case "gallery": return await GallerySuite(harness: harness).run()
         case "ux": return await UxSuite(harness: harness).run()
         case "showcase": return await ShowcaseSuite(harness: harness).run()
+        case "updatelive": return [await UpdateTests.live()]
         case "walk": return await WalkSuite(harness: harness).run()
         case "persist2":
             let suite = PersistSuite(harness: harness)
