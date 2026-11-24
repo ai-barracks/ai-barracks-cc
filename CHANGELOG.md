@@ -1,295 +1,127 @@
 # Changelog
 
-## [1.6.1] - 2026-10-30
-
-### Fixed
-- Embedded terminal: every Space reached the PTY twice (" " plus U+00A0 NBSP), which showed as double spaces and broke shell arguments (`python3  /tmp/x.py` → "can't open file"). The v1.2.2 IME bypass re-sent text that xterm had already sent from `keypress`; text ownership per keystroke is now decided by a tested reducer (`src/utils/terminalInput.ts`).
-- Fast double letters and key repeat were dropped by a 50 ms identical-string dedup (`aibcc` → `aibc`); the dedup is gone and PTY writes are serialized per terminal instead.
-- A dead key followed by a non-combining key sent the dead character twice and dropped the second key in WKWebView (`~/` → `~~`, xtermjs/xterm.js#5894).
-- A white box and focus ring were painted over the cursor cell; the IME helper textarea is now visible only while composing.
-- Terminal rows/columns were over-estimated by the view's own padding, so after a resize the last row could be cut off (e.g. 12 rows in a 223 px split pane) and the right-most column sat under the scrollbar. Applies to live and archive terminals.
-- PTY resizes are serialized with only the latest size kept, identical sizes are skipped and a failed size is retried; container fits are debounced (180 ms) with a guaranteed final fit after a panel drag. Created/reconnected PTYs get the measured size once the view is visible.
-- Cmd+= / Cmd+- now work in whichever terminal has focus, not only the first one.
-
-### Known limitations
-- Korean IME composition keeps its v1.2.2 behaviour (first syllable of a burst may split into jamo; standalone jamo such as `ㅋㅋ` are dropped). It could not be exercised by automated GUI input, which bypasses the macOS IME.
-- Inline TUIs (e.g. Claude Code) can leave reflowed remnants of their previous frame when the terminal gets narrower; fewer intermediate resizes reduce but do not remove this.
-
-## [1.6.0] - 2026-10-15
-
-### Added
-- Session detail shows a warning banner when an ended session file differs from its `aib` seal (`sessions/.seals/<id>.sha256`) or the seal cannot be verified. `get_session_detail` returns `seal_status` (`unsealed` / `intact` / `modified` / `invalid`), hashing the same bytes it parses. Requires aib CLI with session seals; older barracks stay `unsealed` and show nothing. A symlinked or unreadable seal store, a non-regular seal file (never read, so a FIFO cannot block) and a symlinked session file are `invalid`, matching `aib sessions verify`.
-
-### Changed
-- Session detail is refetched on every open, so a change after the first open (or its approval) shows without restarting the app.
-- CI/release npm audit gate (`scripts/npm-audit-gate.sh`, #18): production dependencies still block on high/critical. In the full tree, only advisories listed by URL warn until 2027-01-15; currently that is GHSA-vfj7-8cjw-p6xm (`braces`, no patched release, Tailwind 3 build chain only, not bundled). Unlisted high/critical advisories, untraceable entries, inconsistent reports or a passed expiry block. The full JSON report is kept as a workflow artifact.
-
-### Security
-- `source-map-js` 1.2.2 and `@tailwindcss/typography` 0.5.20 (patch updates via `npm audit fix`).
-
-## Documentation follow-up - 2026-10-01
-
-- Added published-package native macOS UI smoke and restored-OFF evidence; distinguished it from unperformed live-model/actual-slot and full PTY/IME E2E.
-- Updated installation instructions for published universal assets, CLI v1.4.0 model-profile requirements, provider official setup links and local Homebrew/CLT limitations.
-- Clarified executable-only linker ad-hoc signing versus Apple Developer app signing/notarization, without security-bypass instructions.
-- Release tags and assets are unchanged; this section records post-release documentation, not a new executable release.
-
-## [1.5.0] - 2026-10-01
-
-### Added
-- Read-only Codex app-server initialize/model-list discovery with bounded pagination and advertised effort choices; Claude documented aliases/custom IDs. Runtime-first model profiles apply to new Sessions/Command Palette launches without rewriting provider settings.
-- System → Scheduled activation: default OFF, select Claude Code/Codex, explicit ON confirmation, KST 06/11/16/21 minimal “OK” requests.
-- Backend scheduling with private atomic persistence, exclusive instance lock, durable per-slot claims, bounded history, no catch-up/retries and restart interruption records.
-- Subscription-auth preflight, API/provider environment isolation, neutral temporary workspace, disabled tools/integrations, strict structured success checking, timeout and OFF/app-exit process-group cancellation.
-- Deterministic scheduler/CLI-stub regressions and frontend schedule helpers; macOS CI runs frontend tests/build plus Rust tests/clippy.
-
-### Changed
-- Patched npm build dependencies within compatible semver ranges and refreshed the Cargo lockfile to remove quick-xml security advisories.
-- Release workflow runs regression/security gates and builds a draft universal macOS release for asset verification before publishing.
-
-### Limitations
-- Requires the app and Mac to be awake; hiding to tray is supported but sleep/quit/reboot scheduling is not.
-- No guarantee of usage-window reset or free operation: plan credits/extra usage may still bill. CLI-internal transport retries are outside the scheduler's once-per-slot guarantee.
-- Latest CLI/account E2E and real model responses are intentionally untested. Unknown authentication/unsupported flags fail closed.
-
-
-## [1.4.1] - 2026-06-02
-
-### Fixed
-- **File and skill IPC writes are constrained to safe barrack paths**: legacy generic file commands were removed from frontend IPC, allowlisted file access is symlink-safe, and skill paths reject root/index symlink escapes.
-- **Form editors preserve user-authored documents**: SOUL.md, RULES.md, GROWTH.md, and agent.yaml saves now patch only managed fields/sections instead of regenerating the full file. Comments, custom sections, ordering, ownership markers, and EOL style are preserved.
-- **Terminal reconnect uses a single PTY reader** with swappable output channels, avoiding duplicate readers after reconnect.
-- **Terminal/session command execution quotes paths and arguments safely**, including custom `aib` binary paths and barrack/session paths.
-- **Search snippets truncate on UTF-8 character boundaries** so Korean/emoji snippets cannot panic or produce invalid slices.
-- **Live-state frontend events are scoped by exact barrack path** instead of broadcast to unrelated open barracks.
-- **Backend clippy warnings are resolved** and `cargo clippy --all-targets -- -D warnings` is clean.
-
-### Changed
-- Release build metadata is aligned by keeping `package-lock.json`, `Cargo.lock`, Cargo, Tauri, and package versions consistent.
-
-### Verification
-- Vitest 94 tests PASS.
-- `npm run build` PASS.
-- Cargo tests 108 PASS.
-- Cargo clippy `-D warnings` PASS.
-
-## [1.4.0] - 2026-06-01
-
-### Added — Agent liveness dot (Plan 2: aib-cc UI; pairs with aib ≥ 1.3.0 Plan 1)
-- **세션 카드별 실시간 생사 점 + 툴팁.** `aib`가 쓰는 `sessions/.live/<id>.status` sidecar를 읽어 `kill(pid,0)` 생존 확인 + 경과시간으로 effective 상태(`working`/`working_stale`/`blocked`/`crashed`/`interrupted`/`done`/`idle`/`none`)로 fold — `aib sessions state` 레퍼런스 매트릭스를 Rust 단위 테스트로 동일성 고정. `none`은 점 없음.
-- **PTY 분리**: CC 내장 터미널 밖에서 띄운 `claude`도 추적. `.live/` watch(250ms 디바운스 `live-changed`) + 30초 `live-tick`로 시간 전이(`working_stale`) 반영.
-- **done → idle ack**: `done` 카드를 펼치면 `ack_live_state`가 `.ack`를 atomic(temp+rename)하게 기록 → idle. Continue로 새 `run_id`가 시작되면 ack 불일치로 자동 재활성.
-- non-Claude/hook-less 세션은 점 없음 — 부재 ≠ idle (범례로 명시).
-- `libc` 런타임 의존성 추가(`kill(pid,0)`), `tempfile`을 dev-dep → 런타임 dep로 이동(`.ack` atomic write).
-
-### Verification
-- `cargo test` — 65 passed (live:: 10 신규: EPERM/unknown pid, fold 매트릭스 boundary·ack-mismatch·done+dead, read_live_states ack-join, malformed missing-`ts` 제외, ack atomic + path-escape reject).
-- `npx tsc --noEmit` + `npm run build` — clean.
-
-## [1.3.0] - 2026-06-01
-
-### Added — Terminal scrollback disk persistence + archive tab
-- **앱 재시작 후 이전 터미널 출력 복원.** raw PTY 바이트를 `app_data/scrollback/{id}.bin`(+ `meta.json`)에 atomic(unique temp + per-session write mutex + rename)하게 영속화. per-session 1MB cap(UTF-8/newline aligned tail-truncate), global 100MB + 14일 retention, rate-limited GC.
-- **Archive 탭**: 죽은 세션을 read-only로 복원 — "프로세스 종료됨" 배너 + `load_scrollback` replay + 버튼(같은 cwd 새 세션 / 기록 삭제 / 닫기). 자동 PTY 부착 없음. 탭에 `mode: 'live' | 'archive'` 판별자.
-- load는 best-effort(손상 파일도 panic 없음), `was_truncated`-gated ANSI straddle 보정(정상 파일 첫 줄 보존), `validate_pty_id` path-traversal 방어.
-
-### Verification
-- `cargo test` — 55 passed (8-thread concurrent-save consistency, UTF-8 boundary, path-traversal reject 포함).
-- `npm run build` — clean, 0 type errors.
-- Codex 코드리뷰 7항목 반영 (traversal/first-line/tmp-race/straddle/GC/stale-meta/orphan).
-
-## [1.2.3] - 2026-05-31
-
-### Fixed — Terminal clipboard paste deduplication
-- **Clipboard paste in the built-in terminal no longer inputs text twice.** The v1.2.2 IME helper-textarea bypass now ignores `InputEvent.inputType === "insertFromPaste"`, leaving paste delivery to xterm.js' native `ClipboardEvent` handler and only clearing the helper textarea residue.
-- **Korean/CJK IME workaround preserved.** The guard is scoped to clipboard paste, so composition input (`insertCompositionText` / `insertText`) continues through the existing IME path.
-
-### Verification
-- `git diff --check` — clean.
-- `npx tsc --noEmit --pretty false` — clean.
-- `npm run build` — clean (Vite chunk-size warning only).
-- `cargo test --manifest-path src-tauri/Cargo.toml` — 28 passed.
-
-## [1.2.2] - 2026-05-10
-
-### Fixed (partial) — macOS WKWebView Korean/CJK IME
-- **Composition events now fire on the helper-textarea.** xterm.js registers its capture-phase keyboard/input listeners inside `term.open()`, so any post-open hook ran *after* xterm's listener and `stopImmediatePropagation` was effectively a no-op. We now monkey-patch `HTMLTextAreaElement.prototype.addEventListener` *before* `term.open()`, install our IME listeners on the helper-textarea synchronously when xterm makes its first registration, and restore the prototype immediately after. xterm's later same-phase listeners run after ours, so our `stopImmediatePropagation` is real.
-- **Hangul Jamo (U+1100-U+11FF, U+3131-U+318E) is dropped at the input-event boundary.** macOS IME emits these as pre-composition state when composition cycles fragment; they are never user-intended terminal input. Composed Hangul syllables (U+AC00-U+D7AF) flow through compositionend.
-- **xterm onData and our IME bypass listener share a 50ms data+timestamp dedup window**, eliminating most space-doubling cases.
-- **CompositionHelper.keydown(229) is suppressed** so xterm's 0ms `_handleAnyTextareaChanges` fallback cannot re-send pre-composition jamo.
-
-### Known limitation — first syllable of a Korean burst
-- **macOS IME's first keystroke is "preview" mode** — `compositionstart` does not fire for it. The first jamo arrives as a regular input event ~400ms before composition engages. We drop it (per above) which preserves the rest of the syllable correctly *only when subsequent keys arrive within the same composition cycle*. In practice, **the first syllable of a Korean text burst typically arrives as 2-3 standalone jamo instead of a composed syllable**; subsequent syllables compose normally.
-- Workaround for users: type one extra placeholder character before Korean text, or use an external terminal (iTerm) for Korean-heavy work.
-- Full root-cause analysis and future-attempt guide in `ai_barracks_management/wiki/topics/AIB-CC-Terminal-Korean-IME-Troubleshooting.md` (5-hour spike, codex gpt-5.5 high review). Option B (custom textarea + ANSI key mapping) is the architectural fix; deferred to a future fresh session.
-
-### Verification
-- `npx tsc -b --noEmit` — clean.
-- Manual: `echo "안녕하세요"` → first syllable jamo, rest composed correctly.
-- Manual: `echo hello world` — single space (dedup working for non-IME path).
-- Manual: arrow history, Tab completion, Ctrl-C, Ctrl-L — unaffected (xterm's keydown for non-229 keys passes through).
+## [Unreleased]
 
-## [1.2.1] - 2026-05-09
+## [2.0.0] - 2026-11-24
 
-### Fixed — Terminal Korean IME / UTF-8 PTY locale
-- **Korean/CJK IME composition no longer gets intercepted before xterm.js CompositionHelper.** Removed the custom `attachCustomKeyEventHandler` path that returned `false` for `event.isComposing` / `keyCode === 229`, which could drop or split Hangul input before xterm flushed the hidden textarea into `onData`.
-- **PTY child locale is forced to UTF-8 when inherited GUI app env is missing/non-UTF-8.** `LC_ALL` is respected when already UTF-8; otherwise `LC_CTYPE`/`LANG` are defaulted to `en_US.UTF-8` so shells/readline/TUIs treat Hangul as multibyte input.
-- **Regression coverage:** Rust tests cover UTF-8 locale detection and partial Hangul byte-boundary buffering.
+CommandCenter 2 정식 출시(사용자 "정식배포 가보자"). Swift + libghostty로 다시 만든 v2의 첫 정식 버전으로, 아래는 beta.10 이후 변경이다. 베타 기간 전체 변경은 아래 beta 항목들에 있다. 남은 제한(v1 기능 중 일부만 옮긴 P06~P08, 사람 검사 미실시, Apple 공증 없음)은 README '알려진 제한'과 `docs/RELEASE.md`에 있다.
 
-### Verification
-- `cargo test` — 28 passed.
-- `npm run build` — passed (Vite chunk-size warning only).
+- **Gemini 제거**(2026-11-24 사용자 결정: Google이 2026-06-18부터 개인 계정의 Gemini CLI를 Antigravity CLI로 전환): New Agent 막대·빈 칸·새 에이전트 시트·History의 Continue 대상에서 Gemini를 뺌. 전에 기록된 Gemini 세션은 History에서 그대로 보고 Claude·Codex로 이어받을 수 있고, 업데이트 전에 띄워 둔 Gemini 터미널은 에이전트로 복원됨. GM-01a(수정 전 빌드 실패로 RED)
+- **닫은 터미널의 출력 보관본이 Ghostty 오류 문구로 덮이던 문제**(2026-11-24 README 캡처에서 발견): 터미널을 닫으면 그때 화면이 보관되지만, 이어서 세션이 끝났다는 알림(연결 종료, 실행 시간 0 ms)에 Ghostty가 "Ghostty failed to launch the requested command … Press any key to close the window."를 화면에 찍고, 앱이 그 화면으로 보관본을 다시 저장했음. 앱이 닫은 터미널은 연결 종료 알림으로 보관본을 다시 쓰지 않음. 데몬이 확인한 종료(스스로 끝난 프로그램)는 지금처럼 최종 출력으로 보관(첫 수정이 이것까지 막아 출시 검증의 PS-05c가 fail → 고침). SB-01b가 닫은 뒤 2초를 더 기다려 보관본이 그대로인지 확인(수정 전 fail)
+- **README 새로 작성**(정식 릴리즈 준비): aib 개념(배럭 구조, CLI = 엔진 · CommandCenter = 조종석), 기능별 설명과 데모 배럭 캡처 20장(에이전트 4분할·목록, 주의·작업 중 목록, Files 포함)
+- showcase 스위트(README 캡처): 4분할 + 화면 밖 작업 중 세션, 주의 목록 팝오버(사이드바 "주의 · 작업 중" 팝오버 상태를 모델로 옮김), Files, 설정 창 전체 높이. Claude Code는 상태 줄 없이(사용자 사용량이 찍히지 않게), 자동 업데이트를 끄고, tmux 변수 없이 실행. `scripts/showcase-compose.py`가 캡처를 `docs/screenshots`로 복사(이전 사진 정리)
 
-## [1.2.0] - 2026-05-09
+## [2.0.0-beta.10] - 2026-11-23
 
-### Added — Skills CRUD GUI (paired with aib v1.2.0 Skills loading)
-- **Create / Edit / Delete / Rename SKILL.md from the GUI.** Skills tab gains `[+ New Skill]`, `[Edit]`, `[Delete]` actions.
-- **Form / Raw hybrid editor**: Form mode (frontmatter fields + body textarea) is the source of truth; Raw mode is a read-only preview by default, with explicit `[Override with raw]` for direct YAML editing.
-- **Save & Sync orchestration**: every Create/Update/Delete/Rename runs `aib sync` automatically. If sync fails, the disk write is preserved and a banner appears with `[Retry sync]` (spec §3.5 — sync failure never rolls back user assets).
-- **Slug rename**: `[Rename slug]` button in Edit dialog. Backend moves the directory and updates the frontmatter `name:` field atomically.
-- **aib version banner**: warns when installed aib < v1.2.0 (Skills loading wirings depend on it).
+`v2.0.0-beta.10` = `692c82a`, build 127. Codex 리뷰 없이 사용자 요청에 따라 게시.
 
-### Why this is aib-cc's first deliberate write-side feature for catalog data
-Until v1.1, the catalog views (Wiki, Skills) were intentionally read-only because agents auto-update those via hooks/protocol. Skills are different — `templates/docs/skills-protocol.md` "보호 원칙" forbids agent self-registration of skills, so the user is the only path. GUI write here serves a workflow that text editors handle clumsily; the read-only policy still applies to wiki/sessions/RULES.
+- **사이드바 "주의 · 작업 중" 설명과 목록**(2026-11-23 피드백: 주의 1이 무엇인지 어디서 보는지 모르겠고, 실행이 왜 0인지 모르겠음): 줄을 누르면 주의 세션(입력 대기 → 비정상 종료 → 완료, 최신 먼저)과 작업 중 세션이 배럭·상태·경과 시간·터미널과 함께 펼쳐지고, 누르면 그 터미널로(없으면 배럭 화면). "완료한 세션 모두 확인함으로", 각 숫자의 뜻 설명. "실행"은 "작업 중"으로 이름을 바꾸고 지금 응답을 만드는 세션만 셈 — 3분 넘게 소식 없는 세션은 "응답 없음"으로 따로 보여 주고 세지 않음(하루 전 세션이 실행 1로 세어지던 문제). 메뉴 막대 표기도 같게
+- **버전 표기**(같은 피드백, v1처럼): 사이드바 맨 위 "CommandCenter v…"(출시 빌드는 `VERSION_LABEL`, 개발 빌드는 dev)와 "AI Barracks v(aib 버전)". 마우스를 올리면 build·commit
+- **Agents 옆 숫자**(같은 피드백): 그 배럭에 열린 터미널 수(에이전트 목록 머리글과 같은 수, 종료된 것 제외). 배럭 목록의 숫자도 같은 뜻으로 바꿈(이전에는 응답 중인 세션 수라 대개 비어 있었음)
+- **닫은 터미널의 프로세스가 좀비로 남던 문제**(beta.9 검증의 TT-01b, known-issues #16): 데몬이 자식의 종료 알림을 놓치면 회수하지 않아, 닫은 터미널의 프로세스가 데몬이 꺼질 때까지 좀비로 남고 세션 기록도 정리되지 않았음. 데몬이 1초마다, 그리고 강제 종료 직후에 직접 회수함. 이미 실행 중인 데몬은 다음에 새로 뜰 때부터 적용
 
-### Backend
-- 4 new Tauri commands in `src-tauri/src/commands/skills.rs`: `create_skill`, `update_skill`, `delete_skill`, `rename_skill`. All return `Result<(), String>` and are idempotent within their own scope.
-- `SkillFrontmatterWrite` struct with serde guards against the Tauri rename bidirectional trap (RULES.md [2026-05-09]).
-- 8+ Rust unit tests covering write/collision/missing/rename/serialize-key invariants.
+## [2.0.0-beta.9] - 2026-11-16
 
-### Frontend
-- New: `SkillEditorDialog`, `SkillFormFields`, `SkillDeleteDialog`, `useSkillCrud` hook.
-- Modified: `SkillsTab.tsx` — wired action buttons, version banner, dialog renderers.
+`v2.0.0-beta.9` = `9260352`, build 125. Codex 리뷰 없이 사용자 요청에 따라 게시.
 
-### Out of scope (deferred)
-- Frontend unit test framework (vitest) — manual smoke test this release.
-- In-app drift banner (`aib skills check` integration) — every successful save runs sync, so drift in normal flow is zero. Use `aib skills doctor` from terminal for ad-hoc check.
-- Bulk import/export, template gallery, in-app skill invocation.
+- **Files 화면**(2026-11-16 요청: Finder 같은 파일 트리와 md 뷰어): 왼쪽 메뉴 History 아래. 배럭 폴더를 트리로(폴더 먼저, 폴더는 누르거나 →/←로 여닫음, 숨김 파일은 눈 아이콘으로), 고른 파일은 옆에서 — md는 렌더, 텍스트·코드는 원문, 이미지·PDF는 미리보기, 2MB 초과·이진 파일은 Finder 안내. ⋯ 메뉴에 Finder에서 보기·기본 앱으로 열기·경로 복사. 다른 화면에 다녀와도 펼친 폴더와 열어 둔 파일 유지
+- **Files 정렬**(같은 날 요청): 이름·수정한 날짜·만든 날짜, 오름/내림. 폴더는 항상 파일 위, 날짜순이면 줄 오른쪽에 날짜. 선택은 재실행 뒤에도 유지
+- **Files 편집**: md·텍스트는 편집(⌘E) → 저장(⌘S). 편집 중 다른 곳이 파일을 고치면 덮어쓰기 전에 물음. aib가 관리하는 파일(세션 기록, `docs/`, Wiki, `RULES.md`)은 읽기 전용
 
-### Compatibility
-- Requires aib v1.2.0+ at runtime (banner warns otherwise).
-- v1.1.x SKILL.md files are loaded as-is into the editor; custom frontmatter fields are preserved in the `custom` map.
+## [2.0.0-beta.8] - 2026-11-13
 
-## [1.1.4] - 2026-05-09
+`v2.0.0-beta.8` = `120a6e4`, build 123. Codex 리뷰 없이 사용자 요청에 따라 게시.
 
-### Added — Release pipeline 검증 step
-- **`.github/workflows/release.yml`**: `checkout` 직후, build 전에 tag↔version 일치 검증 step 추가. 다음을 fail-fast로 검증:
-  - 태그가 `vX.Y.Z[-pre]` semver 형식인지
-  - `src-tauri/tauri.conf.json` / `package.json` / `src-tauri/Cargo.toml`의 `version` 필드가 모두 태그(앞의 `v` 제거)와 일치하는지
-- **Why**: v1.1.0 릴리즈에서 3개 version 파일이 `1.0.2`인 채로 `v1.1.0` 태그만 푸시되어 DMG 파일명이 `_1.0.2_`로 잘못 묶이는 사고가 있었다. 워크플로우 차원에서 동일 사고를 차단.
-
-### Docs
-- README에 Skills 카탈로그 탭 섹션 추가, CHANGELOG `[1.1.1]/[1.1.2]/[1.1.3]`에 publish date stamp.
+- **Codex·Gemini 화면이 시작할 때 크기에 고정되던 문제**(2026-11-13 beta.7 보고: 분할에서 1개 보기로 돌려도 분할 크기 그대로; 2026-11-09 "창을 넓혀도 에이전트 화면이 좁다"도 같은 원인): `aib start codex|gemini`는 에이전트를 macOS `script` 안에서 실행하는데, `script`가 만든 안쪽 터미널은 이후 크기 변경을 전달받지 못함. 칸 크기가 바뀌면 앱이 그 터미널 안쪽에 열린 터미널에도 같은 크기를 직접 알려 줌(크기 변경 신호 포함). 이미 좁게 고정된 세션도 앱을 다시 켜거나 크기를 한 번 바꾸면 풀림. Claude는 직접 실행이라 원래 영향 없음
+- **에이전트를 추가해도 분할을 바꾸지 않음**(같은 날 요청): 빈 칸이 있으면 거기에, 없으면 지금 칸에 뜨고 그 칸에 있던 터미널은 화면 밖에서 계속 실행. 분할은 사용자가 고를 때만 바뀜(닫아서 칸이 남을 때 줄어드는 동작은 그대로)
 
-### Notes
-- 코드 변경 없음 — release pipeline + 문서만 정비.
-
-## [1.1.3] - 2026-05-09
-
-### Fixed — argument-hint frontend mapping
-- **`SkillCard.argument_hint`** serde attribute가 양방향(`rename = "..."`)이라 Tauri → frontend JSON 키가 `argument-hint` (hyphen)로 나갔고, TS interface는 `argument_hint` (underscore)를 기대 → frontend에서 모든 카드의 args 메타 칩이 표시되지 않음.
-- Fix: `#[serde(rename(deserialize = "argument-hint"))]`로 변경 — YAML 입력 호환은 유지, JSON 출력은 underscore.
-- 회귀 테스트 추가: `serializes_argument_hint_with_underscore_for_tauri`.
-
-### Notes
-- v1.1.2는 본 회귀를 가진 채 publish됨. 사용자는 v1.1.3 설치 권장.
-- 다른 frontmatter 필드(aib_version, upstream, parse_error)는 영향 없음 — rename 어트리뷰트가 없거나 underscore 키 그대로 사용.
-
-## [1.1.2] - 2026-05-09
-
-### Added — Skills 카탈로그 탭
-- **`SkillsTab`** (신규): 좌측 검색 박스 + SKILL.md 카드 리스트 / 우측 메타 박스 + 마크다운 본문. Wiki 탭 패턴 미러.
-- **Tauri commands**: `get_skills_index` (skills/<slug>/SKILL.md walk + `serde_yaml` frontmatter 파싱), `get_skill_content` (frontmatter 제거 후 본문 반환).
-- **frontmatter 손상 노출**: silent skip 금지 — 파싱 실패 시 카드에 ⚠️ 배지 + 메타 박스에 빨간 `parse_error` 표시. spec D3.
-
-### Notes
-- aib v1.1.0 release notes에서 v1.1.1로 약속됐던 "Skills 카탈로그 전용 탭" 항목 — v1.1.1은 메타데이터 sync 패치로 분리되어 본 항목은 v1.1.2로 이연됨.
-- v1.1.3+ 후보로 이연: `aib skills doctor` 실행 버튼, external skills 표시, 카드 정렬 토글, 편집 모드.
-
-## [1.1.1] - 2026-05-08
-
-### Fixed — Version metadata sync
-- **`src-tauri/tauri.conf.json`**: `version`을 1.0.2 → 1.1.1로 정정. v1.1.0 릴리즈 시 `tauri.conf.json` bump 누락으로 Info.plist `CFBundleShortVersionString` + DMG 파일명이 `1.0.2`로 표기되던 known cosmetic issue 해소.
-- **버전 정렬**: `package.json` + `Cargo.toml` 1.1.0 → 1.1.1. tauri.conf.json과 함께 한 번에 정정.
-
-### Notes
-- 코드 변경 없음 — v1.1.0 코드 그대로. 메타데이터/번들 파일명만 정정.
-- Info.plist의 `CFBundleShortVersionString`이 v1.1.1부터 실제 코드 버전과 일치 → 향후 설치 검증 시 메타데이터 신뢰 가능.
-
-## [1.1.0] - 2026-05-08
-
-### Changed — Skills Schema Compatibility (paired with aib 1.1.0)
-- **`YamlFormEditor`**: `agent.yaml`의 `skills:` 블록을 더 이상 하드코딩된 리스트 형식으로 덮어쓰지 않음. 파싱 시 raw block을 보존하고, 저장 시 그대로 재출력. 1.0.x 리스트 형식·1.1.0 객체 형식(`discovery: auto, enabled: [...]`) 모두 안전하게 편집 가능.
-  - **회귀 수정**: 기존 1.0.x 에디터는 알려지지 않은 필드(예: 사용자가 추가한 `skills.delegation`)를 저장 시 silent 손실시켰음. v1.1부터 skills 블록은 read-then-write로 보존.
-- **버전 정렬**: `package.json` + `Cargo.toml` 1.0.2 → 1.1.0. aib 1.1.0과 페어링.
-
-### Known Issue (cosmetic, fixed in v1.1.1)
-- DMG 파일명 + Info.plist `CFBundleShortVersionString`이 `1.0.2`로 표시됨 (`tauri.conf.json` bump 누락). 코드는 v1.1.0 그대로. v1.1.1에서 정정.
-
-### Notes
-- aib ≥ 1.1.0 와 함께 사용 권장 (Skills 표준 디렉터리, `aib skills list/doctor` 명령).
-- Skills 카탈로그 전용 탭은 v1.1.1로 이연 — 본 릴리즈는 편집기 호환성 확보가 목적.
-
-## [1.0.1] - 2026-05-04
-
-### Added
-- **LAUNCH 실패 surfacing**: PTY가 5초 이내 exit하면 `useTerminal` Exit 핸들러가 inline 경고 배너를 출력 (Claude settings 깨짐 / Codex `--full-auto` 회귀 / CLI 미설치 등 흔한 원인 안내). 기존엔 `[Process exited]`만 짧게 떠서 진단이 어려웠음.
-- **README Prerequisites 보강**: Claude/Gemini/Codex CLI 설치, `.claude/settings.local.json` 무결성 점검 스니펫, Codex 0.128 플래그 변경, 첫 Claude workspace trust 안내.
-
-### Notes
-- aib ≥ 1.0.1 와 함께 사용 권장 (Codex 플래그 회귀 수정 + Claude settings 사전검사).
-
-## [1.0.0] - 2026-04-17
-
-AI Barracks CommandCenter v1.0.0 공식 릴리즈.
-
-### Features (v0.1.0 ~ v1.0.0 통합)
-
-#### Overview
-- 배럭별 상세 정보, 통계, Expertise 태그
-- 버전 상태 표시 + 원클릭 Sync
-- New Agent / Open Terminal / Council 실행
-
-#### Config
-- SOUL.md / GROWTH.md 마크다운 에디터 + 실시간 프리뷰
-- RULES.md 구조화된 관리 UI
-- agent.yaml 폼 에디터
-- 파일 소유권 표시
-
-#### Agents
-- 세션 타임라인 + 필터 (Status, Client)
-- Active 세션 Monitor (3초 자동 갱신)
-- View (세션 + Violation 파일)
-- Continue (완료된 작업 이어받기)
-
-#### Wiki
-- 토픽 카탈로그 + 마크다운 렌더링
-- Recent Changes + Wiki Lint 실행
-
-#### Git
-- Branch, changes, remote URL 상태 표시
-- Commit / Push
-- 커밋 히스토리 + git show 상세 보기
-- Terminal Actions (status, add -p, log --graph, stash)
-- Mono-repo sub-path 자동 감지
-
-#### System View
-- 전체 배럭 버전 대시보드
-- 선택적/일괄 Sync + Dry-run
-- 새 배럭 생성
-
-#### 내장 터미널
-- xterm.js + portable-pty 기반 완전한 터미널 에뮬레이터
-- 좌우 분할 레이아웃, 다중 터미널 탭
-- Export (ANSI 제거), Quick Commands
-- 폰트/크기/줄높이/커서 스타일 설정
-
-#### 커맨드 팔레트 (Cmd+K)
-- 배럭 컨텍스트 기반 명령어 추천
-- Agent / AIB / Git / Quick 카테고리
-
-#### 기타
-- 전체 검색 (세션, 위키, 규칙, 설정 통합)
-- Light/Dark 테마 (Apple HIG)
-- 파일 실시간 감시
-- 시스템 트레이 + 인앱 알림
+- **에이전트 목록 순서 고정**(2026-11-13 beta.7 피드백: 누르면 줄 위치가 바뀌어 불편): 목록은 시작한 순서 그대로이고, 터미널이 칸을 바꿔도 줄은 움직이지 않음("칸 n / 화면 밖" 표시만 바뀜). 재실행 뒤에도 같은 순서
+- **목록의 "지금 하는 일"**(같은 피드백): 줄마다 그 터미널의 화면 제목(Claude·Codex가 붙이는 작업 요약, 바뀌는 즉시), aib 세션 Task, 세션 Log의 최근 줄. 세션 파일 재확인 10초 → 2초
+
+## [2.0.0-beta.7] - 2026-11-12
+
+`v2.0.0-beta.7` = `92ddde8`, build 120. Codex 리뷰 없이 사용자 요청에 따라 게시.
+
+- **배럭당 터미널 상한 없음**(P01, 2026-11-12 보고: 5번째 에이전트를 띄울 수 없음): 4칸이 모두 차도 새 에이전트가 시작됨. 빈 칸 → 분할 확대 → 지금 칸 순서로 놓이고, 밀린 터미널은 화면 밖에서 계속 실행(종료하지 않음). 빈 셸 자리 교체와 "터미널 4개가 모두 사용 중" 거부는 없앰. 재실행 때 모두 같은 순서로 복원
+- **에이전트 목록**(v1 Live Terminals, 같은 보고: 여러 에이전트 중 고르기가 눈에 안 들어옴): Agents 왼쪽에 터미널마다 상태 점·이름·상태(작업 중·입력 대기 등)·aib 세션 작업·칸 번호 또는 "화면 밖". 누르면 그 터미널로, 화면 밖이면 지금 칸으로 가져옴. New Agent 막대의 "에이전트 목록"으로 숨기기, 경계를 끌어 폭 조절. 가운데가 좁으면(터미널 480pt 미만) 자동으로 접힘. 위쪽 칩 줄은 목록으로 대체
+- 칸 머리글의 제목을 누르면 그 칸에 보일 터미널을 고를 수 있음(다른 칸·화면 밖 터미널과 맞바꿈)
+- 화면에 보이던 터미널을 닫으면 나머지는 제자리에 있고, 화면 밖 터미널이 그 칸을 채움
+- **최소 창 화면 수정**(2026-11-12 사용 흐름 캡처 40장 점검): Outputs를 연 최소 창에서 Rules·Skills 본문과 버튼이 Outputs 밑으로 넘쳐 겹치던 문제, History·Wiki 본문이 150pt 남짓으로 좁아지던 문제 — 목록이 먼저 좁아져 본문이 320pt를 유지하고, 본문·목록은 자기 칸 밖으로 그리지 않음. History 필터는 좁으면 메뉴형으로, Skills의 이름 변경·삭제는 좁으면 ⋯ 메뉴로. 좁은 터미널 칸 머리글에서 크기 표시가 두 줄로 꺾이고 제목이 사라지던 문제(22열 미만이면 크기 표시 생략)
+
+## [2.0.0-beta.6] - 2026-11-10
+
+`v2.0.0-beta.6` = `c124f72`, build 117.
+
+- **Agents는 빈 화면으로 시작**(2026-11-10 피드백): 배럭을 열어도 셸을 자동으로 띄우지 않고, 가운데에 Claude·Codex·Gemini·Terminal 시작 버튼. 분할을 늘리면 빈 칸마다 같은 버튼(셸 자동 생성 없음), 마지막 터미널을 닫거나 셸이 끝나도 새 셸을 만들지 않음. 앱 재실행 때도 살아 있던 터미널만 복원
+
+## [2.0.0-beta.5] - 2026-11-09
+
+`v2.0.0-beta.5` = `3376777`, build 115. Codex 재리뷰 대기 상태로 사용자 요청에 따라 게시.
+
+**붙여넣기 수정(beta.4 보고, 2026-11-09)**: 다른 앱에서 복사한 글을 ⌘V로 붙여넣으면 아무것도 들어가지 않던 문제. macOS 15.4+는 다른 앱이 복사한 내용을 "사용자가 시작한 붙여넣기"에만 내주는데, ⌘V가 메뉴의 붙여넣기가 아니라 터미널 엔진의 단축키로 처리돼 그렇게 인정되지 않았음. ⌘V는 이제 메뉴의 붙여넣기로 감(Ghostty 본가와 같은 방식).
+
+넓은 화면 활용(beta.4 사용 피드백, 2026-11-09).
+
+- **문서(Rules·Wiki·Council·Outputs)**: 본문 폭 880px 제한을 없애 넓힌 창을 끝까지 사용
+- **Outputs**: 최대 640pt 제한을 풀어, 가운데 작업면 420pt만 남기고 끝까지 넓힐 수 있음
+- **목록 열(History·터미널 출력·Rules·Wiki·Council·Skills)**: 경계를 끌어 넓히거나 줄일 수 있고 화면마다 기억(화면 폭의 60%까지)
+- **History**: 아무것도 고르지 않았으면 최신 세션을 바로 보여 줌(빈 좁은 화면 대신, 열어 본 것으로 치지 않음)
+
+- **History**: "빈 세션 숨기기"(v1, 기본 켬) — 진행 중이 아니고 작업 내용이 없거나 (pending)인 세션을 숨김(P09)
+- **Wiki**: 목록에 Index.md의 토픽명·요약·갱신일(Index 순서), 아래에 최근 변경 5줄(Log.md) — v1 Wiki 탭(P10)
+- **설정 → 터미널 → 줄 간격**(v1, 1.0~2.0): 열린 터미널에 바로 적용, v1 설정 가져오기에도 포함(P04)
+- **상하 2분할**(v1 Split V, ⌘⌥3): 툴바·레이아웃 메뉴, 이름으로 저장(이전 빌드는 좌우 2분할로 읽음)(P02)
+- **배럭 골라서 Sync…**(v1 System, ⌘K·Barrack Status): 버전 표, 여러 배럭 선택·업데이트 필요만, 미리보기(dry-run), 배럭별 결과(P05)
+
+## [2.0.0-beta.4] - 2026-11-09
+
+`v2.0.0-beta.4` = `d5e6183`, build 107. v1 기능 복원(`docs/PARITY.md`) — Codex 재리뷰 대기 상태로 사용자 결정에 따라 게시.
+
+- **예약 활성화(P11)**: 켜기 전 확인(비용·재시도·되돌릴 수 없음 고지), 켜져 있으면 사용 불가 상태에서도 끌 수 있음, 설정이 보이는 동안 5초마다 갱신
+- **Quick Command(P03)**: 실행하면 저장 폴더(없으면 배럭)에서 새 터미널. 폴더가 없으면 묻고, "이 터미널에 입력"은 항상 확인·에이전트 거부. 터미널에서 저장(이름·시작 명령·폴더), 편집, v1 가져오기 폴더 포함
+- PTY 데몬(revision 3): 들어갈 수 없는 폴더에서는 명령을 실행하지 않고 끝냄
+- Codex 리뷰 11건 반영: 입력 직전 재검사(에이전트·바뀐 프로그램), 명령과 후속 셸 개행 분리, 다시 붙은 터미널의 시작 정보 유지, 예약 확인 상자(Return = 취소)·켜짐+사용 불가 표시
+
+## [2.0.0-beta.3] - 2026-11-08
+
+`v2.0.0-beta.3` = `32a738a`, build 93.
+
+사용자 실사용 피드백(2026-11-06) 반영.
+
+- **Agents**: "세션" → "Agents". 그리드 위 New Agent 막대(Claude·Codex·Gemini·Terminal·Council, skip-permissions)와 실행 중 에이전트 칩(상태 점·전환·닫기)
+- **Barrack**: 사이드바 맨 위 새 항목 — 배럭 정보(Info)와 상태(Status)를 나란히. 오른쪽 패널은 Outputs만
+- 메뉴 이름 통일: Barrack · Agents · History · Rules · Wiki · Skills · Council · Git
+- **창 크기 변경 충돌 수정**: Rules·Wiki·History·Skills에서 창을 최소 크기로 줄이면 앱이 종료되던 문제(SwiftUI inspector의 열 크기 협상 루프). Outputs 패널을 직접 만든 열로 바꿔 해결. 화면 전환 때 패널 폭이 바뀌던 것과 터미널 출력이 사라지던 것도 함께 해결
+- 좁은 창: Agents 막대는 가로 스크롤, Barrack은 위아래로 쌓임, 문서 목록은 좁아짐, 헤더 문구는 한 줄(전체는 마우스 오버)
+
+Codex build-84 재검증 반영(2026-11-08, `docs/reviews/codex-build84-triage.md`).
+
+- **Barrack Status 결과가 다른 배럭에 보이던 문제**: 점검 중 배럭을 바꾸면 이전 배럭의 빈 세션·Wiki 경고(파일 목록 포함)가 새 배럭 화면에 남고, 새 배럭 점검은 빠지던 것. 결과를 배럭별로 묶고 늦게 끝난 이전 점검은 버림
+- **Outputs가 터미널을 밀어내던 문제**: 작은 창에서 Outputs를 넓혀 두면 터미널이 8열까지 좁아지던 것. 가운데 작업면 420pt를 먼저 남기고, 자리가 모자라면 Outputs를 접음
+- **Ctrl+C**: 터미널에 포커스가 있으면 ⌃+영문자(⌃C·⌃D·⌃Z 등)는 메뉴보다 먼저 터미널로. macOS Window 메뉴의 "중앙 정렬"(fn⌃C)이 Ctrl+C를 가져가 창만 움직일 수 있던 경로를 막음. fn⌃C 가운데 정렬·⌘C 복사는 그대로
+- 4분할이 빈 셸로 차 있으면 새 Agent·정비·Council이 빈 셸 하나를 대신 씀. 모두 사용 중이면 "터미널 4개가 모두 사용 중" 알림(전에는 아무 반응 없음)
+- Barrack Info의 규칙 수가 RULES.md 전체(하위 섹션 포함)를 셈
+- 빌드 기록에 source commit·dirty 여부·실행 파일 해시, Info.plist에 `AIBSourceCommit`
+- **미완(설계 대비)**: Council 의사록 전용 화면(라운드 접기·결론·합의도·검증 상태), `archive prune`·`hooks codex install` 전용 경로
+
+## [2.0.0-beta.2] - 2026-11-05
+
+Codex 리뷰 r6·r7(수정분 리뷰) 지적 30건을 고친 베타.
+
+- **예약 활성화 교착 수정(beta.1 사용자 필독)**: 예약 시각이 되면 프로세스 게이트가 같은 잠금을 다시 잡아 멈추고, 그 뒤 git·aib sync·앱 종료까지 막히던 문제. beta.1에서는 예약 활성화를 켜지 마세요
+- 터미널: 읽지 않는 프로그램에 입력이 거부되면 pane을 종료로 표시하지 않고 잠깐 경고만 표시. 앱이 꺼져 있는 동안 끝난 세션도 다시 붙을 때 출력 보관. 이미 끝난 셸이 남긴 백그라운드 작업도 pane을 닫으면 정리
+- 문서 폼: 따옴표가 여러 줄에 걸친 YAML 값, 순서 있는 하위 목록·이어지는 본문, `\\|`가 든 GROWTH 셀, 원문에서 바꾼 skill name을 저장 전에 거부
+- 이동 확인: ⌘⇧A·pane 메뉴·알림·새 pane에서도 편집 중이면 먼저 묻고, 버리면 편집 버퍼까지 초기화
+- aib 쓰기: pane에서 실행하는 sync 적용과 앱 내부 sync가 같은 잠금으로 하나씩 실행(개발·출시 앱 공용)
+- 업데이트: 이전 빌드가 남긴 PTY 데몬은 세션이 없으면 새 데몬으로 교체, 세션이 있으면 유지하고 알림
+- 터미널 출력 보관: 중간에 끊긴 보관본은 프로그램이 끝난 뒤 최종 출력으로 갱신
+
+## [2.0.0-beta.1] - 2026-11-05
+
+CommandCenter 2 첫 베타. Swift + libghostty로 다시 만든 macOS 네이티브 앱으로, v1(1.6.1)과 나란히 설치된다.
+
+- v1 1.6.1 기능 전체: 배럭 관리·추가·제거, 세션 기록, ⌘K, Health/정비 큐, 터미널 관리·Quick Commands·출력 내보내기, RULES·SOUL·GROWTH·agent.yaml 폼 편집(충돌 시 섹션 병합), Wiki, Skills 생성·편집·이름 변경·삭제, Git(배럭 경로만 커밋·push), Files, Council, 새 에이전트, 터미널 출력 보관, Provider/Model 프로필, 예약 활성화(v1과 파일·잠금 공유), v1 설정 가져오기
+- 터미널: Ghostty 엔진, 1/2/4 분할, 출력 폭주 중 입력 지연 p95 16.7 ms(v1.6.1 240 ms), 리사이즈 잘림 없음
+- 세션 유지: PTY 데몬이 셸을 소유해 앱을 다시 켜도 세션이 살아 있고 이전 화면을 재생(재생 속 질의에는 다시 응답하지 않음)
+- 검증: 전체 self-test 155 pass / 0 fail, 출시 빌드 unit·agents·integration 99 / 0, 데몬 smoke 19/19, Codex 리뷰 r4·r5 지적 37건 수정
+- 남은 것: 사람 검사 15건(한국어 IME 등), Codex 리뷰 r6(수정분) 진행 중

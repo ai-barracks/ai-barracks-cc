@@ -1,22 +1,6 @@
-# Dependencies
-node_modules/
-
-# Build
+.build/
 dist/
-src-tauri/target/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# macOS
-.DS_Store
-
-# Tauri dev
-src-tauri/gen/
-
-# TypeScript incremental build cache
-*.tsbuildinfo
-npm-audit-full.json
+*.xcodeproj/
+.swiftpm/
+selftest-results/
+.toolchain-fix/

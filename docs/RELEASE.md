@@ -1,0 +1,64 @@
+# v2.0.0 출시 체크리스트
+
+출처: 배럭 `resources/design/aibcc-v2-parity-plan-2026-11-02.md` §I.
+
+## 관문 (모두 충족해야 출시)
+
+| # | 관문 | 상태 |
+|---|---|---|
+| G1 | v1 기능 패리티 A~H | **재검토 중(2026-11-08)** — 계획표 기준 완료였으나 Codex 세부 감사(v1.6.1 `6e53aaa` 대 `d6adb91`)가 누락·부분 이식을 지적: 상하 2분할, 배럭당 4개 초과 터미널, 줄 간격(lineHeight), Quick Command의 cwd·새 터미널 의미, System 다중 배럭 선택·버전 표·Sync 결과, 빈 세션 숨기기, Wiki 목록 요약·갱신일, 보관 터미널 cwd 재시작, v1 설정 가져오기(cwd·글꼴·lineHeight·테마·옛 보관), 실행 중 출력 디스크 보존, 예약 활성화 고지·재확인. 사용자 원칙: v1 기능은 가능한 한 모두 포함, 제외를 임의로 완료 처리하지 않음 |
+| G2 | 전체 self-test 0 fail (개발 빌드, 모든 스위트) | 2026-11-08 **32a738a(build 93)** 177 pass / 0 fail / 86 unverified, 사용자 파일 무변경. 같은 commit의 `ux`(LY-02b) pass, ux-stress 8/8(report UX-02 판정 포함). 첫 시도 1회는 fullscreen 단계 뒤 창이 닫혀 report 없이 끝남(크래시 기록 없음) → 재실행 통과(known-issues #13) |
+| G3 | 출시 빌드 self-test (`VARIANT=release`) unit·agents | 2026-11-08 **32a738a(build 93)** unit·agents·integration 120 pass / 0 fail, 데몬 smoke 21/21, 사용자 파일 무변경. 실행 파일 SHA-256 `7f2ef54ca6735353e65f9dcc94e0c9c73ca273717951ee96b949ab5237c41c78`, `AIBSourceDirty=false` |
+| G4 | 사람 검사 15건 (README "사람 검사 5분", 한국어 IME 등) | **미실시 — 사용자** |
+| G5 | Codex 리뷰 r4(87a558c..55c718c) + r5 + MD-05, 수정분 리뷰 r6·r7 | **충족(2026-11-05)** — r4 17건·r5 20건·r6 17건·r7 13건 처리(`docs/reviews/codex-r{4,5,6,7}-triage.md`), MD-05 pass. r7 수정분(004ca8b) 재리뷰는 GA 전에 |
+| G6 | 실사용 smoke: 출시 앱으로 배럭 1곳에서 세션·문서 편집·Skills·Git 한 바퀴 | 미실시 |
+
+## 베타 배포
+
+- 2026-11-05 `v2.0.0-beta.1` pre-release(`v2` 브랜치, DMG·.app.tar.gz·SHA256SUMS, arm64). v1 `main`·latest(v1.6.1)는 그대로다. **예약 활성화 교착(r6 blocker) 포함 → beta.2로 교체**
+- 2026-11-05 `v2.0.0-beta.2` pre-release: r6 17건·r7 13건 반영
+- 2026-11-08 `v2.0.0-beta.3` pre-release(사용자 "다른 mac에 설치해서 사용해보게 repo에 올려줘"): 태그 → `32a738afb036cf1aead5b8937d39a09e96d0ca6c`(원격 `v2`도 이 commit까지만), build 93, `AIBSourceDirty=false`, 실행 파일 SHA-256 `7f2ef54ca6735353e65f9dcc94e0c9c73ca273717951ee96b949ab5237c41c78`. 자산 SHA-256: DMG `fdc8b1ac148872df567d37ca4183e653fb0aa4b44a9e95c1e85d7b1a41166527`, app.tar.gz `74d77dfbcc403fff4eb239a6363aa78aa50bab52d97e71bb1d3b30f32395ae28`(내려받아 `shasum -c` 확인, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 177/0, G3 120/0, ux-stress 8/8, LY-02b, smoke 21/21. latest는 v1.6.1 유지. P11·P03(그 이후 commit)은 Codex 재리뷰·실행 검증 대기라 미포함
+- 2026-11-09 `v2.0.0-beta.4` pre-release(사용자 "내일 새 mac에서 테스트, 베타 릴리즈 해놔줘" → Codex 한도로 재리뷰 대기임을 묻고 "지금 게시" 선택): 태그·원격 `v2` → `d5e61833e1a1d4fba5d4382e3f63f36d31355270`, build 107, `AIBSourceDirty=false`, 실행 파일 SHA-256 `635d26f2799a6193f5640bce02550d4ef3e794fbcf6b9bdcc3f65fd043fc2578`. 자산 SHA-256: DMG `895dc393e360ab5859875bdc25881b364bc2b62798cd13b17e1acda924f3e41a`, app.tar.gz `271ccd2e323a97fe9dd2efa080478a3fc027c64a138fb52f40bfae07d27f8a7d`(내려받아 `shasum -c` 확인, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 185/0, G3 128/0, ux-stress 8/8, LY-02b, smoke 22/22. latest는 v1.6.1 유지. **Codex 재리뷰(ad7d172..d5e6183) 대기** — 11/11 19:46 이후 `docs/reviews/codex-p11p03-rereview-prompt.md`로 재실행, 지적은 beta.5로
+- 2026-11-09 `v2.0.0-beta.5` pre-release(사용자 "베타5도 올려줘"): 태그·원격 `v2` → `33767775cadb69e044c2e003c5589727bc6464d2`, build 115, `AIBSourceDirty=false`, 실행 파일 SHA-256 `6d95eca9a5d4d9fe6671fe6f518d8400fc227aec0fd9191646fc66777dc03512`. 자산 SHA-256: DMG `fe9fd04ab608bae033e32feb3c4c252dcb70770c3a31e97b0b949971a636dd7d`, app.tar.gz `d73407b8c96666bdc140a6d340bda39ae64a60fdbdf5991c1b728ac78c1fe893`(내려받아 `shasum -c`, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 202/0, G3 138/0, 출시 빌드 input·selection 44/0, ux-stress 8/8, LY-02b, smoke 22/22. 붙여넣기 수정(macOS 클립보드 보호)은 이 Mac이 "항상 허용"이라 재현 불가 — 새 Mac 확인 필요. Codex 재리뷰 대기
+- 2026-11-10 `v2.0.0-beta.6` pre-release(사용자 "응" — beta.6 게시 확인): 태그·원격 `v2` → `c124f72e6428cb58648e132926327789c5986051`, build 117, `AIBSourceDirty=false`, 실행 파일 SHA-256 `05bc82d045aae1851b8077d34d9263ae9ec36cd03729f8261d9c8f0191233409`. 자산 SHA-256: DMG `8667b2e96c7cd646406ae567827dcb6cce4044e403cf24baf1d992ad99a504f2`, app.tar.gz `08722fd2ae6494262977bd295ec10ff994c864ef38b5f51f916225376eb4d377`(내려받아 `shasum -c`, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 204/0, G3 140/0, 출시 input·selection 44/0, persist PS-01/02/04/05, ux-stress 8/8, LY-02b, smoke 22/22. Codex 재리뷰 대기
+- 2026-11-12 `v2.0.0-beta.7` pre-release(사용자 "올려줘", Codex 리뷰는 사용자 지시로 하지 않음): 태그·원격 `v2` → `92ddde8ed3a8b9f999aa968ce380b5543a089d3a`, build 120, `AIBSourceDirty=false`, 실행 파일 SHA-256 `1b1ac3afb37bf9ac834f69bf92437c69b0991131e681ade292f5079a33156a7c`. 자산 SHA-256: DMG `5a78a180ed8d90b104317da0806e1a2755635b373cf37c72072e7249247efad2`, app.tar.gz `6281b963415fe4cc747324ddacd5ba2875a9abb92f2889a57da7d639f3094f29`(내려받아 `shasum -c`, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 200 pass / **6 fail**, G3 136 pass / **6 fail** — 두 빌드 모두 AR-01a·MD-03a·MD-04b와 묶인 기준 HM-01·MD-03·MD-04(이 Mac의 FSEvents 정지, known-issues #15, beta.6 빌드도 같은 실패; 재부팅 뒤 재확인 필요). 출시 input·selection 44/0, persist PS-01/02/04/05/06, ux-stress 8/8, LY-02b, smoke 22/22, walk 캡처 40장 점검
+- 2026-11-13 `v2.0.0-beta.8` pre-release(사용자 "올려줘", Codex 리뷰 없음): 태그·원격 `v2` → `120a6e4e68a946d8af9f10a3c6d721971f8c89c0`, build 123, `AIBSourceDirty=false`, 실행 파일 SHA-256 `d76cbc94f40dd0a8287be4d6990bb827fd05f28f095f0b7fd51126799b3575d5`. 자산 SHA-256: DMG `3c85f9d86c6dd7709b4bab521b2c7dccd1ea84c2236cd600d5d3172d9e68d48f`, app.tar.gz `3380f968f38723a7293b30fcd7d03aaa65dab0892f6cda9acc1ec65c43178467`(내려받아 `shasum -c`, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 206 pass / **4 fail**(AR-01a·MD-03a+기준), G3 142 pass / **4 fail**(MD-03a·MD-04b+기준) — FSEvents 정지(known-issues #15). 출시 input·selection 44/0, persist PS-01/02/04/05/06, ux-stress 8/8, LY-02b, smoke 22/22. 실제 TUI 캡처: `tui-split`(Claude 2개), `tui-script`(script 안의 Codex 35→72열)
+- 2026-11-16 `v2.0.0-beta.9` pre-release(사용자 "베타9로 업로드해줘", Codex 리뷰 없음): 태그·원격 `v2` → `92603521f615c2bd153252f05d8e7e1f691775b7`, build 125, `AIBSourceDirty=false`, 실행 파일 SHA-256 `b0c396eb948647534bc9d278b504a6aebf06cf36b6527e527b222f25d42b567b`. 자산 SHA-256: DMG `ef9f4f6c09472d8a76a01678144e6608ff2e2264c1dc0483126aa3ef52adb1cc`, app.tar.gz `a1562bed2df2254cebab1b1c06398769353b39074a7e48e155b9624c694dce79`(내려받아 `shasum -c`, DMG·tar 안 앱 서명·해시 확인). 같은 commit 검증: G2 208 pass / **6 fail**(FSEvents: AR-01a·MD-03a·MD-04b+기준), G3 144 pass / **6 fail** — FSEvents 4건 + **TT-01b 1회 실패**(닫은 터미널의 프로세스가 10초 안에 끝나지 않음, 기준 TT-01 포함; 같은 빌드 agents 3회 재실행은 모두 통과, 원인 미확인 → known-issues #16). 출시 input·selection 44/0, persist PS-01/02/04/05/06, ux-stress 9/9(files 포함), LY-02b, smoke 22/22
+- 2026-11-23 `v2.0.0-beta.10` pre-release(사용자 "올려줘", Codex 리뷰 없음): 태그·원격 `v2` → `692c82af7ee1da628305ee3356ad0ede9e432e4d`, build 127, `AIBVersionLabel=2.0.0-beta.10`(`VERSION_LABEL=2.0.0-beta.10 VARIANT=release ./scripts/package-app.sh`), `AIBSourceDirty=false`, 실행 파일 SHA-256 `3bf84c3feb61b72b76d8bf6687e1e15bea1d66aef29502fae77cfef5ddfb17b0`. 자산 SHA-256: DMG `b8d8841b533664f271576ed90537ae4bb3c230c25606f62be0d6307b57dc85c3`, app.tar.gz `bd5afd667c6b55768f9096c8082a8cd6306004bd830e1425eb0f6ec1ac67d2ab`(내려받아 `shasum -c`, DMG·tar 안 앱 서명·해시·버전 표기 확인). 같은 commit 검증: G2 210 pass / **6 fail**, G3 148 pass / **4 fail** — 모두 FSEvents(known-issues #15). TT-01b 통과(#16 수정 후). 출시 input·selection 44/0, persist PS-01/02/04/05/06, ux-stress 9/9, LY-02b, smoke 22/22
+
+## 정식 배포
+
+- 2026-11-24 **`v2.0.0` 정식 릴리스(latest)**(사용자 "정식배포 가보자. 문제생기면 또 패치해서 올리면되는거니깐", Codex 리뷰 없음): 태그·원격 `v2` → `666ecc29f1ddd88f896acf9e3b492290494f8609`, build 134, `AIBVersionLabel=2.0.0`, `AIBSourceDirty=false`, 실행 파일 SHA-256 `8bc5fe7a1fea1e3e6d2131f274eaa4c06deba039296a61fbeb1d92c68be6a12a`. 자산 SHA-256: DMG `0be7567201901d1be8347511a44f2526e31daed400edfe0bee064afd08c0db3d`, app.tar.gz `461e7154de19cac44976acff91d897558dd482c1a1c19ae13163611733adfb39`(내려받아 `shasum -c`, DMG·tar 안 앱 서명·해시·버전 표기 확인). 같은 commit 검증: G2 **217 pass / 0 fail**, G3 149 pass / 4 fail(AR-01a·MD-04b+기준, FSEvents #15 — 같은 commit 개발 빌드는 통과), 출시 input·selection 44/0, persist PS-01/02/04/05/06, ux-stress 9/9, smoke 22/22. 첫 후보 `caeab3a`(build 133)는 검증에서 PS-05c fail(2회 재현) → 원인 수정 `666ecc2` 후 처음부터 재검증. v1 자동 업데이트·Homebrew cask가 없어 latest 변경이 v1 사용자에게 영향 없음 확인. `main` 브랜치는 아직 v1(전환은 사용자 결정). 남은 관문: G4 사람 검사, G6 실사용 smoke, P06~P08(README '알려진 제한'에 명시)
+
+## 미완 범위 (설계 대비, beta에 표기)
+
+v1 패리티(G1) 완료와 aib 전체 의도 충족은 다르다(Codex build-84 F3, `docs/reviews/codex-build84-triage.md`).
+
+1. Council 의사록 전용 화면: 라운드 접기, 최종 결론 중심, 합의도, 검증 3상태(미검증/통과/실패). 현재는 목록 + Markdown 뷰어
+2. `archive prune`·`hooks codex install` 전용 경로(의미·보존·위험 설명). 현재는 터미널/Quick Command로만
+
+## 게시 기록 (beta 포함, 게시할 때마다)
+
+태그는 자산을 빌드한 commit에 붙이고, 아래를 Release 본문과 이 문서에 함께 남긴다(Codex build-84: 설치본을 commit에 묶을 근거가 없었음).
+
+- 태그 → commit SHA (`git rev-parse <tag>^{commit}`)
+- 앱: `CFBundleVersion`(build), `AIBSourceCommit`·`AIBSourceDirty=false`(Info.plist), build-info의 `executable_sha256`
+- 자산: `SHA256SUMS`(DMG·.app.tar.gz)
+- 그 commit의 검증: G2 전체 dev, G3 출시 빌드, `ux-stress.sh` 8/8, 데몬 smoke
+
+## 결정 필요 (사용자)
+
+1. 앱 이름: 기본값 "AI Barracks CommandCenter 2"(`scripts/package-app.sh` VARIANT=release 한 곳에서 바꿈)
+2. 소스 저장소: 이 PoC 저장소를 `ai-barracks` org에 새 repo로 올릴지, `ai-barracks-cc`의 v2 브랜치/디렉터리로 합칠지
+3. 배포: v1처럼 GitHub Actions DMG 빌드 + Release, Homebrew cask 추가 여부, 서명·공증(Developer ID) 여부
+4. 아이콘: `scripts/make-icon.swift` 기본안(프롬프트 + liveness 비콘 3개)
+
+## 출시 절차 (결정 후)
+
+```bash
+VERSION_LABEL=2.0.0 VARIANT=release ./scripts/package-app.sh   # 사이드바 표기(베타는 2.0.0-beta.N)
+open -W "dist/release/AI Barracks CommandCenter 2.app" --args --selftest --selftest-only=unit,agents   # G3
+./scripts/make-dmg.sh
+git tag v2.0.0
+# 원격 push, GitHub Release(gh release create — 태그만 push하지 말 것), cask 갱신은 결정 2·3에 따라
+```

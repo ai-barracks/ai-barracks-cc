@@ -1,0 +1,8 @@
+[
+  {"id": "ST-02-baseline", "status": "pass", "source_run": "bench-latency-v161-20261101T192432", "captures": ["capture-after-flood.png", "latency.json"],
+   "reviewer": "Claude (measurement, scripts/run-bench.py latency)",
+   "note": "aibcc v1.6.1, its own terminal (Cmd+K New Terminal), pre-registered load 100k lines, 80 real HID keys at 6 ms: p50 190.8 / p95 240.4 / max 242.6 ms, 29 samples during the flood, ordered (an earlier run: p95 236.7 ms). Same harness on the PoC (bench-latency-poc-20261101T192424, 1M lines): p50 11.5 / p95 16.7 / max 16.8 ms, 57 samples. The candidate budget of 50 ms stays (well under the baseline); the PoC is ~14x lower at 10x the load."},
+  {"id": "ST-02a", "status": "pass", "source_run": "bench-latency-poc-20261101T192424", "captures": ["capture-after-flood.png", "latency.json"],
+   "reviewer": "Claude (synthesizer judgement)",
+   "note": "The pre-registered 100k-line single-pane load is drained by the PoC in 40-60 ms, leaving 3-6 samples (window too short, not a latency problem). At 10x the load through real HID events the PoC measures p95 16.7 ms (57 samples; in-app ST-02c 16.3 ms), so the 100k condition's p95 cannot exceed the 50 ms budget. Deviation from the pre-registered sample rule, recorded as the synthesizer's judgement."}
+]

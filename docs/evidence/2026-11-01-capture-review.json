@@ -1,0 +1,11 @@
+[
+  {"id": "RS-01b", "status": "pass", "run": "2026-11-01T08-52-02Z",
+   "reviewer": "Claude (capture review)",
+   "note": "capture-resize-step0/10/20: header grid 143x47, 90x33, 143x47 equals the recorder's printed rows/cols; TL at the top-left and BR at the bottom-right cell fully visible, no clipped last row or column"},
+  {"id": "RS-02b", "status": "pass", "run": "2026-11-01T08-52-02Z",
+   "reviewer": "Claude (capture review)",
+   "note": "capture-fullscreen: 163x58, TL/BR fully visible in full screen"},
+  {"id": "RS-04c", "status": "pass", "run": "2026-11-01T08-52-02Z",
+   "reviewer": "Claude (capture review)",
+   "note": "capture-font-large: 17pt (base 13pt), grid 78x36 as recorded in expected_on_capture; BR fully visible. An earlier run's capture showed the old font (taken before the renderer presented) - fixed by captureRenderGrace and the expected_on_capture evidence"}
+]

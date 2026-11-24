@@ -1,0 +1,800 @@
+import AppKit
+import GhosttyTerminal
+import Observation
+
+/// What the center shows for the selected barrack (spec §4 destinations).
+enum Destination: String, CaseIterable, Identifiable, Sendable {
+    /// `barrack` first: the barrack itself (info and status), then its work.
+    case barrack, sessions, history, files, rules, wiki, skills, council, git
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .barrack: "Barrack"
+        case .sessions: "Agents"
+        case .history: "History"
+        case .files: "Files"
+        case .rules: "Rules"
+        case .wiki: "Wiki"
+        case .skills: "Skills"
+        case .council: "Council"
+        case .git: "Git"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .barrack: "building.2"
+        case .sessions: "terminal"
+        case .history: "clock.arrow.circlepath"
+        case .files: "folder"
+        case .rules: "list.bullet.rectangle"
+        case .wiki: "books.vertical"
+        case .skills: "puzzlepiece.extension"
+        case .council: "person.3"
+        case .git: "arrow.triangle.branch"
+        }
+    }
+}
+
+/// Terminal grid owned by one barrack: its panes, preset and split positions.
+struct BarrackGrid {
+    var panes: [TerminalPane]
+    var layout: PaneLayout
+    var splitX: CGFloat
+    var splitY: CGFloat
+}
+
+/// App-wide state. Each barrack owns its own terminal grid so the selected
+/// barrack, the terminals in the center and the artifacts on the right always
+/// share one context (Codex runtime review R1). Switching barracks detaches
+/// the other grid's views without killing their shells — panes own their
+/// views, and Ghostty keeps a surface across detach/reattach. With the
+/// daemon backend the grids are also saved, and a relaunch reattaches to the
+/// same shells.
+@MainActor
+@Observable
+final class WorkspaceModel {
+    let controller: TerminalController
+    private(set) var barracks: [Barrack]
+    /// nil = Ghostty's exec backend (shells end with the app).
+    let daemon: DaemonBackend?
+
+    var selectedBarrackID: Barrack.ID? {
+        willSet { terminalHadFocus = isTerminalFocused() }
+        didSet {
+            activateSelectedGrid()
+            persist()
+            // Hand keyboard focus over only if a terminal had it; keyboard
+            // navigation in the sidebar keeps its focus (Codex review r3 #5).
+            if terminalHadFocus { focusFirstVisiblePaneWhenAttached() }
+        }
+    }
+    @ObservationIgnored private var terminalHadFocus = false
+    /// The terminal that last took keyboard focus (focusedSlot fallback).
+    @ObservationIgnored private var lastFocusedPaneID: UUID?
+    /// What the launch-time reattach did (self-test environment evidence).
+    @ObservationIgnored private(set) var restoreSummary = "not attempted"
+    /// The saved layout whose sessions could not be confirmed (the daemon's
+    /// list failed): every save keeps referring to them, so the next launch
+    /// reattaches instead of killing them as orphans (Codex r4).
+    @ObservationIgnored private var unconfirmed: SavedWorkspace?
+    @ObservationIgnored private var pendingPersist: Task<Void, Never>?
+    var isArtifactPanelVisible = true
+    var destination: Destination = .sessions
+    var isNewAgentSheetPresented = false
+    var isCouncilSheetPresented = false
+    /// v1 System's batch sync (P05).
+    var isSyncSheetPresented = false
+    var isAddBarrackPresented = false
+    /// 기록 destination shows the terminal output archive tab.
+    var historyShowsArchive = false
+    /// An open document edit (DocumentView): navigation asks first (r5).
+    var editInProgress = false
+    /// Bumped when the user discards an edit to navigate: the editor drops
+    /// its buffer even if the navigation leaves it on screen (r6).
+    var discardRevision = 0
+    /// Navigation waiting for "discard the edit?" (alert shown while true).
+    var isConfirmingNavigation = false
+    @ObservationIgnored var pendingNavigation: (@MainActor () -> Void)?
+    /// Asked to unregister (confirmation dialog shown while set).
+    var barrackToRemove: Barrack?
+    var isPalettePresented = false
+    /// The sidebar's 주의 · 작업 중 list (a popover; showcase opens it too).
+    var isAttentionListPresented = false
+    /// Set by ⌘K results; the destination view selects it and clears it.
+    var pendingDocument: URL?
+    var pendingSessionID: String?
+    /// Opens the selected document's form editor (gallery; later ⌘K).
+    var pendingStructuredEdit = false
+    let maintenance = MaintenanceStore()
+    let notices = NoticeCenter()
+    /// What the Files screen has open in each barrack.
+    let fileBrowser = FileBrowserModel()
+    let quickCommands = QuickCommandStore()
+    let scrollback = ScrollbackArchive.standard
+    @ObservationIgnored var lastScrollbackCollection: Date?
+    /// Bumped when the output archive changes (the archive view reloads).
+    var archiveRevision = 0
+    /// Non-nil while the Quick Command sheet is open.
+    var quickCommandDraft: QuickCommand?
+    /// A Quick Command waiting for the user's choice (missing folder, or
+    /// typing into a terminal whose program is unknown).
+    var quickCommandPrompt: QuickCommandPrompt?
+    @ObservationIgnored private(set) var health: HealthMonitor?
+    /// Scheduled activation (not in self-tests).
+    @ObservationIgnored private(set) var activation: ActivationScheduler?
+    @ObservationIgnored private var registryWatcher: DirectoryWatcher?
+    let liveness: LivenessStore
+    private(set) var grids: [String: BarrackGrid] = [:]
+
+    init(barracks: [Barrack] = BarrackRegistry.load(), daemon: DaemonBackend? = DaemonBackend.fromArguments()) {
+        controller = TerminalAppearance.makeController()
+        self.barracks = barracks
+        self.daemon = daemon
+        liveness = LivenessStore(barracks: barracks)
+        // Restore first: with @Observable the didSet below already runs in
+        // init, and it would save a fresh grid over the saved layout.
+        let restoredSelection = daemon.flatMap { restore(from: $0) }
+        selectedBarrackID = restoredSelection ?? barracks.first?.id
+        activateSelectedGrid()
+        startBackgroundWork()
+        if case let .outdated(count)? = daemon?.upgrade, count > 0 {
+            notices.post(AppNotice(kind: .daemon, title: "이전 버전 PTY 데몬이 세션 \(count)개를 유지 중",
+                                   body: "그 세션들이 모두 끝나면(또는 설정 → 세션 모두 종료) 다음 실행부터 새 데몬을 씁니다.",
+                                   actionLabel: nil, barrackID: nil, sessionID: nil))
+        }
+    }
+
+    var selectedBarrack: Barrack? {
+        barracks.first { $0.id == selectedBarrackID }
+    }
+
+    private var gridKey: String { selectedBarrackID ?? "" }
+    private var grid: BarrackGrid {
+        grids[gridKey] ?? BarrackGrid(panes: [], layout: .single, splitX: 0.5, splitY: 0.5)
+    }
+
+    var panes: [TerminalPane] { grid.panes }
+    var layout: PaneLayout { grid.layout }
+    var splitX: CGFloat { grid.splitX }
+    var splitY: CGFloat { grid.splitY }
+
+    /// Switching presets keeps existing panes (and their shells) alive and
+    /// stops drawing panes that are parked. Slots without a pane stay empty
+    /// with start buttons — no shell is started on the user's behalf
+    /// (2026-11-10 feedback: a default shell got in the way).
+    func setLayout(_ newLayout: PaneLayout) {
+        let current = grid
+        store(BarrackGrid(panes: current.panes, layout: newLayout, splitX: current.splitX, splitY: current.splitY))
+    }
+
+    func setSplit(x: CGFloat? = nil, y: CGFloat? = nil) {
+        let range = AppConstants.Layout.splitRatioRange
+        let clamp = { (value: CGFloat) in min(max(value, range.lowerBound), range.upperBound) }
+        let current = grid
+        store(BarrackGrid(panes: current.panes, layout: current.layout,
+                          splitX: x.map(clamp) ?? current.splitX,
+                          splitY: y.map(clamp) ?? current.splitY),
+              persisting: .debounced)
+    }
+
+    /// Self-test hook: replace the current barrack's grid with fixture panes.
+    func replacePanes(_ newPanes: [TerminalPane], layout newLayout: PaneLayout) {
+        let current = grid
+        store(BarrackGrid(panes: newPanes, layout: newLayout, splitX: current.splitX, splitY: current.splitY))
+    }
+
+    func makePane(
+        title: String,
+        command: String? = nil,
+        environment: [String: String] = [:],
+        agent: AgentClient? = nil
+    ) -> TerminalPane {
+        makePane(title: title, command: command, environment: environment,
+                 directory: selectedBarrack?.path, attachingTo: nil, agent: agent)
+    }
+
+    /// A pane on a daemon session that already exists.
+    func makePane(title: String, attachingTo session: UUID) -> TerminalPane {
+        makePane(title: title, command: nil, environment: [:], directory: selectedBarrack?.path, attachingTo: session)
+    }
+
+    private func makePane(
+        title: String,
+        command: String?,
+        environment: [String: String],
+        directory: String?,
+        attachingTo session: UUID?,
+        userCommand: String? = nil,
+        agent: AgentClient? = nil,
+        createdAt: Date = Date()
+    ) -> TerminalPane {
+        let backend: PaneBackend = daemon.map {
+            .daemon($0, sessionID: session ?? UUID(), attach: session != nil)
+        } ?? .exec
+        let pane = TerminalPane(
+            controller: controller,
+            title: title,
+            workingDirectory: directory,
+            command: command,
+            extraEnvironment: environment,
+            backend: backend,
+            userCommand: userCommand,
+            agent: agent,
+            createdAt: createdAt
+        )
+        let paneID = pane.id
+        pane.onExit = { [weak self] pane in self?.archive(pane, barrackPath: directory) }
+        pane.state.onClose = { [weak self] processAlive in
+            self?.handleClose(paneID: paneID, processAlive: processAlive)
+        }
+        return pane
+    }
+
+    /// Replaces a pane with a fresh shell in the same slot (used by the
+    /// "새 셸" button on an exited pane and by surface close requests).
+    func restartPane(id paneID: UUID) {
+        let current = grid
+        guard let index = current.panes.firstIndex(where: { $0.id == paneID }) else { return }
+        let replacement = makePane(title: "shell \(index + 1)")
+        let panes = current.panes.enumerated().map { offset, pane in offset == index ? replacement : pane }
+        store(BarrackGrid(panes: panes, layout: current.layout, splitX: current.splitX, splitY: current.splitY))
+    }
+
+    /// Writes every pane's recorded input-method callbacks to a JSON fixture.
+    /// Used after the human IME checklist so a real keyboard session can be
+    /// replayed later as an `imeCallbackContract` test.
+    func exportInputCallLogs() -> URL? {
+        let allPanes = grids.values.flatMap(\.panes)
+        let logs = Dictionary(
+            allPanes.map { ("\($0.title)-\($0.id.uuidString.prefix(8))", $0.probeView?.callLog ?? []) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(logs) else { return nil }
+        let directory = URL(
+            fileURLWithPath: (AppConstants.SelfTest.defaultOutputDirectory as NSString).expandingTildeInPath,
+            isDirectory: true
+        ).deletingLastPathComponent()
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let file = directory.appendingPathComponent("ime-calllog-\(stamp).json")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: file, options: .atomic)
+            return file
+        } catch {
+            return nil
+        }
+    }
+
+    // MARK: - Private
+
+    /// A barrack's Agents start empty; the user starts what they need.
+    private func activateSelectedGrid() {
+        updateSurfaceVisibility()
+    }
+
+    private enum Persisting { case now, debounced }
+
+    private func store(_ newGrid: BarrackGrid, persisting: Persisting = .now) {
+        let kept = Set(newGrid.panes.map(\.id))
+        let removed = (grids[gridKey]?.panes ?? []).filter { !kept.contains($0.id) }
+        grids = grids.merging([gridKey: newGrid]) { _, new in new }
+        removed.forEach { pane in
+            archive(pane, barrackPath: selectedBarrack?.path)
+            pane.terminate()
+        }
+        updateSurfaceVisibility()
+        switch persisting {
+        case .now: persist()
+        case .debounced: persistSoon()
+        }
+    }
+
+    private func persistSoon() {
+        guard daemon != nil else { return }
+        pendingPersist?.cancel()
+        pendingPersist = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: AppConstants.Daemon.persistDebounce)
+            guard !Task.isCancelled else { return }
+            self?.persist()
+        }
+    }
+
+    // MARK: - Daemon session persistence
+
+    /// Reattaches every saved pane whose session the daemon still holds;
+    /// a grid that lost sessions is topped up with fresh shells. Returns the
+    /// saved selection. Must not touch `selectedBarrackID` (its didSet saves).
+    private func restore(from daemon: DaemonBackend) -> Barrack.ID? {
+        guard let saved = SessionStore.load(from: daemon.sessionStoreURL) else {
+            restoreSummary = "no saved layout"
+            return nil
+        }
+        guard let known = Self.listWithRetry(daemon) else {
+            unconfirmed = saved
+            restoreSummary = "daemon session list unavailable; saved sessions kept"
+            return nil
+        }
+        // Sessions no saved pane refers to were orphaned (e.g. a kill lost
+        // in a crash); nothing can ever attach to them again.
+        let referenced = Set(saved.grids.values.flatMap(\.panes).map(\.session))
+        let orphans = known.subtracting(referenced)
+        daemon.killSessions(Array(orphans))
+        let restored: [String: BarrackGrid] = barracks.reduce(into: [:]) { result, barrack in
+            guard let grid = saved.grids[barrack.id] else { return }
+            // The launch is known only if it was recorded: an unknown folder
+            // stays unknown rather than posing as the barrack's.
+            // A record from before creation times keeps its saved order.
+            let attached = grid.panes.enumerated().filter { known.contains($0.element.session) }.map { index, pane in
+                makePane(title: pane.title, command: nil, environment: [:], directory: pane.directory, attachingTo: pane.session,
+                         userCommand: pane.command, agent: pane.agent.flatMap(AgentClient.init(rawValue:)),
+                         createdAt: Date(timeIntervalSince1970: pane.created ?? Double(index)))
+            }
+            guard !attached.isEmpty else { return }
+            let layout = PaneLayout.restored(name: grid.layoutName, slots: grid.layout)
+            result[barrack.id] = BarrackGrid(panes: attached, layout: layout,
+                                             splitX: CGFloat(grid.splitX), splitY: CGFloat(grid.splitY))
+        }
+        grids = restored
+        let savedPanes = saved.grids.values.map(\.panes.count).reduce(0, +)
+        let attachedPanes = restored.values.flatMap(\.panes).filter { $0.remote.map { known.contains($0.id) } ?? false }
+        restoreSummary = "saved=\(savedPanes) attached=\(attachedPanes.count) grids=\(restored.count) "
+            + "orphans_killed=\(orphans.count)"
+        return saved.selectedBarrackID.flatMap { selected in barracks.first { $0.id == selected }?.id }
+    }
+
+    private static func listWithRetry(_ daemon: DaemonBackend, attempts: Int = 3) -> Set<UUID>? {
+        for attempt in 0..<attempts {
+            if let sessions = daemon.listSessions() { return Set(sessions.map(\.id)) }
+            if attempt < attempts - 1 { usleep(200_000) }
+        }
+        return nil
+    }
+
+    private func persist() {
+        pendingPersist?.cancel()
+        pendingPersist = nil
+        guard let daemon else { return }
+        let current = SavedWorkspace(selectedBarrackID: selectedBarrackID, grids: grids.mapValues { grid in
+            SavedWorkspace.Grid(
+                layout: grid.layout.paneCount, layoutName: grid.layout.rawValue,
+                splitX: Double(grid.splitX), splitY: Double(grid.splitY),
+                panes: grid.panes.compactMap { pane in
+                    pane.remote.map {
+                        SavedWorkspace.Pane(session: $0.id, title: pane.title, command: pane.userCommand,
+                                            directory: pane.workingDirectory, agent: pane.agent?.rawValue,
+                                            created: pane.createdAt.timeIntervalSince1970)
+                    }
+                }
+            )
+        })
+        SessionStore.save(unconfirmed.map { SavedWorkspace.keeping($0, in: current) } ?? current, to: daemon.sessionStoreURL)
+    }
+
+    /// Ghostty asked to close the surface after its process ended: the
+    /// pane goes (its screen is archived) rather than turning into a new
+    /// shell. Close requests for live processes are ignored.
+    private func handleClose(paneID: UUID, processAlive: Bool) {
+        guard !processAlive else { return }
+        closePane(id: paneID)
+    }
+
+    /// Only the selected barrack's visible panes draw; keyboard focus never
+    /// stays on a parked pane (Codex review r2 #2).
+    private func updateSurfaceVisibility() {
+        let visible = Set(grid.panes.prefix(grid.layout.paneCount).map(\.id))
+        for pane in grids.values.flatMap(\.panes) {
+            pane.state.isSurfaceVisible = visible.contains(pane.id)
+        }
+        let parked = grid.panes.dropFirst(grid.layout.paneCount)
+        guard let focusedParked = parked.first(where: { pane in
+            guard let view = pane.probeView, let responder = view.window?.firstResponder as? NSView else { return false }
+            return responder === view || responder.isDescendant(of: view)
+        }), let target = grid.panes.first?.probeView else { return }
+        if focusedParked.probeView?.hasMarkedText() == true { focusedParked.probeView?.unmarkText() }
+        target.window?.makeFirstResponder(target)
+    }
+
+    private func isTerminalFocused() -> Bool {
+        grid.panes.contains { pane in
+            guard let view = pane.probeView, let responder = view.window?.firstResponder as? NSView else { return false }
+            return responder === view || responder.isDescendant(of: view)
+        }
+    }
+
+    private func focusFirstVisiblePaneWhenAttached() {
+        let target = grid.panes.first
+        Task { @MainActor in
+            for _ in 0..<AppConstants.Layout.focusHandoffAttempts {
+                if let view = target?.probeView, let window = view.window {
+                    window.makeFirstResponder(view)
+                    return
+                }
+                try? await Task.sleep(for: AppConstants.SelfTest.pollInterval)
+            }
+        }
+    }
+}
+
+// MARK: - Agents and attention (spec §7: ⌘N, ⌘⇧A)
+
+extension WorkspaceModel {
+    /// ⌘N: a new pane running `aib start <client>` in the selected barrack.
+    /// It takes an empty slot or the focused one; the layout stays as set.
+    @discardableResult
+    func launchAgent(_ client: AgentClient, skipPermissions: Bool) -> TerminalPane? {
+        guard AgentClient.launchable.contains(client) else { return nil }
+        let profile = ProviderProfiles.load(client)
+        return openPane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions, profile: profile),
+                        userCommand: AgentLauncher.start(client, skipPermissions: skipPermissions, profile: profile),
+                        agent: client == .terminal ? nil : client)
+    }
+
+    /// 정비 actions run where the user sees them: a new pane in the
+    /// barrack, through a login shell that stays afterwards.
+    @discardableResult
+    func runInPane(title: String, command: String, directory: String? = nil) -> TerminalPane? {
+        openPane(title: title, command: "/bin/zsh -lc " + AgentLauncher.shellQuote(command + "; exec /bin/zsh -l"),
+                 directory: directory, userCommand: command)
+    }
+
+    /// With an edit open, nothing is created until the user agreed to leave
+    /// it (r7: the pane was made and saved first, and stayed on "cancel").
+    /// `directory` nil: the barrack's folder.
+    func openPane(title: String, command: String?, directory: String? = nil,
+                          userCommand: String? = nil, agent: AgentClient? = nil) -> TerminalPane? {
+        guard !editInProgress else {
+            navigate { [weak self] in
+                _ = self?.openPane(title: title, command: command, directory: directory, userCommand: userCommand, agent: agent)
+            }
+            return nil
+        }
+        guard let barrack = selectedBarrack else { return nil }
+        let folder = directory ?? barrack.path
+        let current = grid
+        let pane = makePane(title: title, command: command, environment: [:], directory: folder, attachingTo: nil,
+                            userCommand: userCommand, agent: agent)
+        let placed = PanePlacement.adding(pane, to: current.panes, layout: current.layout, focused: focusedSlot)
+        store(BarrackGrid(panes: placed, layout: current.layout, splitX: current.splitX, splitY: current.splitY))
+        destination = .sessions
+        focusWhenAttached(pane)
+        return pane
+    }
+
+    /// ⌘⇧A: the next session that needs the user (blocked first), in the
+    /// fixed barrack order. Selects its barrack and focuses the pane that
+    /// runs it; a `done` is acknowledged on arrival (never a `blocked`).
+    @discardableResult
+    func goToNextAttention() -> LiveSession? {
+        let candidates = barracks.flatMap { barrack in
+            liveness.sessions(of: barrack.id).filter(\.needsAttention).map { (barrack, $0) }
+        }
+        guard let (barrack, session) = candidates.first(where: { $0.1.state == .blocked }) ?? candidates.first else {
+            return nil
+        }
+        return goTo(session, in: barrack)
+    }
+
+    /// Sessions that need the user, in every barrack: waiting for input
+    /// first, then crashed, then finished and not yet seen; newest first
+    /// within each (the "주의" list, 2026-11-23 feedback: the count said
+    /// nothing about what it counted or where to look).
+    var attentionItems: [(barrack: Barrack, session: LiveSession)] {
+        let rank: [Liveness: Int] = [.blocked: 0, .crashed: 1, .done: 2]
+        return barracks.flatMap { barrack in
+            liveness.sessions(of: barrack.id).filter(\.needsAttention).map { (barrack: barrack, session: $0) }
+        }
+        .enumerated()
+        .sorted { ((rank[$0.element.session.state] ?? 3), $0.element.session.ageSeconds, $0.offset)
+            < ((rank[$1.element.session.state] ?? 3), $1.element.session.ageSeconds, $1.offset) }
+        .map(\.element)
+    }
+
+    /// Sessions whose agent is producing a reply right now.
+    var workingItems: [(barrack: Barrack, session: LiveSession)] { items(in: .working) }
+
+    /// Sessions that said they were working and then went quiet (longer
+    /// than aib's stale limit, 3 minutes by default).
+    var silentItems: [(barrack: Barrack, session: LiveSession)] { items(in: .workingStale) }
+
+    private func items(in state: Liveness) -> [(barrack: Barrack, session: LiveSession)] {
+        barracks.flatMap { barrack in
+            liveness.sessions(of: barrack.id).filter { $0.state == state }.map { (barrack: barrack, session: $0) }
+        }
+    }
+
+    /// Marks every finished session as seen (they leave the 주의 list).
+    func acknowledgeFinished() {
+        for (barrack, session) in attentionItems where session.state == .done {
+            LivenessAck.write(barrackPath: barrack.path, sessionID: session.id, runID: session.runID)
+        }
+        liveness.refresh()
+    }
+
+    /// Terminals still running in a barrack's Agents screen.
+    func liveTerminalCount(of barrackID: Barrack.ID) -> Int {
+        grids[barrackID]?.panes.filter { !$0.hasExited }.count ?? 0
+    }
+
+    /// Shows the terminal that runs `session` (or the barrack's screen when
+    /// none here does); a finished one counts as seen.
+    @discardableResult
+    func goTo(_ session: LiveSession, in barrack: Barrack) -> LiveSession? {
+        guard !editInProgress else {
+            navigate { [weak self] in self?.goTo(session, in: barrack) }
+            return nil
+        }
+        selectedBarrackID = barrack.id
+        destination = .sessions
+        if let pane = pane(running: session, in: barrack.id) {
+            focusWhenAttached(pane)
+        } else {
+            // No pane runs it here: the barrack's session list shows it.
+            destination = .barrack
+        }
+        if session.state == .done {
+            LivenessAck.write(barrackPath: barrack.path, sessionID: session.id, runID: session.runID)
+            liveness.refresh()
+        }
+        return session
+    }
+
+    /// The pane whose process tree contains the session's agent pid.
+    func pane(running session: LiveSession, in barrackID: Barrack.ID) -> TerminalPane? {
+        guard session.pid > 0 else { return nil }
+        return grids[barrackID]?.panes.first { pane in
+            pane.processID.map { ProcessTree.isDescendant(session.pid, of: $0) } ?? false
+        }
+    }
+
+    func focusWhenAttached(_ pane: TerminalPane) {
+        Task { @MainActor in
+            for _ in 0..<AppConstants.Layout.focusHandoffAttempts {
+                if let view = pane.probeView, let window = view.window {
+                    window.makeFirstResponder(view)
+                    return
+                }
+                try? await Task.sleep(for: AppConstants.SelfTest.pollInterval)
+            }
+        }
+    }
+}
+
+// MARK: - Daemon sessions
+
+extension WorkspaceModel {
+    /// Ends every shell and agent the daemon holds, after confirmation.
+    func confirmEndAllSessions() {
+        guard let daemon else { return }
+        let alert = NSAlert()
+        alert.messageText = "모든 세션을 종료할까요?"
+        alert.informativeText = "모든 배럭의 터미널과 에이전트가 종료됩니다. 실행 중인 작업은 중단됩니다."
+        alert.addButton(withTitle: "모두 종료")
+        alert.addButton(withTitle: "취소")
+        alert.alertStyle = .warning
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        daemon.shutdownSessions()
+    }
+}
+
+// MARK: - ⌘K results
+
+extension WorkspaceModel {
+    /// Opens a search hit where it lives: its barrack, then the session
+    /// record, the Wiki topic or the rules document.
+    func open(_ hit: SearchHit) {
+        guard !editInProgress else { return navigate { [weak self] in self?.open(hit) } }
+        selectedBarrackID = hit.barrackID
+        switch hit.source {
+        case .session:
+            pendingSessionID = hit.title
+            destination = .history
+        case .wiki:
+            pendingDocument = hit.file
+            destination = .wiki
+        case .rules, .config:
+            pendingDocument = hit.file
+            destination = .rules
+        }
+    }
+}
+
+// MARK: - Health, notices, registry (v1 watcher parity)
+
+extension WorkspaceModel {
+    /// Self-tests run without background checks or toasts over the window.
+    private var isSelfTest: Bool { CommandLine.arguments.contains { $0.hasPrefix("--selftest") } }
+
+    fileprivate func startBackgroundWork() {
+        liveness.onNewAttention = { [weak self] sessions in self?.announce(sessions) }
+        guard !isSelfTest else { return }
+        let monitor = HealthMonitor(workspace: self, notices: notices)
+        health = monitor
+        monitor.start()
+        // Shares v1's file and lock: only one app schedules.
+        let scheduler = ActivationScheduler(directory: AppConstants.Activation.directory)
+        activation = scheduler
+        scheduler.start()
+        let registry = URL(fileURLWithPath: (AppConstants.Paths.barracksRegistry as NSString).expandingTildeInPath)
+        let watcher = DirectoryWatcher(url: registry.deletingLastPathComponent()) { [weak self] in self?.reloadRegistry() }
+        watcher.start()
+        registryWatcher = watcher
+    }
+
+    /// ~/.aib/barracks.json changed (aib init / barracks remove): new list,
+    /// same grids for barracks that remain.
+    func reloadRegistry(_ read: [Barrack]? = BarrackRegistry.read()) {
+        guard let loaded = read, loaded != barracks else { return }
+        barracks = loaded
+        liveness.update(barracks: loaded)
+        if let selected = selectedBarrackID, !loaded.contains(where: { $0.id == selected }) {
+            selectedBarrackID = loaded.first?.id
+        }
+    }
+
+    private func announce(_ sessions: [LiveSession]) {
+        for session in sessions {
+            let barrackID = liveness.barrackID(of: session)
+            let name = barracks.first { $0.id == barrackID }?.name ?? ""
+            notices.post(AppNotice(kind: .attention, title: "\(name): \(session.state.label)",
+                                   body: session.id, actionLabel: "이동", barrackID: barrackID, sessionID: session.id))
+        }
+    }
+
+    /// A toast's action.
+    func perform(_ notice: AppNotice) {
+        guard !editInProgress || !notice.kind.navigates else { return navigate { [weak self] in self?.perform(notice) } }
+        notices.dismiss(notice.id)
+        switch notice.kind {
+        case .stale:
+            if let barrack = notice.barrackID { selectedBarrackID = barrack }
+            pendingSessionID = notice.sessionID
+            destination = .history
+        case .sync:
+            syncAll(paths: health?.outdatedBarracks ?? [])
+        case .registry, .daemon, .panes:
+            break
+        case .export:
+            if let path = notice.sessionID { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
+        case .attention:
+            if let barrack = notice.barrackID { selectedBarrackID = barrack }
+            destination = .sessions
+            if let id = notice.sessionID, let barrack = notice.barrackID,
+               let session = liveness.sessions(of: barrack).first(where: { $0.id == id }),
+               let pane = pane(running: session, in: barrack) {
+                focusWhenAttached(pane)
+            }
+        }
+    }
+
+    /// v1 "Sync All Barracks": every given barrack (all if none), dry run
+    /// first, applied on Enter, in a pane.
+    @discardableResult
+    func syncAll(paths: [String]) -> TerminalPane? {
+        let targets = (paths.isEmpty ? barracks.map(\.path) : paths).map(AgentLauncher.shellQuote).joined(separator: " ")
+        return runInPane(title: "Sync All", command: SyncAll.command(quotedPaths: targets))
+    }
+}
+
+enum SyncAll {
+    static func command(quotedPaths: String) -> String {
+        MaintenanceScanner.confirmThenApply("for p in \(quotedPaths); do aib sync --dry-run \"$p\"; done",
+                                            "for p in \(quotedPaths); do aib sync \"$p\"; done")
+    }
+}
+
+// MARK: - Terminal management (v1 terminal tab bar parity)
+
+extension WorkspaceModel {
+    /// The pane with keyboard focus, else the first visible one.
+    var focusedPane: TerminalPane? {
+        let visible = panes.prefix(layout.paneCount)
+        return visible.first { pane in
+            guard let view = pane.probeView, let responder = view.window?.firstResponder as? NSView else { return false }
+            return responder === view || responder.isDescendant(of: view)
+        } ?? visible.first
+    }
+
+    /// Ends the pane's shell; the preset shrinks to fit what is left. The
+    /// last one leaves the empty Agents screen, not a new shell.
+    func closePane(id paneID: UUID) {
+        let current = grid
+        let remaining = PanePlacement.removing(paneID, from: current.panes, layout: current.layout)
+        let fitting = PaneLayout.fitting(min(remaining.count, current.layout.paneCount), keeping: current.layout)
+        store(BarrackGrid(panes: remaining, layout: fitting, splitX: current.splitX, splitY: current.splitY))
+    }
+
+    /// An Agents bar chip: focus a pane that is on screen where it is; bring
+    /// a hidden one to the front.
+    /// The barrack's terminals in the order they were started: the agent
+    /// list's order, which stays put when terminals trade slots
+    /// (2026-11-13 feedback: rows moved when one was clicked).
+    var panesByStart: [TerminalPane] {
+        panes.enumerated().sorted { ($0.element.createdAt, $0.offset) < ($1.element.createdAt, $1.offset) }.map(\.element)
+    }
+
+    func selectPane(id paneID: UUID) {
+        guard let index = panes.firstIndex(where: { $0.id == paneID }) else { return }
+        guard index < layout.paneCount else { return show(paneID, inSlot: focusedSlot ?? 0) }
+        destination = .sessions
+        focusWhenAttached(panes[index])
+    }
+
+    /// The slot whose terminal has keyboard focus or, when focus went to the
+    /// agent list or elsewhere, the slot last focused.
+    var focusedSlot: Int? {
+        let visible = panes.prefix(layout.paneCount)
+        let focused = visible.firstIndex { pane in
+            guard let view = pane.probeView, let responder = view.window?.firstResponder as? NSView else { return false }
+            return responder === view || responder.isDescendant(of: view)
+        }
+        return focused ?? lastFocusedPaneID.flatMap { id in visible.firstIndex { $0.id == id } }
+    }
+
+    /// Called when a terminal takes keyboard focus.
+    func noteFocused(_ paneID: UUID) {
+        lastFocusedPaneID = paneID
+    }
+
+    /// Puts `paneID` in `slot` (slot menu, agent list): the pane there
+    /// trades places with it, or goes off screen if it was held.
+    func show(_ paneID: UUID, inSlot slot: Int) {
+        guard !editInProgress else { return navigate { [weak self] in self?.show(paneID, inSlot: slot) } }
+        let current = grid
+        let panes = PanePlacement.showing(paneID, inSlot: slot, of: current.panes, layout: current.layout)
+        store(BarrackGrid(panes: panes, layout: current.layout, splitX: current.splitX, splitY: current.splitY))
+        destination = .sessions
+        if let pane = panes.first(where: { $0.id == paneID }) { focusWhenAttached(pane) }
+    }
+
+    /// The aib session running in `pane`, if any.
+    func liveSession(of pane: TerminalPane) -> LiveSession? {
+        guard let barrack = selectedBarrackID else { return nil }
+        return liveness.sessions(of: barrack).first { self.pane(running: $0, in: barrack)?.id == pane.id }
+    }
+
+    /// What the agent in `pane` is doing (aib liveness), if one runs there.
+    func liveness(of pane: TerminalPane) -> Liveness? {
+        guard let barrack = selectedBarrackID else { return nil }
+        return liveness.sessions(of: barrack).first { self.pane(running: $0, in: barrack)?.id == pane.id }?.state
+    }
+
+    /// Moves a (possibly hidden) pane into the first slot and focuses it.
+    func bringToFront(id paneID: UUID) {
+        guard !editInProgress else { return navigate { [weak self] in self?.bringToFront(id: paneID) } }
+        let current = grid
+        guard let pane = current.panes.first(where: { $0.id == paneID }) else { return }
+        store(BarrackGrid(panes: [pane] + current.panes.filter { $0.id != paneID }, layout: current.layout,
+                          splitX: current.splitX, splitY: current.splitY))
+        destination = .sessions
+        focusWhenAttached(pane)
+    }
+
+    func exportOutput(of pane: TerminalPane) {
+        guard let barrack = selectedBarrack else { return }
+        let text = pane.probeView?.readScreenText() ?? ""
+        switch TerminalExport.write(text, barrackPath: barrack.path, title: pane.title) {
+        case let .success(url):
+            notices.post(AppNotice(kind: .export, title: "출력 내보냄", body: url.path, actionLabel: "Finder에서 보기",
+                                   barrackID: nil, sessionID: url.path))
+        case let .failure(failure):
+            notices.post(AppNotice(kind: .export, title: "내보내지 못함",
+                                   body: failure == .empty ? "내보낼 출력이 없습니다" : "sessions 폴더에 쓸 수 없습니다",
+                                   actionLabel: nil, barrackID: nil, sessionID: nil))
+        }
+    }
+}
+
+// MARK: - Settings
+
+extension WorkspaceModel {
+    /// Re-applies terminal settings to every open surface.
+    func applySettings(_ settings: AppSettings.Terminal = AppSettings.terminal()) {
+        controller.setTerminalConfiguration(TerminalAppearance.configuration(settings))
+    }
+}
+
