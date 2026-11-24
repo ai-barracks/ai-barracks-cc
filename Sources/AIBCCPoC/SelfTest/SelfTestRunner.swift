@@ -99,8 +99,9 @@ struct SelfTestRunner {
 
     private func runSuite(_ name: String, harness: SelfTestHarness) async -> [TestResult] {
         switch name {
-        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + [OverviewSuite().run(), ScrollbackSuite().run(), V1ImportSuite().run()] + ActivationSuite().run() + [await ActivationSettingsTests.run(), CrashTraceProbe.run(), await BarrackSyncTests.run()] + (await UnitSuite().runAsync()) + (await GitSuite().run()) + (await ProviderSuite().run()) + [await ReviewR5Suite().run()] + ReviewR6Suite().run() + [await ReviewR6Suite().writeLock()] + (await ReviewR7Suite().run())
+        case "unit": return UnitSuite().run() + DocumentSuite().run() + SkillSuite().run() + [OverviewSuite().run(), ScrollbackSuite().run(), V1ImportSuite().run()] + ActivationSuite().run() + [await ActivationSettingsTests.run(), CrashTraceProbe.run(), await BarrackSyncTests.run()] + (await UnitSuite().runAsync()) + (await GitSuite().run()) + (await ProviderSuite().run()) + [await ReviewR5Suite().run()] + ReviewR6Suite().run() + [await ReviewR6Suite().writeLock()] + (await ReviewR7Suite().run()) + [WrapUpTests.rule()]
         case "agents": return await AgentSuite(harness: harness).run() + [await SkillSuite().syncIntegration(), await BarrackAdminSuite().run()]
+            + (await WrapUpTests(harness: harness).run())
         case "packaging": return await PackagingSuite(harness: harness).run()
         case "input": return await InputSuite(harness: harness).run()
         case "resize": return await ResizeSuite(harness: harness).run()

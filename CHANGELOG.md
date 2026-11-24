@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **정리하고 닫기(⌘⇧W)**(2026-11-24 사용자 질문 "X로 닫으면 세션 정리가 되나?" → 실측): 에이전트 목록의 X는 에이전트를 끊어(SIGHUP, 3초 뒤 SIGKILL) aib hook의 기록 종료(행 제거·Status completed·Ended·봉인, Claude는 violations까지)는 되지만, 배럭 프로토콜의 Growth Audit(wiki·RULES.md·Wiki Extractions)은 에이전트가 할 턴이 없어 빠졌음. 에이전트 메뉴 "정리하고 닫기"(⌘⇧W, 포커스된 터미널)·목록 X 확인창·칸 메뉴에서 한 줄 요청("끝. 세션 종료 절차를 진행해 주세요 …")을 입력하고 Enter는 0.4초 뒤 따로 보냄(Codex가 빠른 입력 속 Enter를 붙여넣은 줄바꿈으로 읽음), aib 상태 파일에 요청 뒤 시각의 완료(done/idle)가 쓰이고 3초 지나면 닫음(aib는 세션 내내 run_id 하나를 써서 시각으로 판정, 3초는 그 턴의 다른 Stop hook 몫). 셸·작업 중·입력 대기에는 입력하지 않고(막 시작해 SessionStart의 `working`인 에이전트는 보냄), 정리 중 입력 대기(권한 확인 등)면 닫지 않고 기다리며, 30분 지나면 포기, 다시 누르면 닫지 않음. aib 상태가 없는 에이전트(hook 없는 Codex)는 요청만 보냄. ⌘⇧W는 메뉴 매칭이 self-test에서 닿지 않아(known-issues #18) 키 위치로 받는 이벤트 모니터가 처리하고, Ghostty 기본 ⌘⇧W(close_window)는 풀어 둠. 실제 Claude(데모 배럭, 앱과 같은 데몬 경로)로 확인: 요청 39초 뒤 완료 → 닫힘, 세션 파일 Task·Log·Wiki Extractions(분류별 사유)·Ended·completed, 위반 기록 없음. 실제 Codex 확인은 이 맥의 Codex가 시작 시 업데이트·백그라운드 서버 선택 창을 띄워 하지 못함. WU-01a~c(판정 함수를 '항상 기다림'으로 둔 빌드에서 RED; 3초 대기·막 시작한 세션은 실제 에이전트 확인 뒤 추가)
+
 ## [2.0.0] - 2026-11-24
 
 CommandCenter 2 정식 출시(사용자 "정식배포 가보자"). Swift + libghostty로 다시 만든 v2의 첫 정식 버전으로, 아래는 beta.10 이후 변경이다. 베타 기간 전체 변경은 아래 beta 항목들에 있다. 남은 제한(v1 기능 중 일부만 옮긴 P06~P08, 사람 검사 미실시, Apple 공증 없음)은 README '알려진 제한'과 `docs/RELEASE.md`에 있다.

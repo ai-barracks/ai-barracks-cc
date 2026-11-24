@@ -42,12 +42,14 @@ struct MainView: View {
         .overlay(alignment: .topTrailing) { ToastStack(workspace: workspace) }
         .sheet(item: $workspace.quickCommandDraft) { draft in QuickCommandSheet(workspace: workspace, draft: draft) }
         .modifier(QuickCommandPrompts(workspace: workspace))
+        .modifier(CloseRequestDialog(workspace: workspace))
         .navigationTitle(workspace.selectedBarrack?.name ?? "AIBCC")
         .navigationSubtitle(workspace.destination.label)
         .onChange(of: workspace.selectedBarrackID, initial: true) {
             artifacts.watch(root: workspace.selectedBarrack?.url)
         }
         .task {
+            WrapUpShortcut.install(workspace: workspace)
             await SelfTestLauncher.runIfRequested(workspace: workspace, artifacts: artifacts)
         }
     }

@@ -28,6 +28,10 @@ struct PaneMenu: View {
             }
             Button("Quick Commands 관리…") { workspace.quickCommandDraft = QuickCommand(label: "", command: "") }
             Divider()
+            if workspace.isAgent(pane) && !pane.hasExited {
+                Button(workspace.wrapUps[pane.id] == nil ? "정리하고 닫기" : "정리 후 닫지 않기") { workspace.toggleWrapUp(of: pane) }
+                    .help("에이전트에게 세션 종료 절차(기록·위키 정리)를 요청하고, 그 턴이 끝나면 닫습니다 (⌘⇧W)")
+            }
             Button("터미널 닫기", role: .destructive) { workspace.closePane(id: pane.id) }
         } label: {
             Image(systemName: "ellipsis.circle")

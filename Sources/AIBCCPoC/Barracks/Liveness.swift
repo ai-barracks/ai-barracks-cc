@@ -53,6 +53,12 @@ struct LiveSession: Identifiable, Sendable, Equatable {
     let pid: Int32
     let cwd: String?
     var runID = ""
+    /// The status file's `ts` (epoch seconds). aib keeps one run_id for a
+    /// whole session, so "a turn finished after X" is told by this.
+    var updatedAt = 0
+    /// The hook event that wrote it: a fresh agent reads `working` from
+    /// SessionStart before any turn.
+    var event = ""
 
     /// The ring is for what needs you now. A `blocked` process is waiting
     /// for as long as it lives; a `done` or `crashed` nobody looked at for
@@ -84,7 +90,8 @@ enum LivenessReader {
                 ack: ack(for: file), now: now, pid: pidState(pid), staleAfter: staleAfter
             )
             return LiveSession(id: id, state: folded, ageSeconds: max(now - timestamp, 0), pid: pid,
-                               cwd: json["cwd"] as? String, runID: json["run_id"] as? String ?? "")
+                               cwd: json["cwd"] as? String, runID: json["run_id"] as? String ?? "",
+                               updatedAt: timestamp, event: json["event"] as? String ?? "")
         }
         .sorted { $0.ageSeconds < $1.ageSeconds }
     }

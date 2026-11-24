@@ -49,6 +49,10 @@ struct AIBCCPoCApp: App {
                     .keyboardShortcut("a", modifiers: [.command, .shift])
                 Button("Council 시작…") { workspace.isCouncilSheetPresented = true }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
+                // The agent's session-end protocol, then the close; again
+                // while pending: keep the terminal.
+                Button("정리하고 닫기") { workspace.toggleWrapUp(of: workspace.wrapUpTarget) }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
                 Divider()
                 Toggle("앱 종료 시 세션 유지", isOn: $keepSessionsOnQuit)
                     .disabled(workspace.daemon == nil)

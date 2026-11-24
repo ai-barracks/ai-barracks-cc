@@ -10,7 +10,6 @@ import SwiftUI
 /// not move when terminals trade slots (2026-11-13 feedback).
 struct AgentListView: View {
     let workspace: WorkspaceModel
-    @State private var closing: TerminalPane?
     /// Task and newest log line by aib session id, from the session files.
     @State private var work: [String: AgentWork] = [:]
 
@@ -35,7 +34,8 @@ struct AgentListView: View {
                         AgentRow(pane: pane, state: pane.state, session: session,
                                  work: session.flatMap { work[$0.id] },
                                  slot: index < workspace.layout.paneCount ? index + 1 : nil,
-                                 close: { pane.hasExited ? workspace.closePane(id: pane.id) : (closing = pane) })
+                                 wrappingUp: workspace.wrapUps[pane.id] != nil,
+                                 close: { pane.hasExited ? workspace.closePane(id: pane.id) : (workspace.closeRequest = pane) })
                             .contentShape(Rectangle())
                             .onTapGesture { workspace.selectPane(id: pane.id) }
                     }
@@ -51,15 +51,6 @@ struct AgentListView: View {
                 await readWork()
                 try? await Task.sleep(for: AppConstants.Terminal.agentTaskRefresh)
             }
-        }
-        .confirmationDialog(closing.map { "\($0.title) 닫기" } ?? "",
-                            isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } })) {
-            Button("닫기", role: .destructive) {
-                if let pane = closing { workspace.closePane(id: pane.id) }
-                closing = nil
-            }
-        } message: {
-            Text("실행 중인 프로그램이 종료됩니다. 출력은 History → 터미널 출력에 보관됩니다.")
         }
     }
 
@@ -104,6 +95,8 @@ private struct AgentRow: View {
     let work: AgentWork?
     /// 1-based slot, nil when held off screen.
     let slot: Int?
+    /// "정리하고 닫기" sent: closes when the agent's turn finishes.
+    let wrappingUp: Bool
     let close: () -> Void
 
     var body: some View {
@@ -145,6 +138,7 @@ private struct AgentRow: View {
 
     private var status: String {
         if pane.hasExited { return "종료됨" }
+        if wrappingUp { return "정리 중 · 끝나면 닫힘 (⌘⇧W: 닫지 않기)" }
         if let session { return session.state.label }
         if pane.agent != nil { return "시작 중" }
         return pane.userCommand ?? "셸"

@@ -42,6 +42,8 @@ enum AppConstants {
         static let appReservedChords = [
             "super+alt+i", "super+alt+1", "super+alt+2", "super+alt+3", "super+alt+4", "super+alt+shift+l",
             "super+n", "super+shift+a", "super+shift+c", "super+k", "super+v",
+            // Ghostty's close_window; here "정리하고 닫기".
+            "super+shift+w",
         ]
         /// The Agents bar's skip-permissions checkbox (kept across launches).
         static let skipPermissionsKey = "agentSkipPermissions"
@@ -156,6 +158,23 @@ enum AppConstants {
         static let refreshInterval: TimeInterval = 2
         /// done/crashed ring only this long after the event (seconds).
         static let attentionWindow = 12 * 3600
+    }
+
+    /// "정리하고 닫기": the agent's session-end protocol before the close.
+    enum WrapUp {
+        /// One line (a newline would submit early). Names the barrack
+        /// protocol's steps so it works in any barrack, Claude or Codex.
+        static let request = "끝. 세션 종료 절차를 진행해 주세요 — 세션 파일의 Log·Decisions 마무리, GROWTH.md 기준 Growth Audit(wiki·RULES.md 반영, ## Wiki Extractions 작성), Ended 기록. 확인 질문 없이 끝까지 진행하세요. 마치면 이 터미널은 앱이 닫습니다."
+        /// Enter goes separately, after the text: Codex treats an Enter
+        /// inside a fast burst of characters as a pasted newline.
+        static let submitDelay: Duration = .milliseconds(400)
+        /// Seconds a finish must stand before the close: the turn's other
+        /// Stop hooks and last screen settle (the real-agent run closed
+        /// with "running stop hooks… 0/2" on screen).
+        static let settleSeconds = 3
+        /// Waiting this long (seconds) without the turn finishing gives up
+        /// closing; the terminal stays.
+        static let timeout: TimeInterval = 30 * 60
     }
 
     enum Layout {

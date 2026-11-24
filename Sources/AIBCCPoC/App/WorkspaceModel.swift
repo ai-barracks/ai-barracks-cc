@@ -122,6 +122,11 @@ final class WorkspaceModel {
     /// A Quick Command waiting for the user's choice (missing folder, or
     /// typing into a terminal whose program is unknown).
     var quickCommandPrompt: QuickCommandPrompt?
+    /// Agents asked to wrap up, closed when that turn finishes (+WrapUp).
+    var wrapUps: [UUID: WrapUp] = [:]
+    @ObservationIgnored var wrapUpWatch: Task<Void, Never>?
+    /// The close confirmation (agent list X, pane menu).
+    var closeRequest: TerminalPane?
     @ObservationIgnored private(set) var health: HealthMonitor?
     /// Scheduled activation (not in self-tests).
     @ObservationIgnored private(set) var activation: ActivationScheduler?
@@ -279,12 +284,14 @@ final class WorkspaceModel {
 
     private enum Persisting { case now, debounced }
 
-    private func store(_ newGrid: BarrackGrid, persisting: Persisting = .now) {
+    /// `key`: another barrack's grid (a wrap-up finishing there); default the selected one.
+    private func store(_ newGrid: BarrackGrid, in key: String? = nil, persisting: Persisting = .now) {
+        let key = key ?? gridKey
         let kept = Set(newGrid.panes.map(\.id))
-        let removed = (grids[gridKey]?.panes ?? []).filter { !kept.contains($0.id) }
-        grids = grids.merging([gridKey: newGrid]) { _, new in new }
+        let removed = (grids[key]?.panes ?? []).filter { !kept.contains($0.id) }
+        grids = grids.merging([key: newGrid]) { _, new in new }
         removed.forEach { pane in
-            archive(pane, barrackPath: selectedBarrack?.path)
+            archive(pane, barrackPath: barracks.first { $0.id == key }?.path)
             pane.terminate()
         }
         updateSurfaceVisibility()
@@ -702,10 +709,14 @@ extension WorkspaceModel {
     /// Ends the pane's shell; the preset shrinks to fit what is left. The
     /// last one leaves the empty Agents screen, not a new shell.
     func closePane(id paneID: UUID) {
-        let current = grid
+        closePane(id: paneID, inBarrack: gridKey)
+    }
+
+    func closePane(id paneID: UUID, inBarrack key: String) {
+        let current = grids[key] ?? BarrackGrid(panes: [], layout: .single, splitX: 0.5, splitY: 0.5)
         let remaining = PanePlacement.removing(paneID, from: current.panes, layout: current.layout)
         let fitting = PaneLayout.fitting(min(remaining.count, current.layout.paneCount), keeping: current.layout)
-        store(BarrackGrid(panes: remaining, layout: fitting, splitX: current.splitX, splitY: current.splitY))
+        store(BarrackGrid(panes: remaining, layout: fitting, splitX: current.splitX, splitY: current.splitY), in: key)
     }
 
     /// An Agents bar chip: focus a pane that is on screen where it is; bring
@@ -749,18 +760,6 @@ extension WorkspaceModel {
         store(BarrackGrid(panes: panes, layout: current.layout, splitX: current.splitX, splitY: current.splitY))
         destination = .sessions
         if let pane = panes.first(where: { $0.id == paneID }) { focusWhenAttached(pane) }
-    }
-
-    /// The aib session running in `pane`, if any.
-    func liveSession(of pane: TerminalPane) -> LiveSession? {
-        guard let barrack = selectedBarrackID else { return nil }
-        return liveness.sessions(of: barrack).first { self.pane(running: $0, in: barrack)?.id == pane.id }
-    }
-
-    /// What the agent in `pane` is doing (aib liveness), if one runs there.
-    func liveness(of pane: TerminalPane) -> Liveness? {
-        guard let barrack = selectedBarrackID else { return nil }
-        return liveness.sessions(of: barrack).first { self.pane(running: $0, in: barrack)?.id == pane.id }?.state
     }
 
     /// Moves a (possibly hidden) pane into the first slot and focuses it.
