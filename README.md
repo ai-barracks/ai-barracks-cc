@@ -8,7 +8,7 @@
 
 ![에이전트 4분할과 에이전트 목록](docs/screenshots/01-agents.png)
 
-v2는 CommandCenter 1.x(Tauri + xterm.js)를 **Swift + [libghostty](https://github.com/ghostty-org/ghostty)** 로 처음부터 다시 만든 버전입니다. v1의 기능을 대부분 옮겼고(아직 일부만 옮긴 것은 아래 '알려진 제한'에 적었습니다), 터미널과 세션 유지를 새로 설계했습니다.
+v2는 CommandCenter 1.x(Tauri + xterm.js)를 **Swift + [libghostty](https://github.com/ghostty-org/ghostty)** 로 처음부터 다시 만든 버전입니다. v1의 기능을 대부분 옮겼고(아직 일부만 옮긴 것은 아래 '알려진 제한'에 적었습니다), 터미널과 세션 유지를 새로 설계했습니다. CommandCenter 1.x의 소스는 [`v1` 브랜치](https://github.com/ai-barracks/ai-barracks-cc/tree/v1)에, 마지막 v1 릴리스는 [v1.6.1](https://github.com/ai-barracks/ai-barracks-cc/releases/tag/v1.6.1)에 있습니다.
 
 | | v1.6.1 | **v2** |
 |---|---|---|
@@ -235,7 +235,7 @@ flowchart TB
 Xcode 없이 Command Line Tools만으로 빌드합니다.
 
 ```bash
-git clone -b v2 https://github.com/ai-barracks/ai-barracks-cc.git
+git clone https://github.com/ai-barracks/ai-barracks-cc.git
 cd ai-barracks-cc
 VERSION_LABEL=2.0.0 VARIANT=release ./scripts/package-app.sh   # dist/release/AI Barracks CommandCenter 2.app
 ./scripts/make-dmg.sh                                          # DMG + SHA-256
