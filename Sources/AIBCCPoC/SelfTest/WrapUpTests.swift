@@ -51,7 +51,8 @@ struct WrapUpTests {
             (w, [.command, .shift], true), (w, [.command, .shift, .capsLock], true), (w, [.command], false),
             (w, [.command, .shift, .option], false), (UInt16(kVK_ANSI_Q), [.command, .shift], false),
         ]
-        for (code, flags, expected) in chords where WrapUpShortcut.matches(keyCode: code, flags: flags) != expected {
+        let wrapUpKey = ShortcutAction.wrapUp.defaultChord
+        for (code, flags, expected) in chords where (KeyChord(keyCode: code, flags: flags) == wrapUpKey) != expected {
             failures.append("chord \(code) \(flags.rawValue) → \(!expected)")
         }
         return .make("WU-01a", "정리하고 닫기 판정: 요청 뒤에 끝난 턴만, 끝난 지 3초 뒤 닫음(입력 대기·작업 중은 기다림), 터미널이 없어지면 잊고 30분 넘으면 포기, ⌘⇧W는 키 위치로",

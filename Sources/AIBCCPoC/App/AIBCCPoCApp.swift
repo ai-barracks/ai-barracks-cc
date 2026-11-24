@@ -38,21 +38,20 @@ struct AIBCCPoCApp: App {
                 ResponderCommand(title: "붙여넣기", selector: #selector(NSText.paste(_:)), key: "v")
                 ResponderCommand(title: "전체 선택", selector: #selector(NSText.selectAll(_:)), key: "a")
             }
+            // Every key below is the user's (Settings → 단축키); the menus
+            // show it, ShortcutCenter runs it by key position.
             CommandGroup(after: .newItem) {
-                Button("명령·검색…") { workspace.isPalettePresented = true }
-                    .keyboardShortcut("k", modifiers: .command)
+                ShortcutMenuItem(action: .palette, workspace: workspace, title: "명령·검색…")
             }
             CommandMenu("에이전트") {
-                Button("새 에이전트…") { workspace.isNewAgentSheetPresented = true }
-                    .keyboardShortcut("n", modifiers: .command)
-                Button("다음 주의 항목으로") { workspace.goToNextAttention() }
-                    .keyboardShortcut("a", modifiers: [.command, .shift])
-                Button("Council 시작…") { workspace.isCouncilSheetPresented = true }
-                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                ForEach([ShortcutAction.newAgent, .newTerminal, .nextAttention, .acknowledgeFinished, .council]) {
+                    ShortcutMenuItem(action: $0, workspace: workspace)
+                }
+                Divider()
                 // The agent's session-end protocol, then the close; again
                 // while pending: keep the terminal.
-                Button("정리하고 닫기") { workspace.toggleWrapUp(of: workspace.wrapUpTarget) }
-                    .keyboardShortcut("w", modifiers: [.command, .shift])
+                ShortcutMenuItem(action: .wrapUp, workspace: workspace)
+                ShortcutMenuItem(action: .closeTerminal, workspace: workspace)
                 Divider()
                 Toggle("앱 종료 시 세션 유지", isOn: $keepSessionsOnQuit)
                     .disabled(workspace.daemon == nil)
@@ -60,13 +59,13 @@ struct AIBCCPoCApp: App {
                     .disabled(workspace.daemon == nil)
             }
             CommandMenu("레이아웃") {
-                ForEach(PaneLayout.allCases) { preset in
-                    Button(preset.title) { workspace.setLayout(preset) }
-                        .keyboardShortcut(KeyEquivalent(Character(preset.label)), modifiers: [.command, .option])
+                ForEach([ShortcutAction.layoutSingle, .layoutDouble, .layoutTwoRows, .layoutQuad]) {
+                    ShortcutMenuItem(action: $0, workspace: workspace)
                 }
                 Divider()
-                Button("Outputs 패널 토글") { workspace.isArtifactPanelVisible.toggle() }
-                    .keyboardShortcut("i", modifiers: [.command, .option])
+                ForEach([ShortcutAction.focusNextPane, .focusPreviousPane, .toggleOutputs, .toggleAgentList]) {
+                    ShortcutMenuItem(action: $0, workspace: workspace)
+                }
                 Divider()
                 Button("입력 호출 로그 저장 (IME fixture)") {
                     if let file = workspace.exportInputCallLogs() {
@@ -74,6 +73,14 @@ struct AIBCCPoCApp: App {
                     }
                 }
                 .keyboardShortcut("l", modifiers: [.command, .option, .shift])
+            }
+            CommandMenu("이동") {
+                ForEach(ShortcutAction.allCases.filter { $0.destination != nil }) {
+                    ShortcutMenuItem(action: $0, workspace: workspace)
+                }
+                Divider()
+                ShortcutMenuItem(action: .nextBarrack, workspace: workspace)
+                ShortcutMenuItem(action: .previousBarrack, workspace: workspace)
             }
         }
         // v1 tray parity: the app stays here when its window closes, so

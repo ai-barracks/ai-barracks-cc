@@ -283,7 +283,23 @@ struct ShowcaseSuite {
         settings.makeKeyAndOrderFront(nil)
         await harness.pause(.milliseconds(800))
         let url = await harness.requestCapture(label: "showcase-20-settings", of: settings)
+        // 21: the same window scrolled to its end — the shortcut sections.
+        let scrolled = Self.scrollToEnd(settings.contentView)
+        await harness.pause(.milliseconds(800))
+        let shortcuts = scrolled ? await harness.requestCapture(label: "showcase-21-shortcuts", of: settings) : nil
         settings.close()
-        return url == nil ? "capture failed: \(windows)" : "ok: \(describe(settings))"
+        return url == nil || shortcuts == nil ? "capture failed (scrolled \(scrolled)): \(windows)" : "ok: \(describe(settings))"
+    }
+
+    private static func scrollToEnd(_ view: NSView?) -> Bool {
+        guard let view else { return false }
+        if let scroll = view as? NSScrollView, let document = scroll.documentView,
+           document.bounds.height > scroll.contentView.bounds.height {
+            let end = document.isFlipped ? document.bounds.height - scroll.contentView.bounds.height : 0
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: end))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            return true
+        }
+        return view.subviews.contains { scrollToEnd($0) }
     }
 }

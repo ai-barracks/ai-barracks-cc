@@ -49,7 +49,7 @@ struct MainView: View {
             artifacts.watch(root: workspace.selectedBarrack?.url)
         }
         .task {
-            WrapUpShortcut.install(workspace: workspace)
+            ShortcutCenter.install(workspace: workspace)
             await SelfTestLauncher.runIfRequested(workspace: workspace, artifacts: artifacts)
         }
     }
