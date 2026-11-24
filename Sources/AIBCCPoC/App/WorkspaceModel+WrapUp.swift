@@ -29,9 +29,9 @@ enum WrapUpRule {
 }
 
 extension LiveSession {
-    /// Mid-reply: `working` from a tool, not the SessionStart of an agent
-    /// that has had no turn yet (the real-agent run read `working` there).
-    var isMidTurn: Bool { state == .working && event != "SessionStart" }
+    /// Mid-reply. An agent that has had no turn yet folds to idle, not
+    /// working (the real-agent run read SessionStart's `working` there).
+    var isMidTurn: Bool { state == .working }
 }
 
 extension WorkspaceModel {

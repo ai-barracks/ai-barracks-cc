@@ -39,8 +39,11 @@ struct WrapUpTests {
             if got != expected { failures.append("\(name): \(got) ≠ \(expected)") }
         }
         failures += readsTimestamp()
-        let fresh = LiveSession(id: "s", state: .working, ageSeconds: 0, pid: 1, cwd: nil, event: "SessionStart")
-        let tool = LiveSession(id: "s", state: .working, ageSeconds: 0, pid: 1, cwd: nil, event: "PreToolUse")
+        let fold = { (event: String) in
+            Liveness.fold(state: "working", event: event, statusTimestamp: 0, runID: "r", ack: nil, now: 5, pid: .alive, staleAfter: 180)
+        }
+        let fresh = LiveSession(id: "s", state: fold("SessionStart"), ageSeconds: 5, pid: 1, cwd: nil, event: "SessionStart")
+        let tool = LiveSession(id: "s", state: fold("PreToolUse"), ageSeconds: 5, pid: 1, cwd: nil, event: "PreToolUse")
         if fresh.isMidTurn || !tool.isMidTurn { failures.append("SessionStart working counted as mid-turn (or a tool not)") }
         if AppConstants.WrapUp.request.contains("\n") || !AppConstants.WrapUp.request.hasPrefix("끝") {
             failures.append("request must be one line starting with 끝")
@@ -90,7 +93,10 @@ struct WrapUpTests {
         let live = { (state: Liveness, ts: Int) in
             LiveSession(id: "s", state: state, ageSeconds: 0, pid: 1, cwd: nil, updatedAt: ts, event: "PreToolUse")
         }
-        let fresh = LiveSession(id: "s", state: .working, ageSeconds: 0, pid: 1, cwd: nil, updatedAt: now - 5, event: "SessionStart")
+        // What LivenessReader makes of SessionStart's `working`.
+        let freshState = Liveness.fold(state: "working", event: "SessionStart", statusTimestamp: now - 5, runID: "r",
+                                       ack: nil, now: now, pid: .alive, staleAfter: LivenessReader.staleAfter)
+        let fresh = LiveSession(id: "s", state: freshState, ageSeconds: 5, pid: 1, cwd: nil, updatedAt: now - 5, event: "SessionStart")
         let request = Array(AppConstants.WrapUp.request.utf8)
 
         let shellMark = shell.log.mark()

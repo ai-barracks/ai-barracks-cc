@@ -208,12 +208,23 @@ struct UnitSuite {
             ("done", now + 5, ack, .alive, .done),
             ("mystery", now, nil, .alive, .none),
         ]
-        let failures = cases.enumerated().compactMap { index, item -> String? in
-            let got = Liveness.fold(state: item.0, statusTimestamp: item.1, runID: "r", ack: item.2,
+        let matrixFailures = cases.enumerated().compactMap { index, item -> String? in
+            let got = Liveness.fold(state: item.0, event: "PreToolUse", statusTimestamp: item.1, runID: "r", ack: item.2,
                                     now: now, pid: item.3, staleAfter: stale)
             return got == item.4 ? nil : "#\(index) \(item.0) → \(got.rawValue), expected \(item.4.rawValue)"
         }
-        return .make("LV-01a", "liveness 접기 = aib 규칙(\(cases.count)개 조합)",
+        // Incident 2026-11-24: SessionStart writes `working` before any turn, so an
+        // agent waiting for its first prompt read "작업 중", then "응답 없음".
+        let fresh: [(Int, Liveness.PidState, Liveness)] = [
+            (now, .alive, .idle), (now - stale - 1, .alive, .idle), (now - 99_999, .unknown, .idle), (now, .dead, .interrupted),
+        ]
+        let freshFailures = fresh.enumerated().compactMap { index, item -> String? in
+            let got = Liveness.fold(state: "working", event: "SessionStart", statusTimestamp: item.0, runID: "r", ack: nil,
+                                    now: now, pid: item.1, staleAfter: stale)
+            return got == item.2 ? nil : "SessionStart#\(index) → \(got.rawValue), expected \(item.2.rawValue)"
+        }
+        let failures = matrixFailures + freshFailures
+        return .make("LV-01a", "liveness 접기 = aib 규칙(\(cases.count + fresh.count)개 조합, 막 시작한 세션은 대기)",
                      status: failures.isEmpty ? .pass : .fail, cause: .app,
                      evidence: ["failures": failures.joined(separator: " | ")], startedAt: start)
     }

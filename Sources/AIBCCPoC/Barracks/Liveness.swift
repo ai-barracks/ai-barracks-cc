@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 /// aib agent liveness (sessions/.live/<id>.status + optional .ack), folded
-/// exactly like `aib sessions state` / CC v1.6.1 `live::fold`.
+/// exactly like `aib sessions state` (aib 1.6.1).
 enum Liveness: String, Sendable, CaseIterable {
     case working, workingStale = "working_stale", blocked, crashed, interrupted, done, idle, none
 
@@ -25,8 +25,11 @@ enum Liveness: String, Sendable, CaseIterable {
 
     enum PidState: Sendable { case alive, dead, unknown }
 
-    /// Pure fold — must match aib's reference (fold matrix in CC live.rs).
-    static func fold(state: String, statusTimestamp: Int, runID: String, ack: Ack?,
+    /// Pure fold — must match aib's reference (`cmd_session_state`).
+    /// SessionStart writes `working` before any turn: an agent waiting for its
+    /// first prompt is idle, however long it waits (2026-11-24: it read
+    /// "작업 중", then "응답 없음").
+    static func fold(state: String, event: String, statusTimestamp: Int, runID: String, ack: Ack?,
                      now: Int, pid: PidState, staleAfter: Int) -> Liveness {
         let acked = ack.map { $0.runID == runID && $0.timestamp >= statusTimestamp } ?? false
         switch state {
@@ -34,6 +37,7 @@ enum Liveness: String, Sendable, CaseIterable {
         case "blocked": return pid == .dead ? .crashed : .blocked
         case "working":
             if pid == .dead { return .interrupted }
+            if event == "SessionStart" { return .idle }
             return now - statusTimestamp > staleAfter ? .workingStale : .working
         default: return .none
         }
@@ -56,8 +60,7 @@ struct LiveSession: Identifiable, Sendable, Equatable {
     /// The status file's `ts` (epoch seconds). aib keeps one run_id for a
     /// whole session, so "a turn finished after X" is told by this.
     var updatedAt = 0
-    /// The hook event that wrote it: a fresh agent reads `working` from
-    /// SessionStart before any turn.
+    /// The hook event that wrote it.
     var event = ""
 
     /// The ring is for what needs you now. A `blocked` process is waiting
@@ -85,13 +88,14 @@ enum LivenessReader {
                   let timestamp = json["ts"] as? Int
             else { return nil }
             let pid = Int32(json["pid"] as? Int ?? 0)
+            let event = json["event"] as? String ?? ""
             let folded = Liveness.fold(
-                state: state, statusTimestamp: timestamp, runID: json["run_id"] as? String ?? "",
+                state: state, event: event, statusTimestamp: timestamp, runID: json["run_id"] as? String ?? "",
                 ack: ack(for: file), now: now, pid: pidState(pid), staleAfter: staleAfter
             )
             return LiveSession(id: id, state: folded, ageSeconds: max(now - timestamp, 0), pid: pid,
                                cwd: json["cwd"] as? String, runID: json["run_id"] as? String ?? "",
-                               updatedAt: timestamp, event: json["event"] as? String ?? "")
+                               updatedAt: timestamp, event: event)
         }
         .sorted { $0.ageSeconds < $1.ageSeconds }
     }
