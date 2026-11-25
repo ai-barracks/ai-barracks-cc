@@ -87,7 +87,8 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
 - **분할**: 1칸 · 좌우 2칸 · 상하 2칸 · 4칸(⌘⌥1~4). 경계를 끌어 비율을 바꿉니다. 에이전트를 추가해도 분할은 사용자가 고른 대로 유지됩니다.
 - **터미널 수 제한 없음**: 칸이 다 차면 새 터미널은 지금 칸에 뜨고, 밀린 터미널은 **화면 밖에서 계속 실행**됩니다. 칸 머리글의 제목을 누르면 그 칸에 보일 터미널을 고릅니다.
 - **에이전트 목록**(왼쪽): 시작한 순서로 고정된 줄마다 상태 점, 에이전트가 화면 제목에 붙이는 작업 요약, aib 세션의 Task와 최근 Log, 칸 번호 또는 "화면 밖"이 보입니다(2초마다 갱신). 누르면 그 터미널로 갑니다.
-- **정리하고 닫기**(⌘⇧W, 목록의 X, 칸 메뉴): 에이전트에게 세션 종료 절차("끝" — 기록 마무리, Growth Audit로 wiki·RULES.md 반영과 Wiki Extractions 작성)를 요청하고, aib가 그 턴이 끝났다고 알리면 터미널을 닫습니다. X로 바로 닫으면 aib 세션 기록(Status·Ended)은 닫히지만 에이전트가 하는 정리는 빠집니다. 작업 중이거나 입력을 기다리는 에이전트에는 보내지 않고, 기다리는 동안 ⌘⇧W를 다시 누르면 닫지 않습니다. Codex는 aib hook(`aib hooks codex install`)이 없어도 Codex 자신의 대화 기록(`~/.codex/sessions`)에서 그 턴이 답을 남기고 끝난 것을 확인해 닫습니다(오류로 끝나거나 멈춘 턴이면 닫지 않고 알림). 턴 끝을 알 수 없는 에이전트에는 요청만 보내고, 이때는 "앱이 닫습니다"라고 말하지 않습니다.
+- **정리하고 닫기**(⌘⇧W, 목록의 X, 칸 메뉴): 에이전트에게 세션 종료 절차("끝" — 기록 마무리, Growth Audit로 wiki·RULES.md 반영과 Wiki Extractions 작성)를 요청하고, aib가 그 턴이 끝났다고 알리면 터미널을 닫습니다. X로 바로 닫으면 aib 세션 기록(Status·Ended)은 닫히지만 에이전트가 하는 정리는 빠집니다. 작업 중이거나 입력을 기다리는 에이전트에는 보내지 않고, 기다리는 동안 ⌘⇧W를 다시 누르면 닫지 않습니다. Codex도 같습니다: aib의 Codex hook이 신뢰돼 있으면 Claude처럼 aib 상태로, 아직이면 Codex 자신의 대화 기록(`~/.codex/sessions`)에서 그 턴이 답을 남기고 끝난 것을 확인해 닫습니다(오류로 끝나거나 멈춘 턴이면 닫지 않고 알림). 턴 끝을 알 수 없는 에이전트에는 요청만 보내고, 이때는 "앱이 닫습니다"라고 말하지 않습니다.
+- **Codex 상태**: aib 1.6.2의 `aib init`/`aib sync`가 Codex hook을 전역(`~/.codex/hooks.json`)으로 설치합니다. Codex에서 `/hooks`를 열어 `aib hook native codex`를 한 번 신뢰하면 모든 배럭의 Codex가 작업 중·입력 대기·완료로 보입니다. Codex를 띄우고 20초가 지나도 상태가 안 들어오면 앱이 신뢰 또는 설치 방법을 한 번 알려 줍니다.
 - **Outputs**(오른쪽, ⌘⌥I): 배럭에서 최근 바뀐 문서를 터미널 옆에서 바로 렌더링해 봅니다.
 - **세션 유지**: 터미널은 별도 PTY 데몬이 소유합니다. 앱을 끄거나 업데이트해도 에이전트는 계속 일하고, 다시 켜면 이전 화면을 재생한 뒤 이어 붙습니다. 닫은 터미널의 출력은 History → 터미널 출력에 보관됩니다.
 - **Ghostty 터미널**: 출력이 쏟아지는 중에도 입력이 밀리지 않고, 창이나 칸 크기를 바꿔도 줄이 잘리지 않습니다. `aib start codex`가 쓰는 안쪽 터미널에도 크기 변경을 전달해 Codex 화면도 칸 크기를 따라갑니다. 한글 입력, ⌘V 붙여넣기, Quick Command, 출력 내보내기를 지원합니다.
@@ -204,7 +205,7 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
   brew install ai-barracks/ai-barracks/ai-barracks
   cd ~/my-project && aib init
   ```
-- 쓰려는 에이전트 CLI(Claude Code · Codex 중 쓰는 것만)가 로그인 셸 PATH에 있을 것
+- 쓰려는 에이전트 CLI(Claude Code · Codex 중 쓰는 것만). 2.2.1부터 앱은 **터미널과 같은 PATH**(`~/.zshrc`까지 반영)로 에이전트와 aib를 실행해, 터미널에서 쓰는 그 claude·codex를 씁니다. 없으면 aib 1.6.2가 에이전트 칸 안에서 설치할지 묻습니다(공식 방법, `aib install <claude|codex>`와 같음)
 - **Gemini는 2.0에서 뺐습니다.** Google이 2026-06-18부터 개인 계정(무료·AI Pro·Ultra)의 Gemini CLI를 [Antigravity CLI로 전환](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)했기 때문입니다. 전에 기록된 Gemini 세션은 History에서 그대로 보고 Claude·Codex로 이어받을 수 있고, 업데이트 전에 띄워 둔 Gemini 터미널도 그대로 복원됩니다.
 
 **설치**
@@ -220,11 +221,13 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
 
 **업데이트**: 2.2.0부터는 앱이 직접 합니다. 새 릴리스가 나오면 사이드바 버전 줄에 `vX.Y.Z 업데이트` 버튼이 뜨고, 누르면 내려받기 → `SHA256SUMS` 대조 → 번들 ID·버전·서명 확인 → 앱 교체 → 다시 시작까지 한 번에 합니다(`xattr`도 필요 없음). 열린 에이전트·터미널은 PTY 데몬이 유지하므로 업데이트 중에도 계속 실행되고, 다시 켜지면 그대로 이어집니다. 확인은 앱을 켤 때와 하루 한 번이고(설정 › 업데이트에서 끌 수 있음), 메뉴 **CommandCenter 2 › 업데이트 확인…**으로 바로 볼 수도 있습니다. 이전 버전 하나는 `~/Library/Application Support/CommandCenter2/updates/previous/`에 남습니다. 2.1.0 이하에서는 한 번만 위 방법으로 2.2.0 이상을 설치하세요.
 
+**aib 업데이트**(2.2.1): 같은 때 GitHub의 최신 aib 릴리스도 확인해, 설치된 aib(`aib version`)보다 새로우면 사이드바 aib 버전 아래에 `aib X 업데이트` 버튼이 뜹니다. 누르면 터미널 칸에서 `aib update`가 묻고 Homebrew로 업데이트합니다(aib 1.6.1 이하는 `aib update`가 없어 Homebrew 명령을 바로 실행). 끝나면 배럭을 새 aib에 맞추라는 "Sync" 알림이 이어집니다.
+
 ![업데이트 제안](docs/screenshots/22-update.png)
 
 **v1과 함께 쓰기**: v2는 번들 ID가 달라(`com.aibarracks.commandcenter2`) v1 옆에 나란히 설치되고, 설정과 터미널 세션이 섞이지 않습니다. 같은 배럭 문서를 두 앱에서 동시에 편집하지는 마세요. 데이터 위치와 제거 방법은 [docs/INSTALL.md](docs/INSTALL.md)에 있습니다.
 
-> **처음 Claude Code를 띄우는 폴더**에서는 Claude가 폴더를 신뢰할지 묻습니다. 앱 안 터미널에서 그대로 답하면 됩니다.
+> **처음 Claude Code·Codex를 띄우는 폴더**에서는 그 CLI가 폴더를 신뢰할지 묻습니다. 앱 안 터미널에서 그대로 답하면 됩니다. Codex는 aib hook을 처음 만날 때 `/hooks`에서 한 번 신뢰해야 상태가 보입니다.
 
 ---
 

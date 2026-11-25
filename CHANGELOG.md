@@ -2,10 +2,14 @@
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-25
+
+Codex의 정리하고 닫기, 새 맥에서 앱이 claude·codex를 못 찾거나 터미널과 다른 것을 쓰던 문제, aib 업데이트 알림. aib 1.6.2와 함께 쓰면 Codex hook이 전역으로 설치되고 없는 CLI는 설치를 묻습니다.
+
 - **Codex에서 정리하고 닫기가 닫지 않던 문제**(2026-11-25 사용자: "세션 종료 절차는 진행이 되었는데, 그 다음이 진행이 안 되는 거 같은데?" — 다른 맥의 2.2.0, Codex): 앱이 띄우는 Codex(`aib start codex`)는 배럭에 Codex hook(`aib hooks codex install` + Codex `/hooks` 승인)이 없으면 aib가 턴 끝을 쓰지 않아, 앱은 요청만 보내고 닫지 않았음. 그런데 대화상자·메뉴는 "그 턴이 끝나면 닫습니다", 입력한 요청문은 "마치면 이 터미널은 앱이 닫습니다"라고 약속했고, 닫지 않는다는 알림은 잠깐 떴다 사라졌음. 이제 aib 상태가 없는 Codex는 **Codex 자신의 기록**(`$CODEX_HOME/sessions/…/rollout-*.jsonl`)으로 턴 끝을 읽음: 그 터미널 아래 프로세스가 열어 둔 기록에서 요청이 든 턴(`task_started` → 요청문 → 같은 turn_id의 `task_complete`)이 답을 남기고 끝나면 3초 뒤 닫음. 오류로 끝나거나(`error`, 빈 답) 사용자가 멈춘 턴(`turn_aborted`)은 닫지 않고 알림, 2분 안에 요청이 기록에 안 보이면 포기하고 알림. 작업 중인 Codex(마지막 턴이 끝나지 않음)에는 입력하지 않음. 요청 직전 크기부터만 읽음. 터미널이 기록을 쥐고 있지 않으면(백그라운드 서버 등) 최근 7일 기록에서 이 배럭 폴더(turn_context `cwd`)의 턴만 인정. 턴 끝을 알 수 없는 에이전트에는 "앱이 닫습니다" 없이 요청만 보냄. 실제 Codex(0.160·0.167)의 기록 형식으로 확인. WU-02a(판정·기록 읽기), WU-02b(프로세스가 연 기록 찾기), WU-02c(터미널에서 입력·닫기·유지)
 - **정리 중 대화 압축이 일어나면 턴 도중 닫힐 수 있던 문제**(위 조사 중 코드 점검에서 발견, 2.2.0 회귀): 2.2.0부터 SessionStart가 쓴 `working`을 '대기'로 보는데, Claude가 정리 턴 중에 대화를 압축하면 SessionStart가 다시 쓰여 '대기'가 되고 3초 뒤 닫힐 수 있었음. 요청 뒤의 SessionStart는 끝으로 보지 않음. WU-01a에 사례 추가
 - **앱이 터미널과 다른 claude·codex를 쓰거나 못 찾던 문제**(2026-11-25 사용자: "새 맥북에서 매번 겪는 최초 1회성 문제 — aib가 codex나 claude를 못 찾는다"): 앱은 aib·에이전트를 `zsh -lc`(로그인·비대화형 셸)로 실행하는데, 이 셸은 `~/.zshrc`를 읽지 않음 — Claude 공식 설치기(`~/.local/bin`)·nvm 같은 도구가 PATH를 넣는 곳. 그래서 새 맥에서는 앱이 claude를 못 찾았고, 이 맥에서는 앱 에이전트가 brew의 옛 Claude 2.1.118로 돌았음(터미널은 공식 설치본 2.1.331; 최근 Claude 세션 40개 중 33개가 2.1.118). 앱이 켜질 때 사용자 로그인 셸을 터미널처럼 대화형으로 한 번 실행해 PATH를 읽고(10초 제한, 멈추는 rc는 무시), 에이전트·aib 명령을 프로필이 끝난 뒤 그 PATH로 실행. 예약 활성화도 터미널의 PATH를 먼저 봄. US-01a(비대화형으로 읽는 빌드에서 RED)
-- **aib 업데이트 감지**(사용자: "aib는 업데이트를 어떻게 하지? 감지는?"): 앱 업데이트 확인과 같은 때(켜고 10초 뒤·하루 한 번·메뉴 "업데이트 확인…") GitHub의 최신 aib 릴리스를 확인해 설치된 aib(`aib version`)보다 새로우면 사이드바 aib 버전 아래 **`aib X 업데이트`** 버튼 → 터미널 칸에서 `aib update`(aib 1.6.2: 묻고 Homebrew로 업데이트)를 실행하고, 끝날 때까지 설치 버전을 다시 읽음. 이어서 기존 "배럭 Sync" 알림. AU-01a
+- **aib 업데이트 감지**(사용자: "aib는 업데이트를 어떻게 하지? 감지는?"): 앱 업데이트 확인과 같은 때(켜고 10초 뒤·하루 한 번·메뉴 "업데이트 확인…") GitHub의 최신 aib 릴리스를 확인해 설치된 aib(`aib version`)보다 새로우면 사이드바 aib 버전 아래 **`aib X 업데이트`** 버튼 → 터미널 칸에서 `aib update`(aib 1.6.2: 묻고 Homebrew로 업데이트; `aib update`가 없는 1.6.1 이하는 `brew update && brew upgrade ai-barracks/ai-barracks/ai-barracks`)를 실행하고, 끝날 때까지 설치 버전을 다시 읽음. 이어서 기존 "배럭 Sync" 알림. AU-01a
 - **Codex hook 안내**: Codex 칸을 띄우고 20초가 지나도 aib 상태가 없으면 한 번 알림 — aib hook이 설치돼 있으면 "Codex에서 /hooks로 'aib hook native codex' 신뢰(한 번이면 모든 배럭)", 없으면 "aib sync로 설치". aib 1.6.2부터 `aib init`/`aib sync`가 Codex hook을 전역(`~/.codex/hooks.json`)으로 설치하므로, 신뢰하면 Codex도 Claude처럼 작업 중·완료가 보이고 정리하고 닫기가 aib 상태로 닫힘(그 전에는 Codex 기록 읽기로 닫힘). claude·codex가 없으면 aib 1.6.2가 에이전트 칸 안에서 설치를 묻는다. CH-01a
 
 ## [2.2.0] - 2026-11-24
