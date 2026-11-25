@@ -26,7 +26,7 @@ enum AibSync {
     }
 
     private static func run(_ command: String, in barrack: URL) async -> Outcome {
-        let result = await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/zsh"), ["-lc", command], in: barrack.path)
+        let result = await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/zsh"), UserShell.loginArguments(command), in: barrack.path)
         guard result.status != 0 else { return .ok }
         let lines = MaintenanceScanner.lines(result.output)
         let reason = lines.first { $0.localizedCaseInsensitiveContains("error") || $0.contains("✗") } ?? lines.last

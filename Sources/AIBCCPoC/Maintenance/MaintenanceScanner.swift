@@ -85,10 +85,10 @@ enum MaintenanceScanner {
     }
 }
 
-/// Runs a command in the user's login shell (PATH finds aib), in a directory.
+/// Runs a command in the user's login shell with their terminal PATH (UserShell), in a directory.
 enum AibShell {
     static func run(_ command: String, in directory: String) async -> String {
-        await ProcessOutput.run(URL(fileURLWithPath: "/bin/zsh"), ["-lc", command], in: directory)
+        await ProcessOutput.run(URL(fileURLWithPath: "/bin/zsh"), UserShell.loginArguments(command), in: directory)
     }
 }
 

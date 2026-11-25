@@ -71,7 +71,7 @@ final class BarrackSyncModel {
     static let aibSync: Runner = { path, dryRun in
         let command = "aib sync \(dryRun ? "--dry-run " : "")."
         let run = { @Sendable in
-            await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/zsh"), ["-lc", command], in: path)
+            await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/zsh"), UserShell.loginArguments(command), in: path)
         }
         let result = dryRun ? await run() : await AibWriteQueue.run(run)
         return Result(success: result.status == 0, output: result.output.trimmingCharacters(in: .whitespacesAndNewlines))

@@ -430,22 +430,11 @@ final class WorkspaceModel {
 // MARK: - Agents and attention (spec §7: ⌘N, ⌘⇧A)
 
 extension WorkspaceModel {
-    /// ⌘N: a new pane running `aib start <client>` in the selected barrack.
-    /// It takes an empty slot or the focused one; the layout stays as set.
-    @discardableResult
-    func launchAgent(_ client: AgentClient, skipPermissions: Bool) -> TerminalPane? {
-        guard AgentClient.launchable.contains(client) else { return nil }
-        let profile = ProviderProfiles.load(client)
-        return openPane(title: client.label, command: AgentLauncher.command(for: client, skipPermissions: skipPermissions, profile: profile),
-                        userCommand: AgentLauncher.start(client, skipPermissions: skipPermissions, profile: profile),
-                        agent: client == .terminal ? nil : client)
-    }
-
     /// 정비 actions run where the user sees them: a new pane in the
     /// barrack, through a login shell that stays afterwards.
     @discardableResult
     func runInPane(title: String, command: String, directory: String? = nil) -> TerminalPane? {
-        openPane(title: title, command: "/bin/zsh -lc " + AgentLauncher.shellQuote(command + "; exec /bin/zsh -l"),
+        openPane(title: title, command: "/bin/zsh -lc " + AgentLauncher.shellQuote(UserShell.pathPrefix + command + "; exec /bin/zsh -l"),
                  directory: directory, userCommand: command)
     }
 

@@ -197,6 +197,9 @@ enum AppConstants {
         /// After launch, so the first check never slows the start.
         static let firstCheckDelay: Duration = .seconds(10)
         static let checkInterval: Duration = .seconds(24 * 3600)
+        /// After "aib 업데이트": reread `aib version` this often, this many times.
+        static let aibWatchInterval: Duration = .seconds(5)
+        static let aibWatchRounds = 120
         /// Download scratch and the one previous app kept as a backup.
         static var directory: URL {
             URL(fileURLWithPath: (Daemon.supportDirectory as NSString).expandingTildeInPath).appendingPathComponent("updates")
@@ -290,6 +293,19 @@ enum AppConstants {
     enum Git {
         /// Changes listed in the Git destination (the counts cover all).
         static let visibleChanges = 200
+    }
+
+    enum CodexHooks {
+        /// A Codex pane still without aib state this long after its start
+        /// gets the install/trust hint (SessionStart reports at once).
+        static let hintDelay: Duration = .seconds(20)
+    }
+
+    /// The user's terminal PATH, read once at launch (UserShell).
+    enum UserShell {
+        /// An rc file that waits (a prompt, a tmux auto-attach) must not
+        /// hold the read: past this, the PATH stays unknown.
+        static let timeout: TimeInterval = 10
     }
 
     enum ChildProcess {

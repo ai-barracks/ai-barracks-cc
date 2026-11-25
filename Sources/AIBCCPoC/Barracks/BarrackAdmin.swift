@@ -42,7 +42,7 @@ enum BarrackAdmin {
     }
 
     private static func unqueued(_ arguments: String, environment: [String: String]) async -> Outcome {
-        let result = await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/zsh"), ["-lc", "aib \(arguments)"],
+        let result = await ProcessOutput.runWithStatus(URL(fileURLWithPath: "/bin/zsh"), UserShell.loginArguments("aib \(arguments)"),
                                                        in: NSHomeDirectory(), environment: environment)
         let output = MaintenanceScanner.lines(result.output).joined(separator: "\n")
         return Outcome(ok: result.status == 0, output: output)

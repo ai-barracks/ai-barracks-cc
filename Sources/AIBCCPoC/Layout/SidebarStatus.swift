@@ -5,7 +5,7 @@ import SwiftUI
 /// as v1 showed them (2026-11-23 feedback).
 struct AppVersionHeader: View {
     let workspace: WorkspaceModel
-    @State private var cliVersion = ""
+    private let aib = AibUpdate.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -14,17 +14,24 @@ struct AppVersionHeader: View {
                 Text(AppVersion.label).font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary)
                     .lineLimit(1).truncationMode(.tail)
             }
-            Text(cliVersion.isEmpty ? "AI Barracks" : "AI Barracks v\(cliVersion)")
+            Text(aib.installed.map { "AI Barracks v\($0)" } ?? "AI Barracks")
                 .font(Tokens.Font.meta).foregroundStyle(Tokens.textTertiary).lineLimit(1)
             UpdateBadge().padding(.top, 3)
+            if let newer = aib.available {
+                Button {
+                    workspace.runInPane(title: "aib 업데이트", command: AibUpdate.command, directory: NSHomeDirectory())
+                    aib.watchInstall()
+                } label: {
+                    Label("aib \(newer) 업데이트", systemImage: "arrow.down.circle").font(Tokens.Font.meta)
+                }
+                .buttonStyle(.bordered).controlSize(.small).padding(.top, 3)
+                .help("터미널 칸에서 `aib update`를 실행합니다(묻고 Homebrew로 업데이트). 끝나면 배럭 Sync를 안내합니다.")
+            }
         }
         .padding(.horizontal, Tokens.Spacing.s)
         .help(AppVersion.details)
         // `aib version`, once, from the user's login shell (read only).
-        .task {
-            let output = await AibShell.run("aib version", in: NSHomeDirectory())
-            cliVersion = AppVersion.cliVersion(in: output) ?? ""
-        }
+        .task { await aib.refreshInstalled() }
     }
 }
 

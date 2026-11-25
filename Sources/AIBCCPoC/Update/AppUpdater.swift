@@ -81,6 +81,8 @@ final class AppUpdater {
         } catch {
             state = .failed((error as? UpdateError)?.message ?? error.localizedDescription)
         }
+        // aib too: it has no update check of its own that anyone runs.
+        await AibUpdate.shared.check()
     }
 
     /// Installs over this app and relaunches; on failure the app stays as

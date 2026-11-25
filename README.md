@@ -198,7 +198,7 @@ CommandCenter는 배럭 파일을 직접 읽고, 사람이 고쳐도 되는 파�
 **요구 사항**
 
 - Apple Silicon Mac, macOS 14 이상
-- [`aib`](https://github.com/ai-barracks/ai-barracks) CLI 1.6.0 이상(1.6.1 권장 — 세션이 없을 때 ⌘K `aib status`가 실패하던 문제, 닫은 칸의 원문 보관 작업이 끊기던 문제 수정)과 등록된 배럭 하나 이상
+- [`aib`](https://github.com/ai-barracks/ai-barracks) CLI 1.6.0 이상(**1.6.2 권장** — 앱이 터미널과 같은 claude·codex를 찾고 없으면 설치를 묻는 것, Codex hook 전역 설치, `aib update`)과 등록된 배럭 하나 이상. 새 맥에서는 `aib doctor`로 aib가 실행할 claude·codex와 hook 상태를 먼저 확인하세요. 새 aib가 나오면 사이드바의 aib 버전 아래에 업데이트 버튼이 나옵니다
   ```bash
   brew tap ai-barracks/ai-barracks
   brew install ai-barracks/ai-barracks/ai-barracks

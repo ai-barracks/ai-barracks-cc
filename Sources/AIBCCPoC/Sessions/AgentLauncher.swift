@@ -27,7 +27,8 @@ enum AgentLauncher {
         guard let start = start(client, skipPermissions: skipPermissions, profile: profile) else { return nil }
         // Ghostty execs `command` without a shell: wrap in a login shell
         // (the user's PATH finds aib) and keep the shell after the agent.
-        return "/bin/zsh -lc " + shellQuote(start + "; exec /bin/zsh -l")
+        // The user's terminal PATH first (UserShell): the login shell skips ~/.zshrc.
+        return "/bin/zsh -lc " + shellQuote(UserShell.pathPrefix + start + "; exec /bin/zsh -l")
     }
 
     /// The `aib start …` line as the user would type it.

@@ -40,7 +40,7 @@ enum CodexModelProbe {
 
     /// `command -v codex` in a login shell (a GUI app's PATH is minimal).
     static func findBinary() async -> URL? {
-        let output = await ProcessOutput.run(URL(fileURLWithPath: "/bin/zsh"), ["-lc", "command -v codex"], in: NSHomeDirectory())
+        let output = await ProcessOutput.run(URL(fileURLWithPath: "/bin/zsh"), UserShell.loginArguments("command -v codex"), in: NSHomeDirectory())
         let path = output.split(separator: "\n").last.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
         return path.hasPrefix("/") && FileManager.default.isExecutableFile(atPath: path) ? URL(fileURLWithPath: path) : nil
     }

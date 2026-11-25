@@ -11,10 +11,14 @@ enum ActivationRunner {
     static let authTimeout: TimeInterval = 20
     static let requestTimeout: TimeInterval = 120
 
-    /// v1 find_binary: Homebrew, /usr/local, ~/.local, then PATH.
-    static func findBinary(_ name: String, path: String? = ProcessInfo.processInfo.environment["PATH"]) -> URL? {
+    /// The user's terminal PATH first (the one their terminal runs, UserShell;
+    /// Homebrew first ran a stale Claude, 2026-11-25), then v1 find_binary:
+    /// Homebrew, /usr/local, ~/.local, then the app's PATH.
+    static func findBinary(_ name: String, userPath: String? = UserShell.path,
+                           path: String? = ProcessInfo.processInfo.environment["PATH"]) -> URL? {
         let fixed = ["/opt/homebrew/bin", "/usr/local/bin", NSHomeDirectory() + "/.local/bin"]
-        let directories = fixed + (path?.split(separator: ":").map(String.init) ?? [])
+        let split = { (value: String?) in value?.split(separator: ":").map(String.init) ?? [] }
+        let directories = split(userPath) + fixed + split(path)
         return directories.map { URL(fileURLWithPath: $0).appendingPathComponent(name) }
             .first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }

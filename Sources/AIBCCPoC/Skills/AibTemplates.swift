@@ -19,7 +19,7 @@ enum AibTemplates {
 
     /// Empty when aib or its templates cannot be found.
     static func defaultSkills() async -> Set<String> {
-        let found = await ProcessOutput.run(URL(fileURLWithPath: "/bin/zsh"), ["-lc", "command -v aib"], in: NSHomeDirectory())
+        let found = await ProcessOutput.run(URL(fileURLWithPath: "/bin/zsh"), UserShell.loginArguments("command -v aib"), in: NSHomeDirectory())
         let path = found.split(separator: "\n").last.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
         guard path.hasPrefix("/"), let script = try? String(contentsOfFile: path, encoding: .utf8),
               let templates = templateDirectory(fromScript: script) else { return [] }

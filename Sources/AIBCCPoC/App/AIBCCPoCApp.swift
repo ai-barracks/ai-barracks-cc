@@ -133,7 +133,10 @@ private struct ResponderCommand: View {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_: Notification) {
-        if !AppSettings.isSelfTest { AppSettings.applyAppearance() }
+        guard !AppSettings.isSelfTest else { return }
+        AppSettings.applyAppearance()
+        // The PATH the user's terminal has, for agents and aib (UserShell).
+        Task { await UserShell.resolve() }
     }
 
     /// Closing the window keeps the app in the menu bar (v1: tray). Self-
