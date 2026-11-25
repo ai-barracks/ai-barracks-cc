@@ -22,7 +22,13 @@ enum AgentSetupTests {
             let got = AibUpdate.offer(installed: installed.flatMap(version), newest: newest.flatMap(version))
             if got != expected.flatMap(version) { failures.append("offer \(installed ?? "-")→\(newest ?? "-"): \(got.map(\.description) ?? "nil")") }
         }
-        if AibUpdate.command != "aib update" { failures.append("button runs \(AibUpdate.command)") }
+        // aib before 1.6.2 has no `aib update`: the button runs Homebrew itself.
+        let commands = [(version("1.6.1"), AibUpdate.homebrewCommand), (nil, AibUpdate.homebrewCommand),
+                        (version("1.6.2"), "aib update"), (version("1.7.0"), "aib update")]
+        for (installed, expected) in commands where AibUpdate.command(installed: installed) != expected {
+            failures.append("button for \(installed?.description ?? "unknown") runs \(AibUpdate.command(installed: installed))")
+        }
+        if !AibUpdate.homebrewCommand.contains("brew upgrade ai-barracks/ai-barracks/ai-barracks") { failures.append("not the official tap") }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("aibcc-au-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

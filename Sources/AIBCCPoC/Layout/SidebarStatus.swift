@@ -19,13 +19,13 @@ struct AppVersionHeader: View {
             UpdateBadge().padding(.top, 3)
             if let newer = aib.available {
                 Button {
-                    workspace.runInPane(title: "aib 업데이트", command: AibUpdate.command, directory: NSHomeDirectory())
+                    workspace.runInPane(title: "aib 업데이트", command: AibUpdate.command(installed: aib.installed), directory: NSHomeDirectory())
                     aib.watchInstall()
                 } label: {
                     Label("aib \(newer) 업데이트", systemImage: "arrow.down.circle").font(Tokens.Font.meta)
                 }
                 .buttonStyle(.bordered).controlSize(.small).padding(.top, 3)
-                .help("터미널 칸에서 `aib update`를 실행합니다(묻고 Homebrew로 업데이트). 끝나면 배럭 Sync를 안내합니다.")
+                .help("터미널 칸에서 aib를 업데이트합니다(aib 1.6.2부터 `aib update`가 묻고 Homebrew로, 그 전 버전은 Homebrew 명령). 끝나면 배럭 Sync를 안내합니다.")
             }
         }
         .padding(.horizontal, Tokens.Spacing.s)

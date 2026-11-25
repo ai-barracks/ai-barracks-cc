@@ -12,7 +12,17 @@ final class AibUpdate {
     static let latest = URL(string: "https://api.github.com/repos/ai-barracks/ai-barracks/releases/latest")
     /// Tests point the check at a local feed.
     static let feedOverrideKey = "AIBCC_AIB_FEED"
+    /// aib 1.6.2 brought `aib update` (asks, then Homebrew); an older aib
+    /// does not know it, so the button runs Homebrew itself — the official
+    /// tap by full name (an older tap may hold the same formula name).
     static let command = "aib update"
+    static let homebrewCommand = "brew update && brew upgrade ai-barracks/ai-barracks/ai-barracks"
+    static let firstWithUpdate = ReleaseVersion("1.6.2")
+
+    static func command(installed: ReleaseVersion?) -> String {
+        guard let installed, let first = firstWithUpdate, installed >= first else { return homebrewCommand }
+        return command
+    }
 
     /// The aib the user's shell runs ("aib version"), and the newest release.
     private(set) var installed: ReleaseVersion?
